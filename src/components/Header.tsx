@@ -11,15 +11,19 @@ import {
   Smartphone,
   Check,
   UserCheck,
+  LogOut,
+  User,
+  KeyRound,
 } from 'lucide-react';
 import { useHrms } from '../context/HrmsContext';
 import { UserRole, LanguageCode, CurrencyCode } from '../types/hrms';
 
 interface HeaderProps {
   onOpenAIAssistant: () => void;
+  onChangePasswordClick?: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ onOpenAIAssistant }) => {
+export const Header: React.FC<HeaderProps> = ({ onOpenAIAssistant, onChangePasswordClick }) => {
   const {
     selectedHospital,
     setSelectedHospitalId,
@@ -36,6 +40,8 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAIAssistant }) => {
     setMobileViewActive,
     notifications,
     markNotificationRead,
+    currentUser,
+    logout,
   } = useHrms();
 
   const [showNotifications, setShowNotifications] = useState(false);
@@ -202,6 +208,49 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAIAssistant }) => {
               </div>
             </div>
           )}
+        </div>
+
+        {/* Current User Session Profile & Sign Out Button */}
+        <div className="flex items-center gap-2 pl-2 border-l border-slate-200 dark:border-slate-800">
+          <div className="hidden xl:flex items-center gap-2">
+            <img
+              src={currentUser?.avatar || 'https://images.unsplash.com/photo-1537368910025-700350fe46c7?w=150&auto=format&fit=crop&q=80'}
+              alt={currentUser?.name || 'User'}
+              className="h-8 w-8 rounded-full object-cover ring-2 ring-emerald-500/30"
+            />
+            <div className="text-left leading-tight">
+              <p className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate max-w-[120px]">
+                {currentUser?.name || 'Logged User'}
+              </p>
+              <p className="text-[10px] font-medium text-slate-400 truncate max-w-[120px]">
+                {currentUser?.email || 'user@stjudehealth.org'}
+              </p>
+            </div>
+          </div>
+
+          {onChangePasswordClick && (
+            <button
+              onClick={onChangePasswordClick}
+              className={`flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-bold transition border ${
+                currentUser?.mustChangePassword
+                  ? 'bg-amber-500/20 text-amber-400 border-amber-500/40 animate-pulse'
+                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'
+              }`}
+              title="Change Account Password"
+            >
+              <KeyRound className="h-3.5 w-3.5" />
+              <span className="hidden lg:inline">Password</span>
+            </button>
+          )}
+
+          <button
+            onClick={logout}
+            className="flex items-center gap-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 px-3 py-1.5 text-xs font-bold transition border border-rose-500/20"
+            title="Sign Out of Portal"
+          >
+            <LogOut className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Sign Out</span>
+          </button>
         </div>
       </div>
     </header>

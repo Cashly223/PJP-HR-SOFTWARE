@@ -27,7 +27,9 @@ import { AttendanceRecord, Employee } from '../../types/hrms';
 type PeriodType = 'this_week' | 'last_week' | 'this_month' | 'last_month' | 'all_time';
 
 export const AttendanceReport: React.FC = () => {
-  const { attendance, employees, selectedHospital, formatCurrency } = useHrms();
+  const { attendance, employees, selectedHospital, formatCurrency, activeRole, currentUser } = useHrms();
+
+  const isHRorAdmin = ['super_admin', 'facility_head', 'hr_director', 'hr_manager', 'dept_head', 'unit_head'].includes(activeRole);
 
   // Filter States
   const [period, setPeriod] = useState<PeriodType>('this_week');
@@ -107,13 +109,23 @@ export const AttendanceReport: React.FC = () => {
     return Math.max(0, Math.round((durationMinutes / 60) * 100) / 100);
   };
 
+  const currentEmpName = currentUser?.name || '';
+  const currentEmpEmail = currentUser?.email || '';
+
   // Filter staff by department and search query
   const filteredEmployees = employees.filter((emp) => {
+    if (!isHRorAdmin) {
+      const isSelf =
+        emp.id === currentUser?.id ||
+        (emp.email && currentEmpEmail && emp.email.toLowerCase() === currentEmpEmail.toLowerCase()) ||
+        (currentEmpName && `${emp.firstName} ${emp.lastName}`.toLowerCase().includes(currentEmpName.toLowerCase().split(' ')[0]));
+      if (!isSelf) return false;
+    }
     const matchesDept = selectedDept === 'All' || emp.department === selectedDept;
     const matchesSearch =
-      `${emp.firstName} ${emp.lastName}`.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      emp.empCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      emp.jobTitle.toLowerCase().includes(searchTerm.toLowerCase());
+      `${emp.firstName || ''} ${emp.lastName || ''}`.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (emp.empCode || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (emp.jobTitle || '').toLowerCase().includes(searchTerm.toLowerCase());
     return matchesDept && matchesSearch;
   });
 

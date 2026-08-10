@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   PlaneTakeoff,
   Plus,
@@ -18,9 +18,12 @@ import {
   Search,
   Filter,
   Sparkles,
+  Printer,
+  FileCheck,
 } from 'lucide-react';
 import { useHrms } from '../../context/HrmsContext';
 import { LeaveRequest, WorkflowStage, UserRole } from '../../types/hrms';
+import { OfficialLeaveFormViewModal } from './OfficialLeaveFormViewModal';
 
 export const LeaveManagement: React.FC = () => {
   const {
@@ -31,15 +34,46 @@ export const LeaveManagement: React.FC = () => {
     processLeaveWorkflowStep,
     activeRole,
     setActiveRole,
+    currentUser,
   } = useHrms();
 
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
   const [selectedEmpId, setSelectedEmpId] = useState(employees[0]?.id || '');
+  
+  // Custom Leave Form Fields (PART A)
+  const [staffId, setStaffId] = useState('');
+  const [grade, setGrade] = useState('');
+  const [unit, setUnit] = useState('');
+  const [department, setDepartment] = useState('');
   const [leaveType, setLeaveType] = useState<LeaveRequest['leaveType']>('Annual Leave');
-  const [reason, setReason] = useState('Attending medical conference & CME credit workshop.');
-  const [days, setDays] = useState(4);
+  const [leaveYear, setLeaveYear] = useState<number>(new Date().getFullYear());
+  const [leaveEntitlement, setLeaveEntitlement] = useState<number>(30);
+  const [deferredLeaveDaysDue, setDeferredLeaveDaysDue] = useState<number>(0);
+  const [leaveDaysEarned, setLeaveDaysEarned] = useState<number>(30);
+  const [days, setDays] = useState(7);
   const [startDate, setStartDate] = useState('2026-08-20');
-  const [endDate, setEndDate] = useState('2026-08-24');
+  const [endDate, setEndDate] = useState('2026-08-27');
+  const [addressOnLeave, setAddressOnLeave] = useState('Hospital Staff Residence Quarters House 14');
+  const [phoneOnLeave, setPhoneOnLeave] = useState('+233 20 555 0192');
+  const [reason, setReason] = useState('Annual leave application & mandatory rest duration.');
+
+  // Official Form Modal State
+  const [officialFormModal, setOfficialFormModal] = useState<{
+    open: boolean;
+    leave: LeaveRequest | null;
+  }>({ open: false, leave: null });
+
+  // Auto populate selected employee info
+  useEffect(() => {
+    const emp = employees.find((e) => e.id === selectedEmpId);
+    if (emp) {
+      setStaffId(emp.empCode || 'STF-1001');
+      setGrade(emp.jobTitle || 'Clinical Specialist');
+      setDepartment(emp.department || 'Intensive Care Unit (ICU)');
+      setUnit(emp.unit || 'ICU Ward 2B');
+      setPhoneOnLeave(emp.mobilePhone || '+233 20 555 0192');
+    }
+  }, [selectedEmpId, employees]);
 
   // Review Modal State for Approvers
   const [reviewModal, setReviewModal] = useState<{
@@ -72,16 +106,24 @@ export const LeaveManagement: React.FC = () => {
     addLeaveRequest({
       employeeId: emp.id,
       employeeName: `${emp.firstName} ${emp.lastName}`,
-      department: emp.department,
-      unit: emp.unit || 'General Care Ward',
+      staffId: staffId || emp.empCode || 'STF-1001',
+      grade: grade || emp.jobTitle || 'Clinical Staff',
+      department: department || emp.department,
+      unit: unit || emp.unit || 'General Ward',
       leaveType,
-      reason,
+      leaveYear: Number(leaveYear),
+      leaveEntitlement: Number(leaveEntitlement),
+      deferredLeaveDaysDue: Number(deferredLeaveDaysDue),
+      leaveDaysEarned: Number(leaveDaysEarned),
       totalDays: Number(days),
       startDate,
       endDate,
+      addressOnLeave,
+      phoneOnLeave,
+      reason,
     });
 
-    showToast(`Submitted Leave Request for ${emp.firstName} ${emp.lastName}. Sequential 4-Tier Workflow started at Tier 1 (Unit Head).`);
+    showToast(`Submitted Official Leave Application for ${emp.firstName} ${emp.lastName}. Sequential 4-Tier Workflow started at Tier 1 (Unit Head).`);
     setIsNewModalOpen(false);
   };
 
@@ -129,8 +171,20 @@ export const LeaveManagement: React.FC = () => {
     return false;
   };
 
+  const isHRorAdmin = ['super_admin', 'facility_head', 'hr_director', 'hr_manager', 'dept_head', 'unit_head'].includes(activeRole);
+  const currentEmpName = currentUser?.name || '';
+  const currentEmpEmail = currentUser?.email || '';
+
   // Filter leaves
   const filteredLeaves = leaves.filter((leave) => {
+    if (!isHRorAdmin) {
+      const isSelf =
+        leave.employeeId === currentUser?.id ||
+        (currentEmpName && (leave.employeeName || '').toLowerCase().includes(currentEmpName.toLowerCase().split(' ')[0])) ||
+        (currentEmpEmail && (leave.employeeName || '').toLowerCase().includes(currentEmpEmail.split('@')[0].toLowerCase()));
+      if (!isSelf) return false;
+    }
+
     const currentStage = leave.currentStage || 'Unit Head';
     const isActionRequired = isUserAuthorizedForStage(currentStage) && leave.status === 'Pending';
 
@@ -141,10 +195,10 @@ export const LeaveManagement: React.FC = () => {
 
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
-      const matchName = leave.employeeName.toLowerCase().includes(term);
-      const matchDept = leave.department.toLowerCase().includes(term);
+      const matchName = (leave.employeeName || '').toLowerCase().includes(term);
+      const matchDept = (leave.department || '').toLowerCase().includes(term);
       const matchUnit = (leave.unit || '').toLowerCase().includes(term);
-      const matchReason = leave.reason.toLowerCase().includes(term);
+      const matchReason = (leave.reason || '').toLowerCase().includes(term);
       if (!matchName && !matchDept && !matchUnit && !matchReason) return false;
     }
 
@@ -374,8 +428,17 @@ export const LeaveManagement: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Overall Status Badge */}
-                  <div className="flex items-center gap-2">
+                  {/* Overall Status Badge & View Official Form Button */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      onClick={() => setOfficialFormModal({ open: true, leave })}
+                      className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition flex items-center gap-1.5 border border-slate-200 dark:border-slate-700"
+                      title="View or Print Official 4-Part HR Leave Form"
+                    >
+                      <FileText className="h-3.5 w-3.5 text-amber-500" />
+                      View Official Form
+                    </button>
+
                     <span
                       className={`px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider ${
                         leave.status === 'Approved'
@@ -578,91 +641,220 @@ export const LeaveManagement: React.FC = () => {
         </div>
       )}
 
-      {/* New Leave Application Modal */}
+      {/* Customized New Leave Application Modal (PART A) */}
       {isNewModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100">
-            <h3 className="font-extrabold text-base mb-1">Submit Hospital Staff Leave Application</h3>
-            <p className="text-xs text-slate-500 mb-4">
-              Applications enter the 4-tier sequential workflow at Tier 1 (Unit Head).
-            </p>
-
-            <form onSubmit={handleCreateLeave} className="space-y-3.5 text-xs">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 p-4 backdrop-blur-sm overflow-y-auto">
+          <div className="w-full max-w-2xl rounded-3xl bg-white p-6 sm:p-8 shadow-2xl dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800 mb-4">
               <div>
-                <label className="block font-bold mb-1">Select Staff Member</label>
-                <select
-                  value={selectedEmpId}
-                  onChange={(e) => setSelectedEmpId(e.target.value)}
-                  className="w-full rounded-xl border border-slate-300 dark:border-slate-700 p-2.5 dark:bg-slate-800 font-medium"
-                >
-                  {employees.map((emp) => (
-                    <option key={emp.id} value={emp.id}>
-                      {emp.firstName} {emp.lastName} ({emp.department})
-                    </option>
-                  ))}
-                </select>
+                <h3 className="font-extrabold text-base text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                  <FileText className="h-5 w-5 text-amber-500" />
+                  Staff Leave Application Form (PART A)
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Fill in Part A details. Submitting initiates the sequential 4-Tier Approval Workflow.
+                </p>
               </div>
+              <button
+                type="button"
+                onClick={() => setIsNewModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 font-bold"
+              >
+                ✕
+              </button>
+            </div>
 
-              <div>
-                <label className="block font-bold mb-1">Leave Category</label>
-                <select
-                  value={leaveType}
-                  onChange={(e) => setLeaveType(e.target.value as any)}
-                  className="w-full rounded-xl border border-slate-300 dark:border-slate-700 p-2.5 dark:bg-slate-800 font-medium"
-                >
-                  <option value="Annual Leave">Annual Leave</option>
-                  <option value="Sick / Medical">Sick / Medical</option>
-                  <option value="Study / CME">Study / CME Conference</option>
-                  <option value="Hazard / Emergency">Hazard / Emergency</option>
-                  <option value="Maternity">Maternity</option>
-                </select>
-              </div>
+            <form onSubmit={handleCreateLeave} className="space-y-4 text-xs">
+              {/* Applicant Particulars Header */}
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 space-y-3">
+                <div className="font-extrabold text-amber-600 dark:text-amber-400 uppercase text-[11px] tracking-wider">
+                  APPLICANT PARTICULARS
+                </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-bold mb-1">Start Date</label>
-                  <input
-                    type="date"
-                    value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)}
-                    className="w-full rounded-xl border border-slate-300 dark:border-slate-700 p-2 dark:bg-slate-800 font-medium"
-                  />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-bold mb-1">NAME</label>
+                    <select
+                      value={selectedEmpId}
+                      onChange={(e) => setSelectedEmpId(e.target.value)}
+                      className="w-full rounded-xl border border-slate-300 dark:border-slate-700 p-2.5 dark:bg-slate-800 font-medium"
+                    >
+                      {employees.map((emp) => (
+                        <option key={emp.id} value={emp.id}>
+                          {emp.firstName} {emp.lastName} ({emp.department})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block font-bold mb-1">STAFF ID</label>
+                    <input
+                      type="text"
+                      value={staffId}
+                      onChange={(e) => setStaffId(e.target.value)}
+                      className="w-full rounded-xl border border-slate-300 dark:border-slate-700 p-2.5 dark:bg-slate-800 font-mono font-bold"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold mb-1">GRADE / TITLE</label>
+                    <input
+                      type="text"
+                      value={grade}
+                      onChange={(e) => setGrade(e.target.value)}
+                      className="w-full rounded-xl border border-slate-300 dark:border-slate-700 p-2.5 dark:bg-slate-800 font-medium"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold mb-1">PRESENT UNIT / DEPT</label>
+                    <input
+                      type="text"
+                      value={unit ? `${unit} (${department})` : department}
+                      onChange={(e) => setUnit(e.target.value)}
+                      className="w-full rounded-xl border border-slate-300 dark:border-slate-700 p-2.5 dark:bg-slate-800 font-medium"
+                    />
+                  </div>
                 </div>
 
                 <div>
-                  <label className="block font-bold mb-1">End Date</label>
-                  <input
-                    type="date"
-                    value={endDate}
-                    onChange={(e) => setEndDate(e.target.value)}
-                    className="w-full rounded-xl border border-slate-300 dark:border-slate-700 p-2 dark:bg-slate-800 font-medium"
-                  />
+                  <label className="block font-bold mb-1">TYPE OF LEAVE APPLIED FOR</label>
+                  <select
+                    value={leaveType}
+                    onChange={(e) => setLeaveType(e.target.value as any)}
+                    className="w-full rounded-xl border border-slate-300 dark:border-slate-700 p-2.5 dark:bg-slate-800 font-bold text-emerald-600 dark:text-emerald-400"
+                  >
+                    <option value="Annual Leave">Annual Leave</option>
+                    <option value="Sick / Medical">Sick / Medical</option>
+                    <option value="Study / CME">Study / CME Conference</option>
+                    <option value="Hazard / Emergency">Hazard / Emergency</option>
+                    <option value="Maternity">Maternity</option>
+                    <option value="Paternity">Paternity</option>
+                  </select>
                 </div>
               </div>
 
-              <div>
-                <label className="block font-bold mb-1">Total Requested Days</label>
-                <input
-                  type="number"
-                  min={1}
-                  max={90}
-                  value={days}
-                  onChange={(e) => setDays(Number(e.target.value))}
-                  className="w-full rounded-xl border border-slate-300 dark:border-slate-700 p-2.5 dark:bg-slate-800 font-medium"
-                />
+              {/* PART A (APPLICATION DATA) */}
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 space-y-3">
+                <div className="font-extrabold text-emerald-600 dark:text-emerald-400 uppercase text-[11px] tracking-wider">
+                  PART A — LEAVE APPLICATION DETAILS
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div>
+                    <label className="block font-bold mb-1 text-[10px]">LEAVE YEAR</label>
+                    <input
+                      type="number"
+                      value={leaveYear}
+                      onChange={(e) => setLeaveYear(Number(e.target.value))}
+                      className="w-full rounded-xl border border-slate-300 dark:border-slate-700 p-2 dark:bg-slate-800 font-medium"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold mb-1 text-[10px]">ENTITLEMENT (DAYS)</label>
+                    <input
+                      type="number"
+                      value={leaveEntitlement}
+                      onChange={(e) => setLeaveEntitlement(Number(e.target.value))}
+                      className="w-full rounded-xl border border-slate-300 dark:border-slate-700 p-2 dark:bg-slate-800 font-medium"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold mb-1 text-[10px]">DEFERRED DAYS DUE</label>
+                    <input
+                      type="number"
+                      value={deferredLeaveDaysDue}
+                      onChange={(e) => setDeferredLeaveDaysDue(Number(e.target.value))}
+                      className="w-full rounded-xl border border-slate-300 dark:border-slate-700 p-2 dark:bg-slate-800 font-medium"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold mb-1 text-[10px]">LEAVE DAYS EARNED</label>
+                    <input
+                      type="number"
+                      value={leaveDaysEarned}
+                      onChange={(e) => setLeaveDaysEarned(Number(e.target.value))}
+                      className="w-full rounded-xl border border-slate-300 dark:border-slate-700 p-2 dark:bg-slate-800 font-medium"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block font-bold mb-1 text-[10px]">PROPOSED COMMENCEMENT DATE</label>
+                    <input
+                      type="date"
+                      value={startDate}
+                      onChange={(e) => setStartDate(e.target.value)}
+                      className="w-full rounded-xl border border-slate-300 dark:border-slate-700 p-2 dark:bg-slate-800 font-medium"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold mb-1 text-[10px]">PROPOSED END DATE</label>
+                    <input
+                      type="date"
+                      value={endDate}
+                      onChange={(e) => setEndDate(e.target.value)}
+                      className="w-full rounded-xl border border-slate-300 dark:border-slate-700 p-2 dark:bg-slate-800 font-medium"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold mb-1 text-[10px]">NUMBER OF DAYS APPLIED FOR</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={90}
+                      value={days}
+                      onChange={(e) => setDays(Number(e.target.value))}
+                      className="w-full rounded-xl border border-slate-300 dark:border-slate-700 p-2 dark:bg-slate-800 font-bold text-emerald-600 dark:text-emerald-400"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-bold mb-1 text-[10px]">ADDRESS ON LEAVE</label>
+                    <input
+                      type="text"
+                      value={addressOnLeave}
+                      onChange={(e) => setAddressOnLeave(e.target.value)}
+                      className="w-full rounded-xl border border-slate-300 dark:border-slate-700 p-2.5 dark:bg-slate-800 font-medium"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold mb-1 text-[10px]">TELEPHONE NO.</label>
+                    <input
+                      type="text"
+                      value={phoneOnLeave}
+                      onChange={(e) => setPhoneOnLeave(e.target.value)}
+                      className="w-full rounded-xl border border-slate-300 dark:border-slate-700 p-2.5 dark:bg-slate-800 font-medium"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block font-bold mb-1 text-[10px]">REASON / PURPOSE FOR LEAVE</label>
+                  <textarea
+                    value={reason}
+                    onChange={(e) => setReason(e.target.value)}
+                    rows={2}
+                    className="w-full rounded-xl border border-slate-300 dark:border-slate-700 p-2.5 dark:bg-slate-800 font-medium"
+                  ></textarea>
+                </div>
               </div>
 
-              <div>
-                <label className="block font-bold mb-1">Reason / Clinical Coverage Plan</label>
-                <textarea
-                  value={reason}
-                  onChange={(e) => setReason(e.target.value)}
-                  rows={3}
-                  className="w-full rounded-xl border border-slate-300 dark:border-slate-700 p-2.5 dark:bg-slate-800 font-medium"
-                ></textarea>
+              <div className="text-[10px] text-slate-400 p-2 rounded-xl bg-amber-500/10 border border-amber-500/20 italic">
+                NB: Leave application must comply with proposed date and submitted at least 7 working days prior to start date.
               </div>
 
-              <div className="flex justify-end gap-3 pt-3">
+              <div className="flex justify-end gap-3 pt-2">
                 <button
                   type="button"
                   onClick={() => setIsNewModalOpen(false)}
@@ -672,15 +864,23 @@ export const LeaveManagement: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="rounded-xl bg-emerald-600 px-5 py-2 font-bold text-white shadow hover:bg-emerald-500"
+                  className="rounded-xl bg-emerald-600 px-5 py-2 font-bold text-white shadow hover:bg-emerald-500 flex items-center gap-1.5"
                 >
-                  Submit Application
+                  <FileCheck className="h-4 w-4" /> Submit Application (Part A)
                 </button>
               </div>
             </form>
           </div>
         </div>
       )}
+
+      {/* Official 4-Part Leave Application Document View Modal */}
+      <OfficialLeaveFormViewModal
+        isOpen={officialFormModal.open}
+        onClose={() => setOfficialFormModal({ open: false, leave: null })}
+        leave={officialFormModal.leave}
+        hospitalName="POPE JOHN PAUL II MEDICAL CENTRE"
+      />
     </div>
   );
 };

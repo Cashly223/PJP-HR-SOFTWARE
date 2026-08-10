@@ -1,10 +1,28 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { 
+  auth, 
+  db, 
+  signInWithEmailAndPassword, 
+  createUserWithEmailAndPassword, 
+  signOut, 
+  updatePassword,
+  collection, 
+  doc, 
+  setDoc, 
+  addDoc, 
+  updateDoc, 
+  deleteDoc, 
+  getDocs, 
+  query, 
+  where 
+} from '../lib/firebase';
 import {
   Hospital,
   UserRole,
   LanguageCode,
   CurrencyCode,
   Employee,
+  StaffFile,
   ShiftRoster,
   AttendanceRecord,
   LeaveRequest,
@@ -13,6 +31,7 @@ import {
   Candidate,
   OnboardingTask,
   TrainingCourse,
+  TrainingAttendanceRecord,
   IncidentReport,
   HospitalAsset,
   AuditLog,
@@ -28,6 +47,13 @@ import {
   WorkflowStage,
   MultiTierWorkflow,
   SystemCustomizationSettings,
+  StaffAccessPermissions,
+  ExpenseClaim,
+  NoticeBoardPost,
+  ChatMessage,
+  ChatChannel,
+  SuggestionItem,
+  InfoHubArticle,
 } from '../types/hrms';
 import {
   MOCK_HOSPITALS,
@@ -40,6 +66,7 @@ import {
   MOCK_CANDIDATES,
   MOCK_ONBOARDING,
   MOCK_COURSES,
+  MOCK_TRAINING_ATTENDANCE,
   MOCK_INCIDENTS,
   MOCK_ASSETS,
   MOCK_AUDIT_LOGS,
@@ -50,9 +77,45 @@ import {
   MOCK_MONTHLY_UNIT_ROSTERS,
   MOCK_CONFERENCE_MEETINGS,
   MOCK_DEPARTMENT_LEADERSHIP,
+  MOCK_STAFF_PERMISSIONS,
+  MOCK_EXPENSE_CLAIMS,
+  MOCK_NOTICE_POSTS,
+  MOCK_CHAT_MESSAGES,
+  MOCK_SUGGESTIONS,
+  MOCK_INFO_ARTICLES,
 } from '../data/mockHrmsData';
 
+export interface CurrentUserSession {
+  id: string;
+  name: string;
+  email: string;
+  role: UserRole;
+  avatar: string;
+  department?: string;
+  empCode?: string;
+  loginTime: string;
+  mustChangePassword?: boolean;
+  filePermissionGranted?: boolean;
+  defaultPassword?: string;
+}
+
 interface HrmsContextType {
+  // Auth Session State & Methods
+  isAuthenticated: boolean;
+  currentUser: CurrentUserSession | null;
+  login: (email: string, password?: string, defaultRole?: UserRole, name?: string) => Promise<void>;
+  signup: (userData: { fullName: string; email: string; password?: string; role: UserRole; department: string }) => Promise<void>;
+  logout: () => void;
+  changePassword: (newPassword: string) => Promise<void>;
+
+  // Staff Files & Security Permissions
+  staffFiles: StaffFile[];
+  uploadStaffFile: (fileData: { fileName: string; fileType: string; fileSize: number; fileData: string; category: StaffFile['category']; description?: string }) => Promise<StaffFile>;
+  updateStaffFile: (fileId: string, updates: Partial<StaffFile>) => Promise<void>;
+  deleteStaffFile: (fileId: string) => Promise<void>;
+  toggleStaffFilePermission: (empId: string, granted: boolean) => Promise<void>;
+  createStaffAccountByHR: (staffData: { firstName: string; lastName: string; email: string; role: UserRole; department: string; jobTitle?: string; defaultPassword?: string }) => Promise<Employee>;
+
   // Config & State
   selectedHospital: Hospital;
   setSelectedHospitalId: (id: string) => void;
@@ -108,6 +171,10 @@ interface HrmsContextType {
   toggleOnboardingTask: (id: string) => void;
 
   courses: TrainingCourse[];
+  trainingAttendance: TrainingAttendanceRecord[];
+  markTrainingAttendance: (rec: Omit<TrainingAttendanceRecord, 'id'>) => void;
+  updateTrainingAttendanceStatus: (id: string, status: TrainingAttendanceRecord['status']) => void;
+
   incidents: IncidentReport[];
   addIncident: (inc: Partial<IncidentReport>) => void;
 
@@ -162,6 +229,36 @@ interface HrmsContextType {
   // System & Portal Customization (Admin & HR)
   systemCustomization: SystemCustomizationSettings;
   updateSystemCustomization: (updates: Partial<SystemCustomizationSettings>) => void;
+
+  // Access Control & Permissions Management
+  staffPermissions: StaffAccessPermissions[];
+  grantStaffAccess: (employeeId: string, modules: string[], notes?: string) => void;
+  revokeStaffAccess: (employeeId: string, moduleId: string) => void;
+  hasModuleAccess: (role: UserRole, employeeId: string | undefined, moduleKey: string) => boolean;
+
+  // Expense Claims Management
+  expenseClaims: ExpenseClaim[];
+  addExpenseClaim: (claim: Partial<ExpenseClaim>) => void;
+  updateExpenseClaimStatus: (id: string, status: ExpenseClaim['status']) => void;
+
+  // Hospital Official Notice Board
+  noticePosts: NoticeBoardPost[];
+  addNoticePost: (post: Omit<NoticeBoardPost, 'id'>) => void;
+  toggleNoticeLike: (noticeId: string, empId: string) => void;
+  acknowledgeNotice: (noticeId: string, empName: string) => void;
+
+  // Staff Interactive Chat Room
+  chatMessages: ChatMessage[];
+  addChatMessage: (message: ChatMessage) => void;
+
+  // Digital Suggestion Box
+  suggestions: SuggestionItem[];
+  addSuggestion: (suggestion: Omit<SuggestionItem, 'id'>) => void;
+  upvoteSuggestion: (suggestionId: string, empId: string) => void;
+  respondToSuggestion: (suggestionId: string, response: SuggestionItem['responseFromManagement'], newStatus: SuggestionItem['status']) => void;
+
+  // PJPIIMC Information Hub
+  infoArticles: InfoHubArticle[];
 
   // Helpers
   formatCurrency: (amount: number) => string;
@@ -269,6 +366,24 @@ export const HrmsProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [mobileViewActive, setMobileViewActive] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<string>('dashboard');
 
+  // Auth session state
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+    const saved = localStorage.getItem('aurahr_auth_session');
+    return saved !== null;
+  });
+
+  const [currentUser, setCurrentUser] = useState<CurrentUserSession | null>(() => {
+    const saved = localStorage.getItem('aurahr_auth_session');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        // fallback
+      }
+    }
+    return null;
+  });
+
   useEffect(() => {
     if (darkMode) {
       document.documentElement.classList.add('dark');
@@ -278,7 +393,18 @@ export const HrmsProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [darkMode]);
 
   // Core Data Collections
-  const [employees, setEmployees] = useState<Employee[]>(MOCK_EMPLOYEES);
+  const [employees, setEmployees] = useState<Employee[]>(() => {
+    const saved = localStorage.getItem('aurahr_employees_v1');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch (e) {
+        console.error('Failed to load saved employees from localStorage', e);
+      }
+    }
+    return MOCK_EMPLOYEES;
+  });
   const [rosters, setRosters] = useState<ShiftRoster[]>(MOCK_ROSTERS);
   const [attendance, setAttendance] = useState<AttendanceRecord[]>(MOCK_ATTENDANCE);
   const [leaves, setLeaves] = useState<LeaveRequest[]>(MOCK_LEAVES);
@@ -287,6 +413,7 @@ export const HrmsProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [candidates, setCandidates] = useState<Candidate[]>(MOCK_CANDIDATES);
   const [onboardingTasks, setOnboardingTasks] = useState<OnboardingTask[]>(MOCK_ONBOARDING);
   const [courses] = useState<TrainingCourse[]>(MOCK_COURSES);
+  const [trainingAttendance, setTrainingAttendance] = useState<TrainingAttendanceRecord[]>(MOCK_TRAINING_ATTENDANCE);
   const [incidents, setIncidents] = useState<IncidentReport[]>(MOCK_INCIDENTS);
   const [assets] = useState<HospitalAsset[]>(MOCK_ASSETS);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>(MOCK_AUDIT_LOGS);
@@ -297,6 +424,12 @@ export const HrmsProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [monthlyUnitRosters, setMonthlyUnitRosters] = useState<DepartmentMonthlyRoster[]>(MOCK_MONTHLY_UNIT_ROSTERS);
   const [conferenceMeetings, setConferenceMeetings] = useState<DepartmentConferenceMeeting[]>(MOCK_CONFERENCE_MEETINGS);
   const [departmentLeadership, setDepartmentLeadership] = useState<DepartmentLeadership[]>(MOCK_DEPARTMENT_LEADERSHIP);
+  const [staffPermissions, setStaffPermissions] = useState<StaffAccessPermissions[]>(MOCK_STAFF_PERMISSIONS);
+  const [expenseClaims, setExpenseClaims] = useState<ExpenseClaim[]>(MOCK_EXPENSE_CLAIMS);
+  const [noticePosts, setNoticePosts] = useState<NoticeBoardPost[]>(MOCK_NOTICE_POSTS);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>(MOCK_CHAT_MESSAGES);
+  const [suggestions, setSuggestions] = useState<SuggestionItem[]>(MOCK_SUGGESTIONS);
+  const [infoArticles] = useState<InfoHubArticle[]>(MOCK_INFO_ARTICLES);
   const [systemCustomization, setSystemCustomization] = useState<SystemCustomizationSettings>({
     hospitalName: 'St. Jude Teaching & Research Hospital',
     hospitalTagline: 'Excellence in Clinical Care, Research & HR Governance',
@@ -348,14 +481,430 @@ export const HrmsProvider: React.FC<{ children: React.ReactNode }> = ({ children
       id: `log-${Date.now()}`,
       timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
       userId: 'usr-current',
-      userName: activeRole === 'hr_director' ? 'Marcus Vance' : 'Active User',
-      userRole: activeRole,
+      userName: currentUser ? currentUser.name : (activeRole === 'hr_director' ? 'Marcus Vance' : 'Active User'),
+      userRole: currentUser ? currentUser.role : activeRole,
       action,
       module,
       details,
       ipAddress: '192.168.1.100',
     };
     setAuditLogs((prev) => [newLog, ...prev]);
+  };
+
+  // Staff Files Storage State
+  const [staffFiles, setStaffFiles] = useState<StaffFile[]>([
+    {
+      id: 'file-101',
+      ownerUid: 'emp-001',
+      ownerEmail: 'a.kingsley@stjudehealth.org',
+      ownerName: 'Dr. Arthur Kingsley',
+      fileName: 'State_Medical_License_2026.pdf',
+      fileType: 'pdf',
+      fileSize: 2450000,
+      fileData: 'data:application/pdf;base64,JVBERi0xLjQK...',
+      category: 'Medical License',
+      description: 'Annual State Board Medical License renewal certificate.',
+      uploadedAt: '2026-01-15 09:30:00',
+      updatedAt: '2026-01-15 09:30:00',
+      permissionGrantedByHr: true,
+    },
+    {
+      id: 'file-102',
+      ownerUid: 'emp-002',
+      ownerEmail: 's.jenkins@stjudehealth.org',
+      ownerName: 'Dr. Sarah Jenkins',
+      fileName: 'ACLS_Advanced_Cardiac_Life_Support_Cert.pdf',
+      fileType: 'pdf',
+      fileSize: 1850000,
+      fileData: 'data:application/pdf;base64,JVBERi0xLjQK...',
+      category: 'Clinical Certification',
+      description: 'AHA ACLS Provider Card valid through 2028.',
+      uploadedAt: '2026-02-01 11:15:00',
+      updatedAt: '2026-02-01 11:15:00',
+      permissionGrantedByHr: true,
+    },
+    {
+      id: 'file-103',
+      ownerUid: 'emp-004',
+      ownerEmail: 'e.rostova@stjudehealth.org',
+      ownerName: 'Elena Rostova',
+      fileName: 'Senior_ICU_Nurse_Employment_Contract.pdf',
+      fileType: 'pdf',
+      fileSize: 3100000,
+      fileData: 'data:application/pdf;base64,JVBERi0xLjQK...',
+      category: 'HR Contract',
+      description: 'Full-time employment agreement with St. Jude Teaching Hospital.',
+      uploadedAt: '2026-03-10 14:20:00',
+      updatedAt: '2026-03-10 14:20:00',
+      permissionGrantedByHr: false,
+    },
+  ]);
+
+  // Auth Operations with Firebase Auth & Firestore Sync
+  const login = async (emailInput: string, passwordInput?: string, defaultRole?: UserRole, nameInput?: string) => {
+    let authUser = null;
+    try {
+      if (passwordInput) {
+        const userCredential = await signInWithEmailAndPassword(auth, emailInput, passwordInput);
+        authUser = userCredential.user;
+      }
+    } catch (firebaseErr) {
+      console.warn('Firebase Auth sign in notice:', firebaseErr);
+    }
+
+    const matchedEmp = employees.find(
+      (e) => e.email && emailInput && e.email.toLowerCase() === emailInput.toLowerCase()
+    );
+
+    let userRole = defaultRole || (matchedEmp ? matchedEmp.role : activeRole);
+    let name = nameInput || (matchedEmp ? `${matchedEmp.firstName} ${matchedEmp.lastName}` : emailInput.split('@')[0]);
+    let photo = matchedEmp ? matchedEmp.photo : 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80';
+    let dept = matchedEmp ? matchedEmp.department : 'General Staff';
+    let empCode = matchedEmp ? matchedEmp.empCode : `SJH-${Math.floor(1000 + Math.random() * 9000)}`;
+
+    // Check if password change is required or default password is active
+    let mustChangePassword = matchedEmp ? (matchedEmp.mustChangePassword ?? false) : false;
+    let filePermissionGranted = matchedEmp ? (matchedEmp.filePermissionGranted ?? true) : true;
+
+    const session: CurrentUserSession = {
+      id: matchedEmp ? matchedEmp.id : (authUser ? authUser.uid : `user-${Date.now()}`),
+      name,
+      email: emailInput,
+      role: userRole,
+      avatar: photo,
+      department: dept,
+      empCode,
+      loginTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      mustChangePassword,
+      filePermissionGranted,
+    };
+
+    setCurrentUser(session);
+    setIsAuthenticated(true);
+    setActiveRole(userRole);
+    localStorage.setItem('aurahr_auth_session', JSON.stringify(session));
+
+    // Firestore record sync
+    try {
+      const empRef = doc(db, 'employees', session.id);
+      await setDoc(empRef, {
+        uid: session.id,
+        empCode,
+        firstName: name.split(' ')[0],
+        lastName: name.split(' ').slice(1).join(' ') || 'Staff',
+        email: emailInput,
+        role: userRole,
+        department: dept,
+        mustChangePassword,
+        filePermissionGranted,
+        updatedAt: new Date().toISOString(),
+      }, { merge: true });
+    } catch (e) {
+      console.warn('Firestore employee sync notice:', e);
+    }
+
+    addAuditLog('User Login', 'Authentication', `Logged in as ${name} (${userRole}) via Firebase Auth`);
+  };
+
+  const signup = async (userData: { fullName: string; email: string; password?: string; role: UserRole; department: string }) => {
+    let authUid = `user-${Date.now()}`;
+    try {
+      if (userData.password) {
+        const userCredential = await createUserWithEmailAndPassword(auth, userData.email, userData.password);
+        authUid = userCredential.user.uid;
+      }
+    } catch (e) {
+      console.warn('Firebase Auth signup notice:', e);
+    }
+
+    const names = userData.fullName.trim().split(' ');
+    const firstName = names[0] || 'Staff';
+    const lastName = names.slice(1).join(' ') || 'User';
+
+    const newEmp = addEmployee({
+      id: authUid,
+      firstName,
+      lastName,
+      email: userData.email,
+      role: userData.role,
+      department: userData.department,
+      jobTitle: `${userData.department} Specialist`,
+      status: 'Active',
+      photo: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+      mustChangePassword: false,
+      filePermissionGranted: true,
+    });
+
+    const session: CurrentUserSession = {
+      id: newEmp.id,
+      name: userData.fullName,
+      email: userData.email,
+      role: userData.role,
+      avatar: newEmp.photo,
+      department: userData.department,
+      empCode: newEmp.empCode,
+      loginTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      mustChangePassword: false,
+      filePermissionGranted: true,
+    };
+
+    setCurrentUser(session);
+    setIsAuthenticated(true);
+    setActiveRole(userData.role);
+    localStorage.setItem('aurahr_auth_session', JSON.stringify(session));
+
+    // Save to Firestore
+    try {
+      await setDoc(doc(db, 'employees', newEmp.id), {
+        uid: newEmp.id,
+        empCode: newEmp.empCode,
+        firstName,
+        lastName,
+        email: userData.email,
+        role: userData.role,
+        department: userData.department,
+        mustChangePassword: false,
+        filePermissionGranted: true,
+        createdAt: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.warn('Firestore employee creation notice:', e);
+    }
+
+    addAuditLog('User Sign Up', 'Authentication', `Registered new staff account for ${userData.fullName} (${userData.role})`);
+  };
+
+  const changePassword = async (newPassword: string) => {
+    if (!currentUser) throw new Error('No user currently logged in.');
+
+    try {
+      if (auth.currentUser) {
+        await updatePassword(auth.currentUser, newPassword);
+      }
+    } catch (e) {
+      console.warn('Firebase Auth password update notice:', e);
+    }
+
+    // Update in local state
+    setCurrentUser((prev) => prev ? { ...prev, mustChangePassword: false } : null);
+
+    // Update matching employee
+    setEmployees((prev) =>
+      prev.map((emp) =>
+        emp.email && currentUser?.email && emp.email.toLowerCase() === currentUser.email.toLowerCase()
+          ? { ...emp, mustChangePassword: false }
+          : emp
+      )
+    );
+
+    // Save update in Firestore
+    try {
+      const q = query(collection(db, 'employees'), where('email', '==', currentUser.email));
+      const querySnap = await getDocs(q);
+      querySnap.forEach(async (document) => {
+        await updateDoc(doc(db, 'employees', document.id), {
+          mustChangePassword: false,
+          updatedAt: new Date().toISOString(),
+        });
+      });
+    } catch (e) {
+      console.warn('Firestore password status update notice:', e);
+    }
+
+    // Update local storage session
+    const saved = localStorage.getItem('aurahr_auth_session');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        parsed.mustChangePassword = false;
+        localStorage.setItem('aurahr_auth_session', JSON.stringify(parsed));
+      } catch (e) {}
+    }
+
+    addAuditLog('Change Password', 'Security & Auth', `User ${currentUser.name} successfully updated default password`);
+  };
+
+  const logout = () => {
+    signOut(auth).catch(() => {});
+    setIsAuthenticated(false);
+    setCurrentUser(null);
+    localStorage.removeItem('aurahr_auth_session');
+  };
+
+  // Staff Files Storage Operations
+  const uploadStaffFile = async (fileData: {
+    fileName: string;
+    fileType: string;
+    fileSize: number;
+    fileData: string;
+    category: StaffFile['category'];
+    description?: string;
+  }): Promise<StaffFile> => {
+    if (!currentUser) throw new Error('Must be logged in to upload files.');
+
+    const isHR = ['super_admin', 'facility_head', 'hr_director', 'hr_manager'].includes(currentUser.role);
+    if (!isHR && currentUser.filePermissionGranted === false) {
+      throw new Error('HR File Upload Permission Required. Please request upload clearance from HR.');
+    }
+
+    const newFile: StaffFile = {
+      id: `file-${Date.now()}`,
+      ownerUid: currentUser.id,
+      ownerEmail: currentUser.email,
+      ownerName: currentUser.name,
+      fileName: fileData.fileName,
+      fileType: fileData.fileType,
+      fileSize: fileData.fileSize,
+      fileData: fileData.fileData,
+      category: fileData.category,
+      description: fileData.description || '',
+      uploadedAt: new Date().toISOString().replace('T', ' ').substring(0, 19),
+      updatedAt: new Date().toISOString().replace('T', ' ').substring(0, 19),
+      permissionGrantedByHr: currentUser.filePermissionGranted ?? true,
+    };
+
+    setStaffFiles((prev) => [newFile, ...prev]);
+
+    // Save to Firestore staff_files collection
+    try {
+      await addDoc(collection(db, 'staff_files'), {
+        ownerUid: newFile.ownerUid,
+        ownerEmail: newFile.ownerEmail,
+        ownerName: newFile.ownerName,
+        fileName: newFile.fileName,
+        fileType: newFile.fileType,
+        fileSize: newFile.fileSize,
+        fileData: newFile.fileData,
+        category: newFile.category,
+        description: newFile.description,
+        uploadedAt: newFile.uploadedAt,
+        updatedAt: newFile.updatedAt,
+        permissionGrantedByHr: newFile.permissionGrantedByHr,
+      });
+    } catch (e) {
+      console.warn('Firestore file add notice:', e);
+    }
+
+    addAuditLog('Upload Staff File', 'Document Management', `Uploaded file ${newFile.fileName} (${newFile.category}) for ${currentUser.name}`);
+    return newFile;
+  };
+
+  const updateStaffFile = async (fileId: string, updates: Partial<StaffFile>) => {
+    setStaffFiles((prev) =>
+      prev.map((f) => (f.id === fileId ? { ...f, ...updates, updatedAt: new Date().toISOString() } : f))
+    );
+
+    try {
+      await updateDoc(doc(db, 'staff_files', fileId), {
+        ...updates,
+        updatedAt: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.warn('Firestore file update notice:', e);
+    }
+
+    addAuditLog('Update Staff File', 'Document Management', `Updated staff file ID ${fileId}`);
+  };
+
+  const deleteStaffFile = async (fileId: string) => {
+    setStaffFiles((prev) => prev.filter((f) => f.id !== fileId));
+
+    try {
+      await deleteDoc(doc(db, 'staff_files', fileId));
+    } catch (e) {
+      console.warn('Firestore file delete notice:', e);
+    }
+
+    addAuditLog('Delete Staff File', 'Document Management', `Deleted staff file ID ${fileId}`);
+  };
+
+  const toggleStaffFilePermission = async (empId: string, granted: boolean) => {
+    setEmployees((prev) =>
+      prev.map((emp) => (emp.id === empId ? { ...emp, filePermissionGranted: granted } : emp))
+    );
+
+    if (currentUser && currentUser.id === empId) {
+      setCurrentUser((prev) => (prev ? { ...prev, filePermissionGranted: granted } : null));
+    }
+
+    try {
+      await updateDoc(doc(db, 'employees', empId), {
+        filePermissionGranted: granted,
+        updatedAt: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.warn('Firestore toggle permission notice:', e);
+    }
+
+    const empName = employees.find((e) => e.id === empId)?.firstName || 'Staff Member';
+    addAuditLog(
+      'HR Security Permission Changed',
+      'Document Access Rules',
+      `HR ${granted ? 'GRANTED' : 'REVOKED'} file upload/update permissions for ${empName} (ID: ${empId})`
+    );
+  };
+
+  const createStaffAccountByHR = async (staffData: {
+    firstName: string;
+    lastName: string;
+    email: string;
+    role: UserRole;
+    department: string;
+    jobTitle?: string;
+    defaultPassword?: string;
+  }): Promise<Employee> => {
+    const defaultPassword = staffData.defaultPassword || 'Hospital2026!';
+    let authUid = `emp-${Date.now()}`;
+
+    try {
+      const userCred = await createUserWithEmailAndPassword(auth, staffData.email, defaultPassword);
+      authUid = userCred.user.uid;
+    } catch (e) {
+      console.warn('Firebase Auth HR creation notice:', e);
+    }
+
+    const newEmp = addEmployee({
+      id: authUid,
+      firstName: staffData.firstName,
+      lastName: staffData.lastName,
+      email: staffData.email,
+      role: staffData.role,
+      department: staffData.department,
+      jobTitle: staffData.jobTitle || `${staffData.department} Specialist`,
+      status: 'Active',
+      photo: 'https://images.unsplash.com/photo-1537368910025-700350fe46c7?w=150&auto=format&fit=crop&q=80',
+      mustChangePassword: true,
+      filePermissionGranted: false,
+      defaultPassword,
+    });
+
+    // Save to Firestore
+    try {
+      await setDoc(doc(db, 'employees', newEmp.id), {
+        uid: newEmp.id,
+        empCode: newEmp.empCode,
+        firstName: staffData.firstName,
+        lastName: staffData.lastName,
+        email: staffData.email,
+        role: staffData.role,
+        department: staffData.department,
+        jobTitle: newEmp.jobTitle,
+        mustChangePassword: true,
+        filePermissionGranted: false,
+        defaultPassword,
+        createdAt: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.warn('Firestore employee creation by HR notice:', e);
+    }
+
+    addAuditLog(
+      'HR Provisioned Staff Account',
+      'HR Staff Management',
+      `HR provisioned account for ${staffData.firstName} ${staffData.lastName} (${staffData.email}) with default password ${defaultPassword}`
+    );
+
+    return newEmp;
   };
 
   // Employees CRUD
@@ -490,21 +1039,34 @@ export const HrmsProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const emp = employees.find((e) => e.id === leaveData.employeeId);
     const empDept = emp?.department || leaveData.department || 'Intensive Care Unit (ICU)';
     const empUnit = emp?.unit || leaveData.unit || 'ICU Ward 2B (Critical Care)';
+    const currentDateStr = new Date().toISOString().split('T')[0];
 
     const newLeave: LeaveRequest = {
       id: `lv-${Date.now()}`,
       employeeId: leaveData.employeeId || 'emp-101',
       employeeName: leaveData.employeeName || (emp ? `${emp.firstName} ${emp.lastName}` : 'Dr. Sarah Jenkins'),
+      staffId: leaveData.staffId || emp?.empCode || 'STF-1001',
+      grade: leaveData.grade || emp?.jobTitle || 'Clinical Specialist',
       department: empDept,
       unit: empUnit,
       leaveType: leaveData.leaveType || 'Annual Leave',
-      startDate: leaveData.startDate || new Date().toISOString().split('T')[0],
-      endDate: leaveData.endDate || new Date().toISOString().split('T')[0],
+      startDate: leaveData.startDate || currentDateStr,
+      endDate: leaveData.endDate || currentDateStr,
       totalDays: leaveData.totalDays || 3,
       reason: leaveData.reason || 'Medical / Personal Leave Request',
       status: 'Pending',
       currentStage: 'Unit Head',
-      appliedOn: new Date().toISOString().split('T')[0],
+      appliedOn: currentDateStr,
+
+      // Part A
+      leaveYear: leaveData.leaveYear || new Date().getFullYear(),
+      leaveEntitlement: leaveData.leaveEntitlement || 30,
+      deferredLeaveDaysDue: leaveData.deferredLeaveDaysDue || 0,
+      leaveDaysEarned: leaveData.leaveDaysEarned || 30,
+      addressOnLeave: leaveData.addressOnLeave || 'On file with HR Department',
+      phoneOnLeave: leaveData.phoneOnLeave || emp?.mobilePhone || '+233 20 000 0000',
+      applicantSignedDate: currentDateStr,
+
       workflow: {
         currentStage: 'Unit Head',
         unitHeadStep: { role: 'Unit Head', status: 'Pending' },
@@ -537,6 +1099,7 @@ export const HrmsProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (leave.id !== leaveId) return leave;
 
         const timestamp = new Date().toISOString();
+        const dateStr = new Date().toISOString().split('T')[0];
         const currentStage = leave.currentStage || 'Unit Head';
         let updatedWorkflow: MultiTierWorkflow = leave.workflow
           ? { ...leave.workflow }
@@ -565,6 +1128,9 @@ export const HrmsProvider: React.FC<{ children: React.ReactNode }> = ({ children
           defaultNameMap[activeRole] ||
           `${activeRole.replace('_', ' ').toUpperCase()} Authorized Reviewer`;
 
+        // Partial leave updates for Part B, C, D signatures
+        const leaveUpdates: Partial<LeaveRequest> = {};
+
         if (action === 'Reject') {
           nextStage = 'Rejected';
           finalOverallStatus = 'Rejected';
@@ -575,12 +1141,24 @@ export const HrmsProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
           if (currentStage === 'Unit Head') {
             updatedWorkflow.unitHeadStep = { role: 'Unit Head', status: 'Rejected', approverName, approvedAt: timestamp, comments };
+            leaveUpdates.recommendationStatus = 'NOT RECOMMENDED';
+            leaveUpdates.unitHeadSignedBy = approverName;
+            leaveUpdates.unitHeadSignedDate = dateStr;
           } else if (currentStage === 'Departmental Head') {
             updatedWorkflow.departmentHeadStep = { role: 'Departmental Head', status: 'Rejected', approverName, approvedAt: timestamp, comments };
+            leaveUpdates.recommendationStatus = 'NOT RECOMMENDED';
+            leaveUpdates.deptHeadSignedBy = approverName;
+            leaveUpdates.deptHeadSignedDate = dateStr;
           } else if (currentStage === 'HR') {
             updatedWorkflow.hrStep = { role: 'HR', status: 'Rejected', approverName, approvedAt: timestamp, comments };
+            leaveUpdates.hrRemarks = comments || 'Rejected during HR validation.';
+            leaveUpdates.hrSignedBy = approverName;
+            leaveUpdates.hrSignedDate = dateStr;
           } else if (currentStage === 'Head of Facility') {
             updatedWorkflow.facilityHeadStep = { role: 'Head of Facility', status: 'Rejected', approverName, approvedAt: timestamp, comments };
+            leaveUpdates.approvalRemarks = comments || 'Leave application rejected by Facility In-Charge.';
+            leaveUpdates.facilityInChargeSignedBy = approverName;
+            leaveUpdates.facilityInChargeSignedDate = dateStr;
           }
 
           addAuditLog(
@@ -599,6 +1177,11 @@ export const HrmsProvider: React.FC<{ children: React.ReactNode }> = ({ children
               comments: comments || 'Tier 1 (Unit Head): Operational shift coverage verified.',
             };
             nextStage = 'Departmental Head';
+            leaveUpdates.recommendationStatus = 'RECOMMENDED';
+            leaveUpdates.replacementRequired = 'NOT REQUIRED';
+            leaveUpdates.unitHeadSignedBy = approverName;
+            leaveUpdates.unitHeadSignedDate = dateStr;
+
             addAuditLog(
               'Tier 1 Approval (Unit Head)',
               'Leave Management Workflow',
@@ -613,6 +1196,10 @@ export const HrmsProvider: React.FC<{ children: React.ReactNode }> = ({ children
               comments: comments || 'Tier 2 (Departmental Head): Clinical department staffing approved.',
             };
             nextStage = 'HR';
+            leaveUpdates.recommendationStatus = 'RECOMMENDED';
+            leaveUpdates.deptHeadSignedBy = approverName;
+            leaveUpdates.deptHeadSignedDate = dateStr;
+
             addAuditLog(
               'Tier 2 Approval (Departmental Head)',
               'Leave Management Workflow',
@@ -627,6 +1214,20 @@ export const HrmsProvider: React.FC<{ children: React.ReactNode }> = ({ children
               comments: comments || 'Tier 3 (HR): Policy compliance, contracts & leave allowances validated.',
             };
             nextStage = 'Head of Facility';
+            
+            // Calculate resumption date (e.g. 1 day after end date)
+            const endDateObj = new Date(leave.endDate);
+            endDateObj.setDate(endDateObj.getDate() + 1);
+            const resumptionStr = endDateObj.toISOString().split('T')[0];
+
+            leaveUpdates.outstandingLeaveDays = Math.max(0, (leave.leaveEntitlement || 30) - leave.totalDays);
+            leaveUpdates.validatedStartDate = leave.startDate;
+            leaveUpdates.validatedEndDate = leave.endDate;
+            leaveUpdates.dateOfResumption = resumptionStr;
+            leaveUpdates.hrRemarks = comments || 'Leave days and entitlements verified compliant with HR policy.';
+            leaveUpdates.hrSignedBy = approverName;
+            leaveUpdates.hrSignedDate = dateStr;
+
             addAuditLog(
               'Tier 3 Approval (HR)',
               'Leave Management Workflow',
@@ -642,6 +1243,12 @@ export const HrmsProvider: React.FC<{ children: React.ReactNode }> = ({ children
             };
             nextStage = 'Fully Approved';
             finalOverallStatus = 'Approved';
+
+            leaveUpdates.daysGranted = leave.totalDays;
+            leaveUpdates.approvalRemarks = comments || 'Leave application approved in full by Facility In-Charge.';
+            leaveUpdates.facilityInChargeSignedBy = approverName;
+            leaveUpdates.facilityInChargeSignedDate = dateStr;
+
             addAuditLog(
               'Tier 4 Final Approval (Head of Facility)',
               'Leave Management Workflow',
@@ -654,6 +1261,7 @@ export const HrmsProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         return {
           ...leave,
+          ...leaveUpdates,
           currentStage: nextStage,
           status: finalOverallStatus,
           workflow: updatedWorkflow,
@@ -824,6 +1432,24 @@ export const HrmsProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const toggleOnboardingTask = (id: string) => {
     setOnboardingTasks((prev) => prev.map((t) => (t.id === id ? { ...t, completed: !t.completed } : t)));
+  };
+
+  const markTrainingAttendance = (recData: Omit<TrainingAttendanceRecord, 'id'>) => {
+    const newRec: TrainingAttendanceRecord = {
+      ...recData,
+      id: `tatt-${Date.now()}`,
+    };
+    setTrainingAttendance((prev) => [newRec, ...prev]);
+    addAuditLog(
+      'Recorded Training Attendance',
+      'Clinical LMS',
+      `Marked ${newRec.employeeName} as ${newRec.status} for course: ${newRec.courseTitle}`
+    );
+  };
+
+  const updateTrainingAttendanceStatus = (id: string, status: TrainingAttendanceRecord['status']) => {
+    setTrainingAttendance((prev) => prev.map((r) => (r.id === id ? { ...r, status } : r)));
+    addAuditLog('Updated Training Attendance', 'Clinical LMS', `Updated attendance record #${id} to ${status}`);
   };
 
   const addIncident = (incData: Partial<IncidentReport>) => {
@@ -1051,7 +1677,7 @@ export const HrmsProvider: React.FC<{ children: React.ReactNode }> = ({ children
         targetReq = req;
 
         const leadEmail = req.departmentLeadEmail || 'kwame.mensah@popejohnpaul2med.org';
-        const requesterEmail = `${req.requesterName.toLowerCase().replace(/[^a-z]/g, '')}@popejohnpaul2med.org`;
+        const requesterEmail = `${(req.requesterName || 'staff').toLowerCase().replace(/[^a-z]/g, '')}@popejohnpaul2med.org`;
 
         const newLogEntry = {
           sentTo: requesterEmail,
@@ -1653,6 +2279,231 @@ export const HrmsProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return TRANSLATIONS[language]?.[key] || TRANSLATIONS.en[key] || key;
   };
 
+  // Role Change Handler with Session Role Sync
+  const handleSetActiveRole = (newRole: UserRole) => {
+    setActiveRole(newRole);
+    if (currentUser) {
+      const updatedUser: CurrentUserSession = { ...currentUser, role: newRole };
+      setCurrentUser(updatedUser);
+      localStorage.setItem('aurahr_auth_session', JSON.stringify(updatedUser));
+    }
+  };
+
+  // Access Control & Permissions Management Logic
+  const grantStaffAccess = (employeeId: string, modules: string[], notes?: string) => {
+    const emp = employees.find((e) => e.id === employeeId);
+    setStaffPermissions((prev) => {
+      const existingIdx = prev.findIndex((p) => p.employeeId === employeeId);
+      const permRecord: StaffAccessPermissions = {
+        employeeId,
+        employeeName: emp ? `${emp.firstName} ${emp.lastName}` : 'Staff Member',
+        email: emp?.email || '',
+        grantedModules: modules,
+        grantedAt: new Date().toISOString().replace('T', ' ').slice(0, 19),
+        grantedBy: currentUser?.name || 'HR Director',
+        notes: notes || 'Permissions updated by HR Access Control',
+      };
+      if (existingIdx >= 0) {
+        const next = [...prev];
+        next[existingIdx] = permRecord;
+        return next;
+      }
+      return [...prev, permRecord];
+    });
+    addAuditLog(
+      `Updated Access Control for ${emp ? emp.firstName + ' ' + emp.lastName : employeeId}: [${modules.join(', ')}]`,
+      'Security & Access Control',
+      `Granted permissions by ${currentUser?.name || 'HR Manager'}`
+    );
+  };
+
+  const revokeStaffAccess = (employeeId: string, moduleId: string) => {
+    setStaffPermissions((prev) =>
+      prev.map((p) =>
+        p.employeeId === employeeId
+          ? { ...p, grantedModules: p.grantedModules.filter((m) => m !== moduleId) }
+          : p
+      )
+    );
+  };
+
+  // Notice Board Operations
+  const addNoticePost = (post: Omit<NoticeBoardPost, 'id'>) => {
+    const newPost: NoticeBoardPost = {
+      ...post,
+      id: `nb-${Date.now()}`,
+    };
+    setNoticePosts((prev) => [newPost, ...prev]);
+    addAuditLog('Published Hospital Official Notice', 'Notice Board', `Title: ${post.title}`);
+  };
+
+  const toggleNoticeLike = (noticeId: string, empId: string) => {
+    setNoticePosts((prev) =>
+      prev.map((p) => {
+        if (p.id === noticeId) {
+          const hasLiked = p.likedBy.includes(empId);
+          const newLikedBy = hasLiked ? p.likedBy.filter((id) => id !== empId) : [...p.likedBy, empId];
+          return {
+            ...p,
+            likedBy: newLikedBy,
+            likesCount: newLikedBy.length,
+          };
+        }
+        return p;
+      })
+    );
+  };
+
+  const acknowledgeNotice = (noticeId: string, empName: string) => {
+    setNoticePosts((prev) =>
+      prev.map((p) => {
+        if (p.id === noticeId) {
+          if (!p.acknowledgements.includes(empName)) {
+            return {
+              ...p,
+              acknowledgements: [...p.acknowledgements, empName],
+            };
+          }
+        }
+        return p;
+      })
+    );
+  };
+
+  // Staff Chat Operations
+  const addChatMessage = (message: ChatMessage) => {
+    setChatMessages((prev) => [...prev, message]);
+  };
+
+  // Digital Suggestion Box Operations
+  const addSuggestion = (suggestion: Omit<SuggestionItem, 'id'>) => {
+    const newSug: SuggestionItem = {
+      ...suggestion,
+      id: `sug-${Date.now()}`,
+    };
+    setSuggestions((prev) => [newSug, ...prev]);
+    addAuditLog('Submitted Suggestion', 'Suggestion Box', `Category: ${suggestion.category}`);
+  };
+
+  const upvoteSuggestion = (suggestionId: string, empId: string) => {
+    setSuggestions((prev) =>
+      prev.map((s) => {
+        if (s.id === suggestionId) {
+          const hasUpvoted = s.upvotedBy.includes(empId);
+          const newUpvoted = hasUpvoted ? s.upvotedBy.filter((id) => id !== empId) : [...s.upvotedBy, empId];
+          return {
+            ...s,
+            upvotedBy: newUpvoted,
+            upvotes: newUpvoted.length,
+          };
+        }
+        return s;
+      })
+    );
+  };
+
+  const respondToSuggestion = (
+    suggestionId: string,
+    response: SuggestionItem['responseFromManagement'],
+    newStatus: SuggestionItem['status']
+  ) => {
+    setSuggestions((prev) =>
+      prev.map((s) => {
+        if (s.id === suggestionId) {
+          return {
+            ...s,
+            status: newStatus,
+            responseFromManagement: response,
+          };
+        }
+        return s;
+      })
+    );
+    addAuditLog('Responded to Staff Suggestion', 'Suggestion Box', `Updated status to: ${newStatus}`);
+  };
+
+  const DEFAULT_STAFF_MODULES = [
+    'dashboard',
+    'attendance',
+    'leave',
+    'shifts',
+    'payroll',
+    'performance',
+    'lms',
+    'notice_board',
+    'staff_chat',
+    'suggestions',
+    'info_hub',
+  ];
+
+  const EXECUTIVE_ROLES: UserRole[] = ['super_admin', 'facility_head', 'hr_director', 'hr_manager'];
+  const SUPERVISORY_ROLES: UserRole[] = ['dept_head', 'unit_head'];
+
+  const hasModuleAccess = (role: UserRole, employeeId: string | undefined, moduleKey: string): boolean => {
+    if (EXECUTIVE_ROLES.includes(role)) {
+      return true;
+    }
+    if (SUPERVISORY_ROLES.includes(role)) {
+      const supervisoryModules = [...DEFAULT_STAFF_MODULES, 'employees', 'org_hierarchy', 'conference'];
+      if (supervisoryModules.includes(moduleKey)) return true;
+    }
+    if (DEFAULT_STAFF_MODULES.includes(moduleKey)) {
+      return true;
+    }
+    const checkId = employeeId || currentUser?.id;
+    if (checkId) {
+      const perm = staffPermissions.find(
+        (p) => p.employeeId === checkId || (currentUser?.email && p.email && p.email.toLowerCase() === currentUser.email.toLowerCase())
+      );
+      if (perm && perm.grantedModules.includes(moduleKey)) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  // Expense Claims Handlers
+  const addExpenseClaim = (claim: Partial<ExpenseClaim>) => {
+    const newClaim: ExpenseClaim = {
+      id: `exp-${Date.now()}`,
+      employeeId: currentUser?.id || 'emp-001',
+      employeeName: currentUser?.name || 'Dr. Kwame Mensah',
+      department: currentUser?.department || 'General Medicine',
+      claimType: claim.claimType || 'CME & Clinical Training',
+      amount: claim.amount || 0,
+      description: claim.description || '',
+      receiptUrl: claim.receiptUrl,
+      submittedDate: new Date().toISOString().slice(0, 10),
+      status: 'Pending',
+    };
+    setExpenseClaims((prev) => [newClaim, ...prev]);
+    addAuditLog(
+      `Submitted Expense Claim: ${newClaim.claimType} (${formatCurrency(newClaim.amount)})`,
+      'Payroll & Claims',
+      `Submitted by ${newClaim.employeeName}`
+    );
+  };
+
+  const updateExpenseClaimStatus = (id: string, status: ExpenseClaim['status']) => {
+    setExpenseClaims((prev) =>
+      prev.map((c) =>
+        c.id === id
+          ? {
+              ...c,
+              status,
+              approvedBy: currentUser?.name || 'HR Manager',
+              approvedDate: new Date().toISOString().slice(0, 10),
+            }
+          : c
+      )
+    );
+    addAuditLog(
+      `Updated Expense Claim ${id} status to ${status}`,
+      'Payroll & Claims',
+      `Processed by ${currentUser?.name || 'HR Manager'}`
+    );
+  };
+
   // Apply Dark Mode Class to HTML element
   useEffect(() => {
     if (darkMode) {
@@ -1665,11 +2516,25 @@ export const HrmsProvider: React.FC<{ children: React.ReactNode }> = ({ children
   return (
     <HrmsContext.Provider
       value={{
+        isAuthenticated,
+        currentUser,
+        login,
+        signup,
+        logout,
+        changePassword,
+
+        staffFiles,
+        uploadStaffFile,
+        updateStaffFile,
+        deleteStaffFile,
+        toggleStaffFilePermission,
+        createStaffAccountByHR,
+
         selectedHospital,
         setSelectedHospitalId,
         hospitals,
         activeRole,
-        setActiveRole,
+        setActiveRole: handleSetActiveRole,
         language,
         setLanguage,
         currency,
@@ -1680,6 +2545,15 @@ export const HrmsProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setMobileViewActive,
         activeTab,
         setActiveTab,
+
+        staffPermissions,
+        grantStaffAccess,
+        revokeStaffAccess,
+        hasModuleAccess,
+
+        expenseClaims,
+        addExpenseClaim,
+        updateExpenseClaimStatus,
 
         employees,
         addEmployee,
@@ -1718,6 +2592,9 @@ export const HrmsProvider: React.FC<{ children: React.ReactNode }> = ({ children
         toggleOnboardingTask,
 
         courses,
+        trainingAttendance,
+        markTrainingAttendance,
+        updateTrainingAttendanceStatus,
         incidents,
         addIncident,
 
@@ -1756,6 +2633,21 @@ export const HrmsProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         systemCustomization,
         updateSystemCustomization,
+
+        noticePosts,
+        addNoticePost,
+        toggleNoticeLike,
+        acknowledgeNotice,
+
+        chatMessages,
+        addChatMessage,
+
+        suggestions,
+        addSuggestion,
+        upvoteSuggestion,
+        respondToSuggestion,
+
+        infoArticles,
 
         formatCurrency,
         t,

@@ -55,13 +55,14 @@ const TreeNodeCard: React.FC<TreeNodeProps> = ({
 
   // Role style tags
   const getRoleBadge = (role: string, jobTitle: string) => {
-    if (role === 'super_admin' || role === 'facility_head' || jobTitle.toLowerCase().includes('chief') || jobTitle.toLowerCase().includes('head')) {
+    const title = (jobTitle || '').toLowerCase();
+    if (role === 'super_admin' || role === 'facility_head' || title.includes('chief') || title.includes('head')) {
       return { bg: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20', label: 'Executive Leader', icon: Crown };
     }
     if (role === 'hr_director' || role === 'hr_manager' || role === 'dept_head') {
       return { bg: 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20', label: 'Department Head', icon: ShieldCheck };
     }
-    if (role === 'unit_head' || jobTitle.toLowerCase().includes('charge') || jobTitle.toLowerCase().includes('lead')) {
+    if (role === 'unit_head' || title.includes('charge') || title.includes('lead')) {
       return { bg: 'bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/20', label: 'Unit Head / Lead', icon: UserCheck };
     }
     return { bg: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300 border-slate-200 dark:border-slate-700', label: 'Staff Member', icon: User };

@@ -11,6 +11,7 @@ import {
   Candidate,
   OnboardingTask,
   TrainingCourse,
+  TrainingAttendanceRecord,
   IncidentReport,
   HospitalAsset,
   AuditLog,
@@ -20,6 +21,10 @@ import {
   ShiftSwapRequest,
   DepartmentMonthlyRoster,
   DepartmentConferenceMeeting,
+  NoticeBoardPost,
+  ChatMessage,
+  SuggestionItem,
+  InfoHubArticle,
 } from '../types/hrms';
 
 export const MOCK_HOSPITALS: Hospital[] = [
@@ -105,11 +110,77 @@ export const MOCK_EMPLOYEES: Employee[] = [
     nationalId: 'SSN-xxx-xx-0001',
     taxId: 'TX-10001',
     bankAccount: 'JP Morgan Chase ****1001',
-    emergencyContacts: [{ name: 'Eleanor Kingsley', relation: 'Spouse', phone: '+1 (555) 900-1122' }],
+    emergencyContacts: [
+      { name: 'Eleanor Kingsley', relation: 'Spouse', phone: '+1 (555) 900-1122', altPhone: '+233 24 100 9988', address: 'Plot 14 Airport Residential Area, Accra', email: 'eleanor.k@gmail.com' },
+    ],
     vaccinations: [
       { id: 'v-100', vaccineName: 'Hepatitis B', doseDate: '2015-02-01', status: 'Completed' },
       { id: 'v-101', vaccineName: 'COVID-19 Annual Booster', doseDate: '2025-10-01', status: 'Completed' },
     ],
+    ghanaCardInfo: {
+      cardPin: 'GHA-001293847-9',
+      issueDate: '2021-04-12',
+      expiryDate: '2031-04-11',
+      verificationStatus: 'Verified',
+      frontCopyUrl: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="300" height="180" viewBox="0 0 300 180"><rect width="300" height="180" rx="12" fill="%230f172a"/><text x="20" y="40" fill="%2310b981" font-size="14" font-weight="bold">REPUBLIC OF GHANA - NATIONAL ID</text><text x="20" y="70" fill="%23ffffff" font-size="12">GHA-001293847-9</text><text x="20" y="100" fill="%2394a3b8" font-size="11">Holder: Dr. Arthur Kingsley</text><text x="20" y="130" fill="%2338bdf8" font-size="10">ISSUED BY NIA GHANA</text></svg>',
+      frontCopyName: 'Ghana_Card_Front_Arthur_Kingsley.png',
+      backCopyUrl: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="300" height="180" viewBox="0 0 300 180"><rect width="300" height="180" rx="12" fill="%231e293b"/><text x="20" y="40" fill="%23e2e8f0" font-size="12" font-weight="bold">GHANA CARD BACK SCAN</text><text x="20" y="80" fill="%2394a3b8" font-size="11">PIN: GHA-001293847-9</text><text x="20" y="120" fill="%2364748b" font-size="10">Barcode %26 Magnetic Stripe Verified</text></svg>',
+      backCopyName: 'Ghana_Card_Back_Arthur_Kingsley.png',
+    },
+    educationList: [
+      {
+        id: 'edu-1',
+        institution: 'Harvard Medical School',
+        qualification: 'Doctor of Medicine (MD)',
+        fieldOfStudy: 'General Surgery & Hospital Governance',
+        startYear: '2005',
+        graduationYear: '2009',
+        gradeOrClass: 'First Class Honors / Magna Cum Laude',
+        certificateUrl: '#',
+        certificateFileName: 'Harvard_MD_Degree_Certificate.pdf',
+      },
+      {
+        id: 'edu-2',
+        institution: 'Wharton School of Business',
+        qualification: 'Master of Business Administration (MBA)',
+        fieldOfStudy: 'Healthcare Management & Executive Leadership',
+        startYear: '2010',
+        graduationYear: '2012',
+        gradeOrClass: 'Distinction',
+        certificateUrl: '#',
+        certificateFileName: 'Wharton_MBA_Healthcare.pdf',
+      },
+    ],
+    officialDocuments: [
+      {
+        id: 'doc-1',
+        title: 'Official Executive Appointment Letter',
+        type: 'Appointment Letter',
+        fileUrl: '#',
+        fileName: 'Appointment_Letter_Chief_Medical_Officer.pdf',
+        fileSize: 1048576,
+        uploadedAt: '2015-01-05',
+        uploadedBy: 'HR Directorate',
+        notes: 'Signed by Hospital Board Chair & Director of Health Service.',
+      },
+      {
+        id: 'doc-2',
+        title: 'Assumption of Duty Notification Letter',
+        type: 'Assumption of Duty Letter',
+        fileUrl: '#',
+        fileName: 'Assumption_of_Duty_Dr_Kingsley.pdf',
+        fileSize: 524288,
+        uploadedAt: '2015-01-08',
+        uploadedBy: 'HR Administration',
+        notes: 'Confirmed reporting to Chief Executive Office.',
+      },
+    ],
+    appointmentLetterUrl: '#',
+    appointmentLetterName: 'Appointment_Letter_Chief_Medical_Officer.pdf',
+    assumptionOfDutyUrl: '#',
+    assumptionOfDutyName: 'Assumption_of_Duty_Dr_Kingsley.pdf',
+    transferDocumentUrl: '#',
+    transferDocumentName: 'Transfer_Approval_Doc_Ghana_Health_Service.pdf',
     occupationalHealth: { lastExamDate: '2026-01-02', fitForDuty: true, notes: 'Cleared for Executive & Clinical Operations.' },
     education: 'MD, Harvard Medical School / MBA Healthcare, Wharton',
     skills: ['Hospital Administration', 'Clinical Governance', 'Surgical Operations', 'Executive Leadership'],
@@ -971,6 +1042,8 @@ export const MOCK_LEAVES: LeaveRequest[] = [
     id: 'lv-1',
     employeeId: 'emp-102',
     employeeName: 'Elena Rostova',
+    staffId: 'STF-8821',
+    grade: 'Senior ICU Nurse Grade II',
     department: 'Intensive Care Unit (ICU)',
     unit: 'ICU Ward 2B (Critical Care)',
     leaveType: 'Study / CME',
@@ -981,6 +1054,39 @@ export const MOCK_LEAVES: LeaveRequest[] = [
     status: 'Approved',
     currentStage: 'Fully Approved',
     appliedOn: '2026-08-01',
+
+    // Part A
+    leaveYear: 2026,
+    leaveEntitlement: 30,
+    deferredLeaveDaysDue: 5,
+    leaveDaysEarned: 25,
+    addressOnLeave: 'Plot 14 Pope John Paul II Residence, East Wing, Tel: +233 24 555 0192',
+    phoneOnLeave: '+233 24 555 0192',
+    applicantSignedDate: '2026-08-01',
+
+    // Part B
+    recommendationStatus: 'RECOMMENDED',
+    replacementRequired: 'NOT REQUIRED',
+    unitHeadSignedBy: 'Elena Rostova (HOU)',
+    unitHeadSignedDate: '2026-08-01',
+    deptHeadSignedBy: 'Dr. Sarah Jenkins (HOD)',
+    deptHeadSignedDate: '2026-08-01',
+
+    // Part C
+    outstandingLeaveDays: 21,
+    validatedStartDate: '2026-08-15',
+    validatedEndDate: '2026-08-18',
+    dateOfResumption: '2026-08-19',
+    hrRemarks: 'Leave entitlement and CME allowance verified. All records in order.',
+    hrSignedBy: 'Marcus Vance (HR Manager)',
+    hrSignedDate: '2026-08-02',
+
+    // Part D
+    daysGranted: 4,
+    approvalRemarks: 'Fully approved by Facility In-Charge. Safe travels for CME training.',
+    facilityInChargeSignedBy: 'Dr. Arthur Kingsley (Facility In-Charge)',
+    facilityInChargeSignedDate: '2026-08-02',
+
     workflow: {
       currentStage: 'Fully Approved',
       unitHeadStep: {
@@ -1017,6 +1123,8 @@ export const MOCK_LEAVES: LeaveRequest[] = [
     id: 'lv-2',
     employeeId: 'emp-101',
     employeeName: 'Dr. Sarah Jenkins',
+    staffId: 'STF-1049',
+    grade: 'Consultant Cardiologist Grade I',
     department: 'Cardiology & Intensive Care',
     unit: 'ICU Ward 4A (Step-down Unit)',
     leaveType: 'Annual Leave',
@@ -1027,6 +1135,16 @@ export const MOCK_LEAVES: LeaveRequest[] = [
     status: 'Pending',
     currentStage: 'Unit Head',
     appliedOn: '2026-08-04',
+
+    // Part A
+    leaveYear: 2026,
+    leaveEntitlement: 36,
+    deferredLeaveDaysDue: 0,
+    leaveDaysEarned: 24,
+    addressOnLeave: 'Hospital Staff Quarters House 12, Tel: +233 20 111 8899',
+    phoneOnLeave: '+233 20 111 8899',
+    applicantSignedDate: '2026-08-04',
+
     workflow: {
       currentStage: 'Unit Head',
       unitHeadStep: {
@@ -1190,9 +1308,176 @@ export const MOCK_ONBOARDING: OnboardingTask[] = [
 ];
 
 export const MOCK_COURSES: TrainingCourse[] = [
-  { id: 'crs-1', title: 'Hospital Infection Control & Hand Hygiene Protocols', category: 'Mandatory Compliance', durationHours: 2, modulesCount: 4, status: 'Completed', progressPercent: 100, score: 98, certificateIssued: true },
-  { id: 'crs-2', title: 'BLS / ACLS 2026 Clinical Refresher Course', category: 'BLS / ACLS Renewal', durationHours: 6, modulesCount: 8, status: 'In Progress', progressPercent: 65, certificateIssued: false },
-  { id: 'crs-3', title: 'HIPAA Data Privacy & Electronic Medical Record Security', category: 'HIPAA & Patient Privacy', durationHours: 3, modulesCount: 5, status: 'Completed', progressPercent: 100, score: 100, certificateIssued: true },
+  {
+    id: 'crs-1',
+    title: 'Hospital Infection Control & Hand Hygiene Protocols',
+    category: 'Mandatory Compliance',
+    durationHours: 2,
+    modulesCount: 4,
+    status: 'Completed',
+    progressPercent: 100,
+    score: 98,
+    certificateIssued: true,
+    instructor: 'Dr. Kwesi Mensah (Chief Microbiologist)',
+    scheduledDate: '2026-08-05',
+    sessionTime: '09:00 - 11:00 AM',
+    venue: 'Main Auditorium / Digital LMS Hall A',
+    totalAttendees: 14,
+  },
+  {
+    id: 'crs-2',
+    title: 'BLS / ACLS 2026 Clinical Refresher Course',
+    category: 'BLS / ACLS Renewal',
+    durationHours: 6,
+    modulesCount: 8,
+    status: 'In Progress',
+    progressPercent: 65,
+    certificateIssued: false,
+    instructor: 'Dr. Sarah Jenkins (Senior Emergency Consultant)',
+    scheduledDate: '2026-08-08',
+    sessionTime: '10:00 AM - 04:00 PM',
+    venue: 'Clinical Skills & Simulation Suite B',
+    totalAttendees: 12,
+  },
+  {
+    id: 'crs-3',
+    title: 'HIPAA Data Privacy & Electronic Medical Record Security',
+    category: 'HIPAA & Patient Privacy',
+    durationHours: 3,
+    modulesCount: 5,
+    status: 'Completed',
+    progressPercent: 100,
+    score: 100,
+    certificateIssued: true,
+    instructor: 'Marcus Vance (Chief HR Officer & Compliance Head)',
+    scheduledDate: '2026-08-02',
+    sessionTime: '02:00 - 05:00 PM',
+    venue: 'Virtual LMS Room & Conference Hall',
+    totalAttendees: 18,
+  },
+];
+
+export const MOCK_TRAINING_ATTENDANCE: TrainingAttendanceRecord[] = [
+  {
+    id: 'tatt-101',
+    courseId: 'crs-1',
+    courseTitle: 'Hospital Infection Control & Hand Hygiene Protocols',
+    employeeId: 'emp-101',
+    employeeName: 'Dr. Sarah Jenkins',
+    department: 'Internal Medicine',
+    trainingDate: '2026-08-05',
+    sessionTime: '09:00 - 11:00 AM',
+    checkInTime: '08:55 AM',
+    status: 'Present',
+    verificationMethod: 'Biometric Verification',
+    verifiedBy: 'Dr. Kwesi Mensah (Chief Microbiologist)',
+    cmeHoursEarned: 2,
+  },
+  {
+    id: 'tatt-102',
+    courseId: 'crs-1',
+    courseTitle: 'Hospital Infection Control & Hand Hygiene Protocols',
+    employeeId: 'emp-102',
+    employeeName: 'Elena Rostova',
+    department: 'Nursing Services',
+    trainingDate: '2026-08-05',
+    sessionTime: '09:00 - 11:00 AM',
+    checkInTime: '09:02 AM',
+    status: 'Present',
+    verificationMethod: 'QR Code Scan',
+    verifiedBy: 'Dr. Kwesi Mensah (Chief Microbiologist)',
+    cmeHoursEarned: 2,
+  },
+  {
+    id: 'tatt-103',
+    courseId: 'crs-1',
+    courseTitle: 'Hospital Infection Control & Hand Hygiene Protocols',
+    employeeId: 'emp-104',
+    employeeName: 'Grace Owusu',
+    department: 'Pediatrics',
+    trainingDate: '2026-08-05',
+    sessionTime: '09:00 - 11:00 AM',
+    checkInTime: '09:18 AM',
+    status: 'Late',
+    verificationMethod: 'Instructor Sign-off',
+    verifiedBy: 'Dr. Kwesi Mensah (Chief Microbiologist)',
+    cmeHoursEarned: 2,
+  },
+  {
+    id: 'tatt-104',
+    courseId: 'crs-2',
+    courseTitle: 'BLS / ACLS 2026 Clinical Refresher Course',
+    employeeId: 'emp-101',
+    employeeName: 'Dr. Sarah Jenkins',
+    department: 'Internal Medicine',
+    trainingDate: '2026-08-08',
+    sessionTime: '10:00 AM - 04:00 PM',
+    checkInTime: '09:58 AM',
+    status: 'Present',
+    verificationMethod: 'Biometric Verification',
+    verifiedBy: 'Dr. Sarah Jenkins (Instructor)',
+    cmeHoursEarned: 6,
+  },
+  {
+    id: 'tatt-105',
+    courseId: 'crs-2',
+    courseTitle: 'BLS / ACLS 2026 Clinical Refresher Course',
+    employeeId: 'emp-102',
+    employeeName: 'Elena Rostova',
+    department: 'Nursing Services',
+    trainingDate: '2026-08-08',
+    sessionTime: '10:00 AM - 04:00 PM',
+    checkInTime: '10:05 AM',
+    status: 'Present',
+    verificationMethod: 'QR Code Scan',
+    verifiedBy: 'Dr. Sarah Jenkins (Instructor)',
+    cmeHoursEarned: 6,
+  },
+  {
+    id: 'tatt-106',
+    courseId: 'crs-2',
+    courseTitle: 'BLS / ACLS 2026 Clinical Refresher Course',
+    employeeId: 'emp-103',
+    employeeName: 'Marcus Vance',
+    department: 'Human Resources',
+    trainingDate: '2026-08-08',
+    sessionTime: '10:00 AM - 04:00 PM',
+    checkInTime: '-',
+    status: 'Excused',
+    verificationMethod: 'Instructor Sign-off',
+    verifiedBy: 'HR Exemption Committee',
+    cmeHoursEarned: 0,
+  },
+  {
+    id: 'tatt-107',
+    courseId: 'crs-3',
+    courseTitle: 'HIPAA Data Privacy & Electronic Medical Record Security',
+    employeeId: 'emp-101',
+    employeeName: 'Dr. Sarah Jenkins',
+    department: 'Internal Medicine',
+    trainingDate: '2026-08-02',
+    sessionTime: '02:00 - 05:00 PM',
+    checkInTime: '01:52 PM',
+    status: 'Present',
+    verificationMethod: 'Digital Roll-call',
+    verifiedBy: 'Marcus Vance (Compliance Head)',
+    cmeHoursEarned: 3,
+  },
+  {
+    id: 'tatt-108',
+    courseId: 'crs-3',
+    courseTitle: 'HIPAA Data Privacy & Electronic Medical Record Security',
+    employeeId: 'emp-105',
+    employeeName: 'Dr. David Kim',
+    department: 'Emergency & Trauma',
+    trainingDate: '2026-08-02',
+    sessionTime: '02:00 - 05:00 PM',
+    checkInTime: '02:00 PM',
+    status: 'Present',
+    verificationMethod: 'Digital Roll-call',
+    verifiedBy: 'Marcus Vance (Compliance Head)',
+    cmeHoursEarned: 3,
+  },
 ];
 
 export const MOCK_INCIDENTS: IncidentReport[] = [
@@ -1634,5 +1919,367 @@ export const MOCK_CONFERENCE_MEETINGS: DepartmentConferenceMeeting[] = [
     chatMessages: [],
   },
 ];
+
+export const MOCK_STAFF_PERMISSIONS: Array<{
+  employeeId: string;
+  employeeName: string;
+  email: string;
+  grantedModules: string[];
+  grantedAt: string;
+  grantedBy: string;
+  notes?: string;
+}> = [
+  {
+    employeeId: 'emp-001',
+    employeeName: 'Dr. Kwame Mensah',
+    email: 'k.mensah@stjudehealth.org',
+    grantedModules: ['health', 'credentials'],
+    grantedAt: '2026-06-15 10:00:00',
+    grantedBy: 'HR Director',
+    notes: 'Granted access to medical license tracker and occupational health incidents for senior clinical review.',
+  },
+  {
+    employeeId: 'emp-004',
+    employeeName: 'Elena Rostova',
+    email: 'e.rostova@stjudehealth.org',
+    grantedModules: ['staff_files'],
+    grantedAt: '2026-07-01 14:30:00',
+    grantedBy: 'HR Manager',
+    notes: 'Granted staff file vault access for nursing documentation audit.',
+  },
+];
+
+export const MOCK_EXPENSE_CLAIMS: Array<{
+  id: string;
+  employeeId: string;
+  employeeName: string;
+  department: string;
+  claimType: 'CME & Clinical Training' | 'Medical Equipment & Tools' | 'Travel & Mileage' | 'Hazard & Shift Expense' | 'Other';
+  amount: number;
+  description: string;
+  receiptUrl?: string;
+  submittedDate: string;
+  status: 'Pending' | 'Approved' | 'Rejected' | 'Reimbursed';
+  approvedBy?: string;
+  approvedDate?: string;
+}> = [
+  {
+    id: 'exp-101',
+    employeeId: 'emp-001',
+    employeeName: 'Dr. Kwame Mensah',
+    department: 'Cardiology',
+    claimType: 'CME & Clinical Training',
+    amount: 1250,
+    description: 'Registration fee for International Cardiology Conference & ECMO Workshop 2026',
+    submittedDate: '2026-08-01',
+    status: 'Approved',
+    approvedBy: 'HR Director',
+    approvedDate: '2026-08-03',
+  },
+  {
+    id: 'exp-102',
+    employeeId: 'emp-004',
+    employeeName: 'Elena Rostova',
+    department: 'ICU / Critical Care',
+    claimType: 'Hazard & Shift Expense',
+    amount: 380,
+    description: 'Emergency ICU double-shift meal & specialized protective attire reimbursement',
+    submittedDate: '2026-08-05',
+    status: 'Pending',
+  },
+  {
+    id: 'exp-103',
+    employeeId: 'emp-002',
+    employeeName: 'Sarah Jenkins',
+    department: 'Emergency Medicine',
+    claimType: 'Medical Equipment & Tools',
+    amount: 520,
+    description: 'Portable diagnostic pulse oximeter & stethoscopes replacement for trauma bay',
+    submittedDate: '2026-08-08',
+    status: 'Reimbursed',
+    approvedBy: 'Head of Facility',
+    approvedDate: '2026-08-09',
+  },
+];
+
+export const MOCK_NOTICE_POSTS: NoticeBoardPost[] = [
+  {
+    id: 'nb-101',
+    title: 'MANDATORY CLINICAL HYGIENE & INFECTION CONTROL AUDIT 2026',
+    content: 'In accordance with the Health Facilities Regulatory Agency and PJPIIMC Quality Board, all clinical wards, ICU suites, and surgical theatres will undergo a joint Infection Control Audit starting Monday, 15th August 2026.\n\nAll Unit Heads must ensure daily disinfection logs, hand hygiene compliance badges, and sterilisation certificates are posted at nursing stations.',
+    authorId: 'emp-100',
+    authorName: 'Dr. Arthur Kingsley',
+    authorRole: 'Head of Facility / Chief Medical Officer (CMO)',
+    category: 'Urgent Alert',
+    priority: 'High',
+    targetDepartment: 'All Departments',
+    isPinned: true,
+    postedAt: '2026-08-09 08:30',
+    likesCount: 24,
+    likedBy: ['emp-101', 'emp-102'],
+    acknowledgements: ['Dr. Sarah Jenkins', 'Elena Rostova (RN)', 'Dr. Kwesi Mensah'],
+  },
+  {
+    id: 'nb-102',
+    title: 'REVISED ANNUAL & STUDY LEAVE APPROVAL WORKFLOW FOR CLINICAL STAFF',
+    content: 'HR Administration has updated the PJPIIMC Four-Tier Leave Workflow. Clinical staff requesting Study Leave or Annual Leave > 5 days must submit applications at least 14 working days prior to leave start date.\n\nAll approvals must pass Unit Head, Dept Head, and HR Director sign-off to ensure shift roster coverage.',
+    authorId: 'emp-102',
+    authorName: 'Marcus Vance',
+    authorRole: 'HR Director',
+    category: 'HR Announcement',
+    priority: 'Normal',
+    targetDepartment: 'All Departments',
+    isPinned: true,
+    postedAt: '2026-08-08 10:15',
+    likesCount: 18,
+    likedBy: ['emp-100'],
+    acknowledgements: ['Dr. Sarah Jenkins'],
+  },
+  {
+    id: 'nb-103',
+    title: 'POPE JOHN PAUL II MEDICAL CENTRE FEAST DAY & STAFF EXCELLENCE AWARDS',
+    content: 'We are delighted to invite all hospital staff to the Annual PJPIIMC Staff Recognition & Feast Day Gala on Saturday, 22nd October 2026.\n\nNominations for "Best Nurse of the Year", "Clinical Excellence Award", and "Administrative Dedicated Staff" are now open in the HR Portal.',
+    authorId: 'emp-102',
+    authorName: 'HR Administration',
+    authorRole: 'HR Management',
+    category: 'Hospital Event',
+    priority: 'Normal',
+    targetDepartment: 'All Departments',
+    isPinned: false,
+    postedAt: '2026-08-07 14:00',
+    likesCount: 31,
+    likedBy: ['emp-101', 'emp-102', 'emp-100'],
+    acknowledgements: ['Dr. Sarah Jenkins', 'Elena Rostova'],
+  },
+];
+
+export const MOCK_CHAT_MESSAGES: ChatMessage[] = [
+  {
+    id: 'msg-1',
+    channelId: 'general',
+    senderId: 'emp-100',
+    senderName: 'Dr. Arthur Kingsley',
+    senderRole: 'Head of Facility / CMO',
+    senderDepartment: 'Executive Administration',
+    senderAvatar: 'https://images.unsplash.com/photo-1537368910025-700350fe46c7?w=150&auto=format&fit=crop&q=80',
+    content: 'Good morning team! Please review the new Notice Board update regarding next week’s clinical hygiene audit.',
+    timestamp: '08:45 AM',
+  },
+  {
+    id: 'msg-2',
+    channelId: 'general',
+    senderId: 'emp-101',
+    senderName: 'Dr. Sarah Jenkins',
+    senderRole: 'HOD Cardiology',
+    senderDepartment: 'Cardiology & Critical Care',
+    senderAvatar: 'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?w=150&auto=format&fit=crop&q=80',
+    content: 'Acknowledged Dr. Kingsley. Cardiology ICU Ward 4A has completed pre-audit equipment calibration as well.',
+    timestamp: '08:52 AM',
+  },
+  {
+    id: 'msg-3',
+    channelId: 'clinical',
+    senderId: 'emp-103',
+    senderName: 'Nurse Elena Rostova',
+    senderRole: 'Senior Staff Nurse',
+    senderDepartment: 'Nursing & Emergency',
+    senderAvatar: 'https://images.unsplash.com/photo-1594824813571-2153344a0808?w=150&auto=format&fit=crop&q=80',
+    content: 'Shift Handover Note: Night shift trauma bay patient transfers completed smoothly. 3 critical oximeter monitor units sanitized and prepped.',
+    timestamp: '07:15 AM',
+  },
+  {
+    id: 'msg-4',
+    channelId: 'canteen',
+    senderId: 'emp-102',
+    senderName: 'Marcus Vance',
+    senderRole: 'HR Director',
+    senderDepartment: 'Human Resources',
+    senderAvatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
+    content: '🎉 Happy Birthday to our team members celebrating this week! Complimentary birthday lunch vouchers have been credited to your staff portal!',
+    timestamp: '09:00 AM',
+  },
+];
+
+export const MOCK_SUGGESTIONS: SuggestionItem[] = [
+  {
+    id: 'sug-101',
+    title: 'Automated OPD Patient Queue Display Screens in Emergency Waiting Area',
+    details: 'Installing real-time digital queue display screens in the main OPD and Emergency triage waiting room will reduce patient anxiety and streamline nursing call-ins.',
+    category: 'Patient Care & Safety',
+    isAnonymous: true,
+    submittedBy: 'Anonymous Staff',
+    submittedByDept: 'Undisclosed Department',
+    submittedAt: '2026-08-02',
+    status: 'Under Review',
+    upvotes: 16,
+    upvotedBy: ['emp-101', 'emp-102'],
+    responseFromManagement: {
+      responderName: 'Dr. Arthur Kingsley',
+      responderRole: 'Head of Facility / CMO',
+      message: 'Great recommendation! IT and Facilities are currently obtaining quotations for 55-inch display screens for Emergency Ward A and Main OPD.',
+      updatedAt: '2026-08-05',
+    },
+  },
+  {
+    id: 'sug-102',
+    title: 'Dedicated Quiet Rest Pods & Coffee Station for Night-Shift Medical Personnel',
+    details: 'During 12-hour night shifts in ICU and Emergency, doctors and nurses require a brief 20-minute rest area with proper ergonomic reclining pods and warm beverages.',
+    category: 'Staff Welfare & Amenities',
+    isAnonymous: false,
+    submittedBy: 'Nurse Elena Rostova',
+    submittedByDept: 'Nursing & Critical Care',
+    submittedAt: '2026-08-04',
+    status: 'Planned',
+    upvotes: 24,
+    upvotedBy: ['emp-100', 'emp-101', 'emp-102'],
+    responseFromManagement: {
+      responderName: 'Marcus Vance',
+      responderRole: 'HR Director',
+      message: 'Approved by Facility Head & HR. Room 204 in Block B is being converted into a Staff Wellness Rest Pod, expected launch next month.',
+      updatedAt: '2026-08-07',
+    },
+  },
+  {
+    id: 'sug-103',
+    title: 'Direct Digital CME Allowance Expense Upload & Instant Reimbursement',
+    details: 'Streamline the CME expense claim workflow so doctors and nurses can upload conference registration receipts via smartphone with 48-hour approval turnaround.',
+    category: 'HR Policies',
+    isAnonymous: false,
+    submittedBy: 'Dr. Sarah Jenkins',
+    submittedByDept: 'Cardiology',
+    submittedAt: '2026-07-28',
+    status: 'Implemented',
+    upvotes: 29,
+    upvotedBy: ['emp-100', 'emp-102'],
+    responseFromManagement: {
+      responderName: 'Marcus Vance',
+      responderRole: 'HR Director',
+      message: 'Implemented! Staff can now submit CME claims directly under the HR Expense Claim Module with instant receipt scanning.',
+      updatedAt: '2026-08-01',
+    },
+  },
+];
+
+export const MOCK_INFO_ARTICLES: InfoHubArticle[] = [
+  {
+    id: 'art-101',
+    title: 'Pope John Paul II Medical Centre: Vision, Mission & Core Guiding Principles',
+    category: 'Vision & Mission',
+    summary: 'The foundational vision, Christian compassion, clinical excellence, and ethical principles guiding Pope John Paul II Medical Centre (PJPIIMC).',
+    content: `1. OUR VISION STATEMENT
+To be a premier healthcare institution recognized nationally and internationally for medical innovation, clinical precision, holistic patient care, and unyielding Christian compassion.
+
+2. OUR MISSION STATEMENT
+Pope John Paul II Medical Centre is dedicated to providing comprehensive, affordable, dignified, and patient-centered healthcare to all individuals without discrimination, guided by the highest standards of clinical science and Catholic medical ethics.
+
+3. CORE GUIDING PRINCIPLES
+- SANCTITY OF LIFE & HUMAN DIGNITY: Treating every patient, staff member, and family with absolute dignity, respect, and empathy from conception to natural end.
+- CLINICAL EXCELLENCE & SAFETY: Uncompromising commitment to evidence-based medicine, continuous quality improvement, and strict patient safety standards.
+- COMPASSIONATE SERVICE: Delivering medical care with warmth, patience, and active listening.
+- INTEGRITY & STEWARDSHIP: Maintaining total transparency, ethical financial management, and professional accountability.
+- TEAMWORK & RESPECT: Fostering a supportive workplace where doctors, nurses, allied health, and administrative personnel collaborate seamlessly.`,
+    lastUpdated: '2026-01-10',
+    version: '2026.1',
+    author: 'PJPIIMC Governing Board & Facility Head',
+    tags: ['Vision', 'Mission', 'Ethics', 'Core Values', 'PJPIIMC'],
+  },
+  {
+    id: 'art-102',
+    title: 'PJPIIMC Staff Leave Policy & Entitlements Guidelines',
+    category: 'Leave Policies',
+    summary: 'Complete leave rules covering Annual Leave accruals, Paid Sick Leave, Maternity & Paternity Leave, Casual Leave, and Compassionate Leave.',
+    content: `1. ANNUAL LEAVE ENTITLEMENTS
+- Clinical Doctors & Specialists: 28 working days per annum.
+- Registered Nurses & Allied Health: 25 working days per annum.
+- Administrative & Support Personnel: 21 working days per annum.
+- Applications must be submitted via the HR Portal at least 14 working days in advance.
+
+2. SICK LEAVE & MEDICAL CERTIFICATION
+- Full-pay sick leave up to 30 cumulative days per calendar year.
+- Any sick leave exceeding 2 consecutive days requires a certified Medical Report issued by a registered PJPIIMC medical officer or recognized hospital.
+
+3. MATERNITY & PATERNITY LEAVE
+- Maternity Leave: 14 consecutive weeks paid leave. Female staff may request an additional 2 weeks unpaid extension upon medical recommendation.
+- Paternity Leave: 2 weeks paid leave following childbirth or legal adoption.
+
+4. CASUAL & COMPASSIONATE LEAVE
+- Casual Leave: Up to 5 days per year for urgent personal matters.
+- Compassionate Leave: Up to 7 days paid leave in the event of bereavement of an immediate family member (spouse, child, parent, sibling).`,
+    lastUpdated: '2026-03-15',
+    version: '3.2',
+    author: 'HR Directorate',
+    tags: ['Leave', 'Annual Leave', 'Sick Leave', 'Maternity', 'Paternity', 'HR Rules'],
+  },
+  {
+    id: 'art-103',
+    title: 'PJPIIMC Study Leave, Clinical Training Sponsorship & Service Bonding Policy',
+    category: 'Study Leave Policies',
+    summary: 'Guidelines for staff pursuing specialized clinical fellowships, postgraduate degrees, Continuing Medical Education (CME), and service bond obligations.',
+    content: `1. ELIGIBILITY FOR STUDY LEAVE
+- Continuous Service Requirement: Staff members must complete a minimum of 12 months continuous full-time service at PJPIIMC prior to applying for Study Leave.
+- Performance Standard: Must maintain a minimum 'Meets Expectations' or 'Exceeds Expectations' rating on the preceding Annual Performance Appraisal.
+
+2. TYPES OF STUDY LEAVE
+- Fully Sponsored Paid Study Leave: Granted for critical hospital specialties (e.g. ICU Specialty Nursing, Cardiology Fellowship, Surgical Subspecialties). Full basic salary and tuition grant provided.
+- Partial / Self-Sponsored Study Leave: Salary retained; tuition funded by employee or external scholarship.
+- Short-Term CME Training Leave: Up to 10 days per year with annual CME allowance up to $2,500/year.
+
+3. SERVICE BONDING AGREEMENT
+- Any staff receiving hospital financial sponsorship exceeding $1,000 or full-salary study leave for > 3 months must execute a legally binding Service Bond:
+  - 6 Months Study: 1 Year Service Bond.
+  - 1 Year Study: 2 Years Service Bond.
+  - 2+ Years Fellowship/Degree: 3 Years Service Bond.
+- Defaulting on bonding obligations requires full refund of tuition sponsorship plus administrative fees.`,
+    lastUpdated: '2026-04-01',
+    version: '2.0',
+    author: 'Clinical Education & HR Directorate',
+    tags: ['Study Leave', 'CME', 'Sponsorship', 'Bonding', 'Postgraduate'],
+  },
+  {
+    id: 'art-104',
+    title: 'PJPIIMC Career Progression, Promotion Benchmarks & Demotion Disciplinary Protocols',
+    category: 'Promotion & Demotion',
+    summary: 'Transparent criteria governing staff promotion eligibility, annual appraisal benchmarks, disciplinary protocols, and demotion guidelines.',
+    content: `1. PROMOTION ELIGIBILITY & BENCHMARKS
+- Minimum Time in Rank: Staff must serve a minimum of 2 years in their current grade/rank before becoming eligible for promotion consideration.
+- Performance Score Threshold: Annual appraisal score must equal or exceed 85% (Exceeds Expectations) for two consecutive appraisal cycles.
+- Continuing Medical Education (CME): Doctors and Nurses must fulfill mandatory annual CME hours (Doctor: 30 hrs, Nurse: 20 hrs).
+- Panel Interview & Peer Evaluation: Final promotion sign-off by Department Head, Medical Director, and HR Director.
+
+2. DEMOTION & DISCIPLINARY PROTOCOLS
+Demotion is a formal disciplinary penalty applied in accordance with PJPIIMC Disciplinary Standing Rules:
+- Grounds for Demotion:
+  a. Chronic substandard clinical performance or appraisal score below 50% for two consecutive evaluation periods after structured mentorship.
+  b. Severe clinical negligence or breach of patient safety protocols resulting in avoidable harm.
+  c. Gross administrative misconduct, unauthorized absenteeism exceeding 10 consecutive working days, or breaches of ethical confidentiality.
+- Process: Formal Disciplinary Committee Inquiry -> Written Right to Appeal within 7 days -> Executive Approval by CMO & Head of Facility.`,
+    lastUpdated: '2026-05-10',
+    version: '4.0',
+    author: 'HR Directorate & Disciplinary Committee',
+    tags: ['Promotion', 'Demotion', 'Career', 'Disciplinary', 'Appraisal', 'Governance'],
+  },
+  {
+    id: 'art-105',
+    title: 'PJPIIMC Hospital Code of Professional Conduct, Clinical Ethics & Patient Care Charter',
+    category: 'Code of Conduct & Ethics',
+    summary: 'Mandatory workplace ethics, patient privacy rules, HIPAA compliance, infection control standards, and zero-tolerance harassment policy.',
+    content: `1. PATIENT CONFIDENTIALITY & DATA PROTECTION
+- All medical records, diagnostic reports, and personal patient data are strictly confidential.
+- Unauthorized sharing or taking photographs of patient records or clinical procedures on personal devices is strictly prohibited and constitutes grounds for immediate termination.
+
+2. ZERO TOLERANCE FOR WORKPLACE HARASSMENT
+- PJPIIMC maintains absolute zero tolerance for sexual harassment, verbal abuse, intimidation, or discrimination based on race, religion, gender, or nationality.
+- Complaints may be submitted confidentially through the Digital Grievance Portal or Suggestion Box.
+
+3. PROFESSIONAL DRESS CODE & CLINICAL ATTIRE
+- All staff must wear assigned PJPIIMC uniforms or clean clinical scrubs with visible Staff ID badges at all times on hospital premises.
+- Personal Protective Equipment (PPE) must be worn in accordance with Ward Infection Control directives.`,
+    lastUpdated: '2026-02-20',
+    version: '1.5',
+    author: 'Clinical Ethics Committee',
+    tags: ['Code of Conduct', 'Ethics', 'HIPAA', 'Patient Privacy', 'Workplace Policy'],
+  },
+];
+
 
 

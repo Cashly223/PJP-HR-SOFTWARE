@@ -41,11 +41,29 @@ import {
   HeartPulse,
   Crown,
   GitFork,
+  Camera,
+  Upload,
+  GraduationCap,
+  PhoneCall,
+  Paperclip,
+  MapPin,
+  Calendar,
+  BadgeCheck,
+  FileUp,
 } from 'lucide-react';
 import { useHrms } from '../../context/HrmsContext';
-import { Employee, MedicalLicense, EmailDispatchResult } from '../../types/hrms';
+import {
+  Employee,
+  MedicalLicense,
+  EmailDispatchResult,
+  EducationItem,
+  EmergencyContact,
+  OfficialDocument,
+  GhanaCardInfo,
+} from '../../types/hrms';
 import { DepartmentLeadershipManager } from './DepartmentLeadershipManager';
 import { OrgHierarchyView } from './OrgHierarchyView';
+import { CreateStaffAccountModal } from './CreateStaffAccountModal';
 
 export const EmployeeDirectory: React.FC = () => {
   const {
@@ -68,11 +86,39 @@ export const EmployeeDirectory: React.FC = () => {
   const [inviteStatusFilter, setInviteStatusFilter] = useState('All');
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isCreateHrAccountModalOpen, setIsCreateHrAccountModalOpen] = useState(false);
 
   // EDIT EMPLOYEE STATE
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
-  const [editActiveTab, setEditActiveTab] = useState<'general' | 'employment' | 'licenses' | 'health'>('general');
+  const [editActiveTab, setEditActiveTab] = useState<
+    'general' | 'documents' | 'education' | 'contacts' | 'employment' | 'licenses' | 'health'
+  >('general');
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
+
+  // New Education Form State
+  const [newEduInst, setNewEduInst] = useState('');
+  const [newEduQual, setNewEduQual] = useState('');
+  const [newEduField, setNewEduField] = useState('');
+  const [newEduStartYear, setNewEduStartYear] = useState('');
+  const [newEduGradYear, setNewEduGradYear] = useState('');
+  const [newEduGrade, setNewEduGrade] = useState('');
+  const [newEduCertUrl, setNewEduCertUrl] = useState('');
+  const [newEduCertName, setNewEduCertName] = useState('');
+
+  // New Emergency Contact Form State
+  const [newContactName, setNewContactName] = useState('');
+  const [newContactRel, setNewContactRel] = useState('Spouse');
+  const [newContactPhone, setNewContactPhone] = useState('');
+  const [newContactAltPhone, setNewContactAltPhone] = useState('');
+  const [newContactAddress, setNewContactAddress] = useState('');
+  const [newContactEmail, setNewContactEmail] = useState('');
+
+  // New Official Document Form State
+  const [newDocTitle, setNewDocTitle] = useState('');
+  const [newDocType, setNewDocType] = useState<OfficialDocument['type']>('Appointment Letter');
+  const [newDocFileName, setNewDocFileName] = useState('');
+  const [newDocFileUrl, setNewDocFileUrl] = useState('');
+  const [newDocNotes, setNewDocNotes] = useState('');
 
   // Portal Credentials Management State
   const [selectedStaffForBatch, setSelectedStaffForBatch] = useState<string[]>([]);
@@ -265,6 +311,307 @@ export const EmployeeDirectory: React.FC = () => {
     }, 1200);
   };
 
+  // PHOTO FILE UPLOAD HANDLER
+  const handlePhotoFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0] && editingEmployee) {
+      const file = e.target.files[0];
+      const reader = new FileReader();
+      reader.onload = () => {
+        setEditingEmployee({
+          ...editingEmployee,
+          photo: reader.result as string,
+        });
+        showToast('info', 'Photo Updated', 'Staff photo preview updated. Save changes to persist.');
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  // APPOINTMENT LETTER UPLOAD
+  const handleAppointmentLetterUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0] && editingEmployee) {
+      const file = e.target.files[0];
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = reader.result as string;
+        const newDoc: OfficialDocument = {
+          id: `doc-app-${Date.now()}`,
+          title: 'Appointment Letter',
+          type: 'Appointment Letter',
+          fileUrl: dataUrl,
+          fileName: file.name,
+          fileSize: file.size,
+          uploadedAt: new Date().toISOString().split('T')[0],
+          uploadedBy: 'HR Officer',
+        };
+        const existingDocs = editingEmployee.officialDocuments || [];
+        setEditingEmployee({
+          ...editingEmployee,
+          appointmentLetterUrl: dataUrl,
+          appointmentLetterName: file.name,
+          officialDocuments: [newDoc, ...existingDocs.filter((d) => d.type !== 'Appointment Letter')],
+        });
+        showToast('success', 'Appointment Letter Uploaded', `Attached ${file.name}`);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  // ASSUMPTION OF DUTY LETTER UPLOAD
+  const handleAssumptionOfDutyUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0] && editingEmployee) {
+      const file = e.target.files[0];
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = reader.result as string;
+        const newDoc: OfficialDocument = {
+          id: `doc-ass-${Date.now()}`,
+          title: 'Assumption of Duty Letter',
+          type: 'Assumption of Duty Letter',
+          fileUrl: dataUrl,
+          fileName: file.name,
+          fileSize: file.size,
+          uploadedAt: new Date().toISOString().split('T')[0],
+          uploadedBy: 'HR Officer',
+        };
+        const existingDocs = editingEmployee.officialDocuments || [];
+        setEditingEmployee({
+          ...editingEmployee,
+          assumptionOfDutyUrl: dataUrl,
+          assumptionOfDutyName: file.name,
+          officialDocuments: [newDoc, ...existingDocs.filter((d) => d.type !== 'Assumption of Duty Letter')],
+        });
+        showToast('success', 'Assumption of Duty Letter Uploaded', `Attached ${file.name}`);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  // TRANSFER DOCUMENT UPLOAD
+  const handleTransferDocUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0] && editingEmployee) {
+      const file = e.target.files[0];
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = reader.result as string;
+        const newDoc: OfficialDocument = {
+          id: `doc-trf-${Date.now()}`,
+          title: 'Transfer / Posting Document',
+          type: 'Transfer Document',
+          fileUrl: dataUrl,
+          fileName: file.name,
+          fileSize: file.size,
+          uploadedAt: new Date().toISOString().split('T')[0],
+          uploadedBy: 'HR Officer',
+        };
+        const existingDocs = editingEmployee.officialDocuments || [];
+        setEditingEmployee({
+          ...editingEmployee,
+          transferDocumentUrl: dataUrl,
+          transferDocumentName: file.name,
+          officialDocuments: [newDoc, ...existingDocs.filter((d) => d.type !== 'Transfer Document')],
+        });
+        showToast('success', 'Transfer Document Uploaded', `Attached ${file.name}`);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  // GHANA CARD FRONT & BACK SCANS UPLOAD
+  const handleGhanaCardFrontUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0] && editingEmployee) {
+      const file = e.target.files[0];
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = reader.result as string;
+        const currCard = editingEmployee.ghanaCardInfo || {
+          cardPin: editingEmployee.nationalId || 'GHA-000000000-0',
+          verificationStatus: 'Verified',
+        };
+        setEditingEmployee({
+          ...editingEmployee,
+          nationalId: currCard.cardPin,
+          ghanaCardInfo: {
+            ...currCard,
+            frontCopyUrl: dataUrl,
+            frontCopyName: file.name,
+          },
+        });
+        showToast('info', 'Ghana Card Front Scan Uploaded', `Attached ${file.name}`);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleGhanaCardBackUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0] && editingEmployee) {
+      const file = e.target.files[0];
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = reader.result as string;
+        const currCard = editingEmployee.ghanaCardInfo || {
+          cardPin: editingEmployee.nationalId || 'GHA-000000000-0',
+          verificationStatus: 'Verified',
+        };
+        setEditingEmployee({
+          ...editingEmployee,
+          nationalId: currCard.cardPin,
+          ghanaCardInfo: {
+            ...currCard,
+            backCopyUrl: dataUrl,
+            backCopyName: file.name,
+          },
+        });
+        showToast('info', 'Ghana Card Back Scan Uploaded', `Attached ${file.name}`);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  // EDUCATION CERTIFICATE FILE UPLOAD
+  const handleEduCertFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      const reader = new FileReader();
+      reader.onload = () => {
+        setNewEduCertUrl(reader.result as string);
+        setNewEduCertName(file.name);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleAddEducationSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingEmployee || !newEduInst || !newEduQual) return;
+    const item: EducationItem = {
+      id: `edu-${Date.now()}`,
+      institution: newEduInst,
+      qualification: newEduQual,
+      fieldOfStudy: newEduField,
+      startYear: newEduStartYear,
+      graduationYear: newEduGradYear,
+      gradeOrClass: newEduGrade,
+      certificateUrl: newEduCertUrl || '#',
+      certificateFileName: newEduCertName || 'Degree_Certificate.pdf',
+    };
+
+    const currentList = editingEmployee.educationList || [];
+    setEditingEmployee({
+      ...editingEmployee,
+      educationList: [item, ...currentList],
+      education: `${newEduQual}, ${newEduInst}`,
+    });
+
+    setNewEduInst('');
+    setNewEduQual('');
+    setNewEduField('');
+    setNewEduStartYear('');
+    setNewEduGradYear('');
+    setNewEduGrade('');
+    setNewEduCertUrl('');
+    setNewEduCertName('');
+    showToast('success', 'Education Background Added', `Added ${item.qualification}`);
+  };
+
+  const handleRemoveEducation = (eduId: string) => {
+    if (!editingEmployee) return;
+    const list = (editingEmployee.educationList || []).filter((e) => e.id !== eduId);
+    setEditingEmployee({
+      ...editingEmployee,
+      educationList: list,
+    });
+  };
+
+  // EMERGENCY CONTACTS HANDLERS
+  const handleAddEmergencyContactSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingEmployee || !newContactName || !newContactPhone) return;
+    const contact: EmergencyContact = {
+      id: `ec-${Date.now()}`,
+      name: newContactName,
+      relation: newContactRel,
+      phone: newContactPhone,
+      altPhone: newContactAltPhone,
+      address: newContactAddress,
+      email: newContactEmail,
+    };
+
+    const currentList = editingEmployee.emergencyContacts || [];
+    setEditingEmployee({
+      ...editingEmployee,
+      emergencyContacts: [...currentList, contact],
+    });
+
+    setNewContactName('');
+    setNewContactRel('Spouse');
+    setNewContactPhone('');
+    setNewContactAltPhone('');
+    setNewContactAddress('');
+    setNewContactEmail('');
+    showToast('success', 'Emergency Contact Added', `Added ${contact.name}`);
+  };
+
+  const handleRemoveEmergencyContact = (index: number) => {
+    if (!editingEmployee) return;
+    const list = [...(editingEmployee.emergencyContacts || [])];
+    list.splice(index, 1);
+    setEditingEmployee({
+      ...editingEmployee,
+      emergencyContacts: list,
+    });
+  };
+
+  // OFFICIAL DOC FILE UPLOAD HANDLER
+  const handleNewDocFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      const reader = new FileReader();
+      reader.onload = () => {
+        setNewDocFileUrl(reader.result as string);
+        setNewDocFileName(file.name);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleAddOfficialDocSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingEmployee || !newDocTitle || !newDocFileName) return;
+    const newDoc: OfficialDocument = {
+      id: `doc-custom-${Date.now()}`,
+      title: newDocTitle,
+      type: newDocType,
+      fileUrl: newDocFileUrl || '#',
+      fileName: newDocFileName,
+      uploadedAt: new Date().toISOString().split('T')[0],
+      uploadedBy: 'HR Officer',
+      notes: newDocNotes,
+    };
+
+    const currentList = editingEmployee.officialDocuments || [];
+    setEditingEmployee({
+      ...editingEmployee,
+      officialDocuments: [newDoc, ...currentList],
+    });
+
+    setNewDocTitle('');
+    setNewDocType('Appointment Letter');
+    setNewDocFileName('');
+    setNewDocFileUrl('');
+    setNewDocNotes('');
+    showToast('success', 'Official Document Saved', `Added ${newDoc.title}`);
+  };
+
+  const handleRemoveOfficialDoc = (docId: string) => {
+    if (!editingEmployee) return;
+    const list = (editingEmployee.officialDocuments || []).filter((d) => d.id !== docId);
+    setEditingEmployee({
+      ...editingEmployee,
+      officialDocuments: list,
+    });
+  };
+
   const handleAddLicenseToEdit = () => {
     if (!editingEmployee) return;
     const newLic: MedicalLicense = {
@@ -433,6 +780,13 @@ export const EmployeeDirectory: React.FC = () => {
               <GitFork className="h-4 w-4 text-emerald-300" /> Org Hierarchy Tree
             </button>
           </div>
+
+          <button
+            onClick={() => setIsCreateHrAccountModalOpen(true)}
+            className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 px-4 py-2.5 text-xs font-bold text-white shadow transition active:scale-95 border border-indigo-400/30"
+          >
+            <UserPlus className="h-4 w-4" /> Provision Staff Account (HR)
+          </button>
 
           <button
             onClick={() => setIsAddModalOpen(true)}
@@ -918,23 +1272,59 @@ export const EmployeeDirectory: React.FC = () => {
             )}
 
             {/* Tab Navigation */}
-            <div className="flex items-center border-b border-slate-800 bg-slate-950/40 px-5 pt-2 text-xs font-bold gap-2 overflow-x-auto">
+            <div className="flex items-center border-b border-slate-800 bg-slate-950/40 px-5 pt-2 text-xs font-bold gap-1 overflow-x-auto">
               <button
                 type="button"
                 onClick={() => setEditActiveTab('general')}
-                className={`pb-3 pt-2 px-3 border-b-2 flex items-center gap-1.5 transition ${
+                className={`pb-3 pt-2 px-3 border-b-2 flex items-center gap-1.5 whitespace-nowrap transition ${
                   editActiveTab === 'general'
                     ? 'border-emerald-500 text-emerald-400 font-extrabold'
                     : 'border-transparent text-slate-400 hover:text-slate-200'
                 }`}
               >
-                <User className="h-4 w-4" /> Personal Details
+                <User className="h-4 w-4" /> Personal & Ghana Card
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setEditActiveTab('documents')}
+                className={`pb-3 pt-2 px-3 border-b-2 flex items-center gap-1.5 whitespace-nowrap transition ${
+                  editActiveTab === 'documents'
+                    ? 'border-emerald-500 text-emerald-400 font-extrabold'
+                    : 'border-transparent text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <FileText className="h-4 w-4 text-cyan-400" /> Official Letters & HR Files
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setEditActiveTab('education')}
+                className={`pb-3 pt-2 px-3 border-b-2 flex items-center gap-1.5 whitespace-nowrap transition ${
+                  editActiveTab === 'education'
+                    ? 'border-emerald-500 text-emerald-400 font-extrabold'
+                    : 'border-transparent text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <GraduationCap className="h-4 w-4 text-indigo-400" /> Education Background
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setEditActiveTab('contacts')}
+                className={`pb-3 pt-2 px-3 border-b-2 flex items-center gap-1.5 whitespace-nowrap transition ${
+                  editActiveTab === 'contacts'
+                    ? 'border-emerald-500 text-emerald-400 font-extrabold'
+                    : 'border-transparent text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <PhoneCall className="h-4 w-4 text-amber-400" /> Emergency Contacts
               </button>
 
               <button
                 type="button"
                 onClick={() => setEditActiveTab('employment')}
-                className={`pb-3 pt-2 px-3 border-b-2 flex items-center gap-1.5 transition ${
+                className={`pb-3 pt-2 px-3 border-b-2 flex items-center gap-1.5 whitespace-nowrap transition ${
                   editActiveTab === 'employment'
                     ? 'border-emerald-500 text-emerald-400 font-extrabold'
                     : 'border-transparent text-slate-400 hover:text-slate-200'
@@ -946,33 +1336,77 @@ export const EmployeeDirectory: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setEditActiveTab('licenses')}
-                className={`pb-3 pt-2 px-3 border-b-2 flex items-center gap-1.5 transition ${
+                className={`pb-3 pt-2 px-3 border-b-2 flex items-center gap-1.5 whitespace-nowrap transition ${
                   editActiveTab === 'licenses'
                     ? 'border-emerald-500 text-emerald-400 font-extrabold'
                     : 'border-transparent text-slate-400 hover:text-slate-200'
                 }`}
               >
-                <Award className="h-4 w-4 text-amber-400" /> Medical Licenses ({editingEmployee.medicalLicenses.length})
+                <Award className="h-4 w-4 text-amber-400" /> Medical Licenses ({editingEmployee.medicalLicenses?.length || 0})
               </button>
 
               <button
                 type="button"
                 onClick={() => setEditActiveTab('health')}
-                className={`pb-3 pt-2 px-3 border-b-2 flex items-center gap-1.5 transition ${
+                className={`pb-3 pt-2 px-3 border-b-2 flex items-center gap-1.5 whitespace-nowrap transition ${
                   editActiveTab === 'health'
                     ? 'border-emerald-500 text-emerald-400 font-extrabold'
                     : 'border-transparent text-slate-400 hover:text-slate-200'
                 }`}
               >
-                <Stethoscope className="h-4 w-4 text-rose-400" /> Health & Digital Signature
+                <Stethoscope className="h-4 w-4 text-rose-400" /> Health & Signature
               </button>
             </div>
 
             {/* Form Body */}
             <form onSubmit={handleSaveEmployeeEdits} className="p-6 space-y-5 text-xs flex-1">
-              {/* TAB 1: PERSONAL DETAILS */}
+              {/* TAB 1: PERSONAL & GHANA CARD DETAILS */}
               {editActiveTab === 'general' && (
-                <div className="space-y-4">
+                <div className="space-y-5">
+                  {/* Staff Photo Upload Section */}
+                  <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 flex items-center gap-4">
+                    <div className="relative">
+                      <img
+                        src={editingEmployee.photo || 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&q=80&w=200'}
+                        alt={editingEmployee.firstName}
+                        className="h-16 w-16 rounded-2xl object-cover border-2 border-emerald-500 shadow-md"
+                      />
+                      <label className="absolute -bottom-1 -right-1 flex h-6 w-6 cursor-pointer items-center justify-center rounded-full bg-emerald-600 text-white shadow-md hover:bg-emerald-500 transition">
+                        <Camera className="h-3.5 w-3.5" />
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handlePhotoFileUpload}
+                          className="hidden"
+                        />
+                      </label>
+                    </div>
+
+                    <div className="flex-1 space-y-1">
+                      <h4 className="font-bold text-white text-xs flex items-center gap-1.5">
+                        Staff Profile Photo
+                        <span className="text-[10px] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded font-mono">
+                          Live Reader
+                        </span>
+                      </h4>
+                      <p className="text-[11px] text-slate-400">
+                        Upload official HR passport photograph or high-resolution ID portrait.
+                      </p>
+                      <div className="flex items-center gap-2 pt-1">
+                        <label className="cursor-pointer px-3 py-1 rounded-lg bg-emerald-600 text-white font-bold text-[11px] hover:bg-emerald-500 transition flex items-center gap-1.5">
+                          <Upload className="h-3 w-3" /> Upload Photo File
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={handlePhotoFileUpload}
+                            className="hidden"
+                          />
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Basic Info Fields */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-slate-300 font-semibold mb-1">First Name</label>
@@ -1003,7 +1437,7 @@ export const EmployeeDirectory: React.FC = () => {
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-slate-300 font-semibold mb-1">Email Address (Login)</label>
+                      <label className="block text-slate-300 font-semibold mb-1">Email Address (Portal Username)</label>
                       <input
                         type="email"
                         required
@@ -1016,7 +1450,7 @@ export const EmployeeDirectory: React.FC = () => {
                     </div>
 
                     <div>
-                      <label className="block text-slate-300 font-semibold mb-1">Phone Number</label>
+                      <label className="block text-slate-300 font-semibold mb-1">Primary Phone Number</label>
                       <input
                         type="text"
                         required
@@ -1043,7 +1477,7 @@ export const EmployeeDirectory: React.FC = () => {
                     </div>
 
                     <div>
-                      <label className="block text-slate-300 font-semibold mb-1">National Identification ID</label>
+                      <label className="block text-slate-300 font-semibold mb-1">General Identification ID</label>
                       <input
                         type="text"
                         value={editingEmployee.nationalId || ''}
@@ -1055,33 +1489,756 @@ export const EmployeeDirectory: React.FC = () => {
                     </div>
                   </div>
 
-                  <div>
-                    <label className="block text-slate-300 font-semibold mb-1">Education Degree & Qualifications</label>
-                    <input
-                      type="text"
-                      value={editingEmployee.education || ''}
-                      onChange={(e) =>
-                        setEditingEmployee({ ...editingEmployee, education: e.target.value })
-                      }
-                      className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-slate-200 focus:border-emerald-500 focus:outline-none"
-                    />
-                  </div>
+                  {/* Ghana Card Identification Section */}
+                  <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-950/30 via-slate-950 to-amber-950/20 border border-amber-500/30 space-y-4">
+                    <div className="flex items-center justify-between border-b border-amber-500/20 pb-2">
+                      <div className="flex items-center gap-2">
+                        <CreditCard className="h-5 w-5 text-amber-400" />
+                        <div>
+                          <h4 className="font-bold text-amber-200 text-xs">
+                            Ghana Card Info (National Identification Authority - NIA)
+                          </h4>
+                          <p className="text-[10px] text-slate-400">
+                            Ghana Card PIN registration, verification & ID scan attachments
+                          </p>
+                        </div>
+                      </div>
 
-                  <div>
-                    <label className="block text-slate-300 font-semibold mb-1">Profile Photo URL</label>
-                    <input
-                      type="text"
-                      value={editingEmployee.photo || ''}
-                      onChange={(e) =>
-                        setEditingEmployee({ ...editingEmployee, photo: e.target.value })
-                      }
-                      className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-slate-200 focus:border-emerald-500 focus:outline-none font-mono text-[11px]"
-                    />
+                      <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+                        editingEmployee.ghanaCardInfo?.verificationStatus === 'Verified'
+                          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                          : 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+                      }`}>
+                        {editingEmployee.ghanaCardInfo?.verificationStatus || 'Pending Verification'}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-slate-300 font-semibold text-[11px] mb-1">
+                          Ghana Card PIN (GHA-XXXXXXXXX-X)
+                        </label>
+                        <input
+                          type="text"
+                          value={editingEmployee.ghanaCardInfo?.cardPin || editingEmployee.nationalId || ''}
+                          onChange={(e) => {
+                            const pin = e.target.value;
+                            const currGhana = editingEmployee.ghanaCardInfo || {
+                              cardPin: pin,
+                              verificationStatus: 'Verified',
+                            };
+                            setEditingEmployee({
+                              ...editingEmployee,
+                              nationalId: pin,
+                              ghanaCardInfo: { ...currGhana, cardPin: pin },
+                            });
+                          }}
+                          placeholder="GHA-719302841-0"
+                          className="w-full rounded-xl bg-slate-900 border border-amber-500/40 p-2.5 text-amber-300 font-mono font-bold focus:border-amber-400 focus:outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-slate-300 font-semibold text-[11px] mb-1">
+                          Card Issue Date
+                        </label>
+                        <input
+                          type="date"
+                          value={editingEmployee.ghanaCardInfo?.issueDate || ''}
+                          onChange={(e) => {
+                            const date = e.target.value;
+                            const currGhana = editingEmployee.ghanaCardInfo || {
+                              cardPin: editingEmployee.nationalId || 'GHA-000000000-0',
+                              verificationStatus: 'Verified',
+                            };
+                            setEditingEmployee({
+                              ...editingEmployee,
+                              ghanaCardInfo: { ...currGhana, issueDate: date },
+                            });
+                          }}
+                          className="w-full rounded-xl bg-slate-900 border border-slate-800 p-2.5 text-slate-200 focus:border-amber-400 focus:outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-slate-300 font-semibold text-[11px] mb-1">
+                          Card Expiry Date
+                        </label>
+                        <input
+                          type="date"
+                          value={editingEmployee.ghanaCardInfo?.expiryDate || ''}
+                          onChange={(e) => {
+                            const date = e.target.value;
+                            const currGhana = editingEmployee.ghanaCardInfo || {
+                              cardPin: editingEmployee.nationalId || 'GHA-000000000-0',
+                              verificationStatus: 'Verified',
+                            };
+                            setEditingEmployee({
+                              ...editingEmployee,
+                              ghanaCardInfo: { ...currGhana, expiryDate: date },
+                            });
+                          }}
+                          className="w-full rounded-xl bg-slate-900 border border-slate-800 p-2.5 text-slate-200 focus:border-amber-400 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                      {/* Front Scan */}
+                      <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-slate-300 text-[11px] flex items-center gap-1">
+                            <BadgeCheck className="h-3.5 w-3.5 text-emerald-400" /> Front Scan Copy
+                          </span>
+                          {editingEmployee.ghanaCardInfo?.frontCopyUrl && (
+                            <span className="text-[10px] text-emerald-400 font-semibold">
+                              Attached
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[10px] font-mono text-slate-400 truncate">
+                          {editingEmployee.ghanaCardInfo?.frontCopyName || 'No front scan uploaded'}
+                        </p>
+                        <label className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold text-[11px] transition">
+                          <Upload className="h-3.5 w-3.5" /> Upload Front Scan
+                          <input
+                            type="file"
+                            accept="image/*,.pdf"
+                            onChange={handleGhanaCardFrontUpload}
+                            className="hidden"
+                          />
+                        </label>
+                      </div>
+
+                      {/* Back Scan */}
+                      <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-slate-300 text-[11px] flex items-center gap-1">
+                            <BadgeCheck className="h-3.5 w-3.5 text-emerald-400" /> Back Scan Copy
+                          </span>
+                          {editingEmployee.ghanaCardInfo?.backCopyUrl && (
+                            <span className="text-[10px] text-emerald-400 font-semibold">
+                              Attached
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[10px] font-mono text-slate-400 truncate">
+                          {editingEmployee.ghanaCardInfo?.backCopyName || 'No back scan uploaded'}
+                        </p>
+                        <label className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold text-[11px] transition">
+                          <Upload className="h-3.5 w-3.5" /> Upload Back Scan
+                          <input
+                            type="file"
+                            accept="image/*,.pdf"
+                            onChange={handleGhanaCardBackUpload}
+                            className="hidden"
+                          />
+                        </label>
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}
 
-              {/* TAB 2: POSITION & COMPENSATION */}
+              {/* TAB 2: OFFICIAL HR LETTERS & DOCUMENTS */}
+              {editActiveTab === 'documents' && (
+                <div className="space-y-5">
+                  <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800">
+                    <h4 className="font-bold text-white text-xs mb-1 flex items-center gap-2">
+                      <FileUp className="h-4 w-4 text-cyan-400" /> Mandatory Official Employment Documents
+                    </h4>
+                    <p className="text-[11px] text-slate-400">
+                      HR staff file attachment vault for Appointment Letters, Assumption of Duty Letters, and Transfer Documents.
+                    </p>
+                  </div>
+
+                  {/* 3 Main Required Documents Cards */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    {/* Appointment Letter */}
+                    <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-3 flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="font-extrabold text-cyan-300 text-xs flex items-center gap-1.5">
+                            <FileText className="h-4 w-4 text-cyan-400" /> Appointment Letter
+                          </span>
+                          <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${
+                            editingEmployee.appointmentLetterUrl
+                              ? 'bg-emerald-500/20 text-emerald-300'
+                              : 'bg-rose-500/20 text-rose-300'
+                          }`}>
+                            {editingEmployee.appointmentLetterUrl ? 'Uploaded' : 'Missing'}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-slate-400">
+                          Official facility engagement contract & terms
+                        </p>
+                        <p className="text-[10px] font-mono text-slate-300 mt-2 truncate">
+                          {editingEmployee.appointmentLetterName || 'No document uploaded'}
+                        </p>
+                      </div>
+
+                      <div className="pt-2 border-t border-slate-800 flex items-center gap-2">
+                        <label className="cursor-pointer flex-1 py-1.5 px-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-[11px] text-center transition flex items-center justify-center gap-1">
+                          <Upload className="h-3 w-3" /> Upload
+                          <input
+                            type="file"
+                            accept=".pdf,.doc,.docx,image/*"
+                            onChange={handleAppointmentLetterUpload}
+                            className="hidden"
+                          />
+                        </label>
+                        {editingEmployee.appointmentLetterUrl && (
+                          <a
+                            href={editingEmployee.appointmentLetterUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="p-1.5 rounded-lg bg-slate-800 text-cyan-300 hover:bg-slate-700 transition"
+                            title="View / Download Appointment Letter"
+                          >
+                            <Download className="h-4 w-4" />
+                          </a>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Assumption of Duty Letter */}
+                    <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-3 flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="font-extrabold text-emerald-300 text-xs flex items-center gap-1.5">
+                            <FileCheck className="h-4 w-4 text-emerald-400" /> Assumption of Duty
+                          </span>
+                          <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${
+                            editingEmployee.assumptionOfDutyUrl
+                              ? 'bg-emerald-500/20 text-emerald-300'
+                              : 'bg-rose-500/20 text-rose-300'
+                          }`}>
+                            {editingEmployee.assumptionOfDutyUrl ? 'Uploaded' : 'Missing'}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-slate-400">
+                          Formal confirmation of duty commencement at facility
+                        </p>
+                        <p className="text-[10px] font-mono text-slate-300 mt-2 truncate">
+                          {editingEmployee.assumptionOfDutyName || 'No document uploaded'}
+                        </p>
+                      </div>
+
+                      <div className="pt-2 border-t border-slate-800 flex items-center gap-2">
+                        <label className="cursor-pointer flex-1 py-1.5 px-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] text-center transition flex items-center justify-center gap-1">
+                          <Upload className="h-3 w-3" /> Upload
+                          <input
+                            type="file"
+                            accept=".pdf,.doc,.docx,image/*"
+                            onChange={handleAssumptionOfDutyUpload}
+                            className="hidden"
+                          />
+                        </label>
+                        {editingEmployee.assumptionOfDutyUrl && (
+                          <a
+                            href={editingEmployee.assumptionOfDutyUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="p-1.5 rounded-lg bg-slate-800 text-emerald-300 hover:bg-slate-700 transition"
+                            title="View / Download Assumption of Duty Letter"
+                          >
+                            <Download className="h-4 w-4" />
+                          </a>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Transfer Documents */}
+                    <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-3 flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="font-extrabold text-indigo-300 text-xs flex items-center gap-1.5">
+                            <GitFork className="h-4 w-4 text-indigo-400" /> Transfer / Posting
+                          </span>
+                          <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${
+                            editingEmployee.transferDocumentUrl
+                              ? 'bg-emerald-500/20 text-emerald-300'
+                              : 'bg-amber-500/20 text-amber-300'
+                          }`}>
+                            {editingEmployee.transferDocumentUrl ? 'Uploaded' : 'Optional'}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-slate-400">
+                          Posting, inter-hospital transfer, or redeployment records
+                        </p>
+                        <p className="text-[10px] font-mono text-slate-300 mt-2 truncate">
+                          {editingEmployee.transferDocumentName || 'No transfer doc attached'}
+                        </p>
+                      </div>
+
+                      <div className="pt-2 border-t border-slate-800 flex items-center gap-2">
+                        <label className="cursor-pointer flex-1 py-1.5 px-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-[11px] text-center transition flex items-center justify-center gap-1">
+                          <Upload className="h-3 w-3" /> Upload
+                          <input
+                            type="file"
+                            accept=".pdf,.doc,.docx,image/*"
+                            onChange={handleTransferDocUpload}
+                            className="hidden"
+                          />
+                        </label>
+                        {editingEmployee.transferDocumentUrl && (
+                          <a
+                            href={editingEmployee.transferDocumentUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="p-1.5 rounded-lg bg-slate-800 text-indigo-300 hover:bg-slate-700 transition"
+                            title="View / Download Transfer Document"
+                          >
+                            <Download className="h-4 w-4" />
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Add Custom Official Document Form */}
+                  <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-3">
+                    <h4 className="font-bold text-white text-xs flex items-center gap-2">
+                      <Plus className="h-4 w-4 text-emerald-400" /> Add Custom Official Staff Document
+                    </h4>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-slate-300 font-semibold text-[10px] mb-1">
+                          Document Title
+                        </label>
+                        <input
+                          type="text"
+                          value={newDocTitle}
+                          onChange={(e) => setNewDocTitle(e.target.value)}
+                          placeholder="e.g. Promotion Letter 2026"
+                          className="w-full rounded-xl bg-slate-900 border border-slate-800 p-2 text-slate-200 focus:border-emerald-500 focus:outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-slate-300 font-semibold text-[10px] mb-1">
+                          Category / Type
+                        </label>
+                        <select
+                          value={newDocType}
+                          onChange={(e) => setNewDocType(e.target.value as any)}
+                          className="w-full rounded-xl bg-slate-900 border border-slate-800 p-2 text-slate-200 focus:border-emerald-500 focus:outline-none"
+                        >
+                          <option value="Appointment Letter">Appointment Letter</option>
+                          <option value="Assumption of Duty Letter">Assumption of Duty Letter</option>
+                          <option value="Transfer Document">Transfer Document</option>
+                          <option value="Promotion Letter">Promotion Letter</option>
+                          <option value="Demotion / Disciplinary Letter">Demotion / Disciplinary</option>
+                          <option value="Leave Document">Leave Document</option>
+                          <option value="Other">Other Document</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-slate-300 font-semibold text-[10px] mb-1">
+                          File Attachment
+                        </label>
+                        <label className="cursor-pointer flex items-center justify-between rounded-xl bg-slate-900 border border-slate-800 p-2 text-slate-300 hover:border-emerald-500 transition">
+                          <span className="truncate text-[10px]">
+                            {newDocFileName || 'Choose PDF / Doc File'}
+                          </span>
+                          <Paperclip className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                          <input
+                            type="file"
+                            onChange={handleNewDocFileUpload}
+                            className="hidden"
+                          />
+                        </label>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-1">
+                      <input
+                        type="text"
+                        value={newDocNotes}
+                        onChange={(e) => setNewDocNotes(e.target.value)}
+                        placeholder="Optional remarks or document tracking reference code..."
+                        className="flex-1 mr-3 rounded-xl bg-slate-900 border border-slate-800 p-2 text-slate-200 focus:border-emerald-500 focus:outline-none text-[11px]"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleAddOfficialDocSubmit}
+                        disabled={!newDocTitle || !newDocFileName}
+                        className="px-4 py-2 rounded-xl bg-emerald-600 text-white font-bold text-[11px] hover:bg-emerald-500 transition disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+                      >
+                        Save Document to File
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* List of Uploaded Official Documents */}
+                  <div className="space-y-2">
+                    <h5 className="font-bold text-slate-300 text-xs">
+                      All Registered Official Files ({editingEmployee.officialDocuments?.length || 0})
+                    </h5>
+
+                    {(!editingEmployee.officialDocuments || editingEmployee.officialDocuments.length === 0) ? (
+                      <p className="text-slate-500 text-xs italic p-3 rounded-xl bg-slate-950 border border-slate-800 text-center">
+                        No additional official documents registered yet.
+                      </p>
+                    ) : (
+                      <div className="space-y-2">
+                        {editingEmployee.officialDocuments.map((doc) => (
+                          <div
+                            key={doc.id}
+                            className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between gap-3"
+                          >
+                            <div className="flex items-center gap-2.5">
+                              <div className="p-2 rounded-lg bg-slate-900 text-cyan-400">
+                                <FileText className="h-4 w-4" />
+                              </div>
+                              <div>
+                                <h6 className="font-bold text-white text-xs">{doc.title}</h6>
+                                <p className="text-[10px] text-slate-400">
+                                  Category: {doc.type} • Uploaded {doc.uploadedAt} by {doc.uploadedBy}
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                              {doc.fileUrl && (
+                                <a
+                                  href={doc.fileUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="px-2.5 py-1 rounded-lg bg-slate-800 text-cyan-300 hover:bg-slate-700 transition text-[10px] font-bold flex items-center gap-1"
+                                >
+                                  <Download className="h-3 w-3" /> View / Download
+                                </a>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveOfficialDoc(doc.id)}
+                                className="p-1.5 rounded-lg text-rose-400 hover:bg-rose-500/10 transition"
+                                title="Delete Document"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 3: STAFF EDUCATION BACKGROUND */}
+              {editActiveTab === 'education' && (
+                <div className="space-y-5">
+                  {/* Form to add Education Item */}
+                  <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-3">
+                    <h4 className="font-bold text-white text-xs flex items-center gap-2">
+                      <GraduationCap className="h-4 w-4 text-indigo-400" /> Add Staff Educational Background
+                    </h4>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-slate-300 font-semibold text-[10px] mb-1">
+                          Institution / University
+                        </label>
+                        <input
+                          type="text"
+                          value={newEduInst}
+                          onChange={(e) => setNewEduInst(e.target.value)}
+                          placeholder="e.g. University of Ghana / Korle Bu Nursing College"
+                          className="w-full rounded-xl bg-slate-900 border border-slate-800 p-2 text-slate-200 focus:border-indigo-500 focus:outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-slate-300 font-semibold text-[10px] mb-1">
+                          Degree / Qualification
+                        </label>
+                        <input
+                          type="text"
+                          value={newEduQual}
+                          onChange={(e) => setNewEduQual(e.target.value)}
+                          placeholder="e.g. Bachelor of Science in Nursing (BSc)"
+                          className="w-full rounded-xl bg-slate-900 border border-slate-800 p-2 text-slate-200 focus:border-indigo-500 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-slate-300 font-semibold text-[10px] mb-1">
+                          Field of Study / Specialization
+                        </label>
+                        <input
+                          type="text"
+                          value={newEduField}
+                          onChange={(e) => setNewEduField(e.target.value)}
+                          placeholder="e.g. Critical Care Nursing"
+                          className="w-full rounded-xl bg-slate-900 border border-slate-800 p-2 text-slate-200 focus:border-indigo-500 focus:outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-slate-300 font-semibold text-[10px] mb-1">
+                          Years Attended (Start - Grad)
+                        </label>
+                        <div className="grid grid-cols-2 gap-1">
+                          <input
+                            type="text"
+                            value={newEduStartYear}
+                            onChange={(e) => setNewEduStartYear(e.target.value)}
+                            placeholder="2018"
+                            className="rounded-xl bg-slate-900 border border-slate-800 p-2 text-slate-200 focus:border-indigo-500 focus:outline-none text-center"
+                          />
+                          <input
+                            type="text"
+                            value={newEduGradYear}
+                            onChange={(e) => setNewEduGradYear(e.target.value)}
+                            placeholder="2022"
+                            className="rounded-xl bg-slate-900 border border-slate-800 p-2 text-slate-200 focus:border-indigo-500 focus:outline-none text-center"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-slate-300 font-semibold text-[10px] mb-1">
+                          Certificate Scan Upload
+                        </label>
+                        <label className="cursor-pointer flex items-center justify-between rounded-xl bg-slate-900 border border-slate-800 p-2 text-slate-300 hover:border-indigo-500 transition">
+                          <span className="truncate text-[10px]">
+                            {newEduCertName || 'Choose Certificate File'}
+                          </span>
+                          <Upload className="h-3.5 w-3.5 text-indigo-400 shrink-0" />
+                          <input
+                            type="file"
+                            accept=".pdf,image/*"
+                            onChange={handleEduCertFileUpload}
+                            className="hidden"
+                          />
+                        </label>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-end pt-2">
+                      <button
+                        type="button"
+                        onClick={handleAddEducationSubmit}
+                        disabled={!newEduInst || !newEduQual}
+                        className="px-4 py-2 rounded-xl bg-indigo-600 text-white font-bold text-[11px] hover:bg-indigo-500 transition disabled:opacity-50 disabled:cursor-not-allowed shadow"
+                      >
+                        + Add Qualification to File
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* List of Added Educational Backgrounds */}
+                  <div className="space-y-3">
+                    <h5 className="font-bold text-slate-300 text-xs">
+                      Educational Qualifications ({editingEmployee.educationList?.length || 0})
+                    </h5>
+
+                    {(!editingEmployee.educationList || editingEmployee.educationList.length === 0) ? (
+                      <p className="text-slate-500 text-xs italic p-3 rounded-xl bg-slate-950 border border-slate-800 text-center">
+                        No detailed educational history recorded.
+                      </p>
+                    ) : (
+                      <div className="space-y-3">
+                        {editingEmployee.educationList.map((edu) => (
+                          <div
+                            key={edu.id}
+                            className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-2"
+                          >
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <h6 className="font-extrabold text-indigo-300 text-xs">
+                                  {edu.qualification}
+                                </h6>
+                                <p className="text-[11px] text-slate-200 font-medium">
+                                  {edu.institution} • {edu.fieldOfStudy}
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveEducation(edu.id)}
+                                className="text-rose-400 hover:text-rose-300 text-[11px] font-bold p-1 rounded hover:bg-rose-500/10 transition"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+
+                            <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1 border-t border-slate-800">
+                              <span>Graduation Year: {edu.graduationYear || 'N/A'}</span>
+                              {edu.certificateUrl && (
+                                <a
+                                  href={edu.certificateUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-indigo-400 font-bold hover:underline flex items-center gap-1"
+                                >
+                                  <Download className="h-3 w-3" /> Certificate Attached
+                                </a>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 4: EMERGENCY CONTACTS */}
+              {editActiveTab === 'contacts' && (
+                <div className="space-y-5">
+                  {/* Form to add Emergency Contact */}
+                  <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-3">
+                    <h4 className="font-bold text-white text-xs flex items-center gap-2">
+                      <PhoneCall className="h-4 w-4 text-amber-400" /> Add Emergency Contact
+                    </h4>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-slate-300 font-semibold text-[10px] mb-1">
+                          Contact Person Full Name
+                        </label>
+                        <input
+                          type="text"
+                          value={newContactName}
+                          onChange={(e) => setNewContactName(e.target.value)}
+                          placeholder="e.g. Mary Kingsley"
+                          className="w-full rounded-xl bg-slate-900 border border-slate-800 p-2 text-slate-200 focus:border-amber-500 focus:outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-slate-300 font-semibold text-[10px] mb-1">
+                          Relationship to Staff
+                        </label>
+                        <select
+                          value={newContactRel}
+                          onChange={(e) => setNewContactRel(e.target.value)}
+                          className="w-full rounded-xl bg-slate-900 border border-slate-800 p-2 text-slate-200 focus:border-amber-500 focus:outline-none"
+                        >
+                          <option value="Spouse">Spouse</option>
+                          <option value="Parent / Mother">Parent / Mother</option>
+                          <option value="Parent / Father">Parent / Father</option>
+                          <option value="Sibling / Brother">Sibling / Brother</option>
+                          <option value="Sibling / Sister">Sibling / Sister</option>
+                          <option value="Next of Kin">Next of Kin</option>
+                          <option value="Guardian / Other">Guardian / Other</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-slate-300 font-semibold text-[10px] mb-1">
+                          Primary Phone Number
+                        </label>
+                        <input
+                          type="text"
+                          value={newContactPhone}
+                          onChange={(e) => setNewContactPhone(e.target.value)}
+                          placeholder="+233 24 123 4567"
+                          className="w-full rounded-xl bg-slate-900 border border-slate-800 p-2 text-slate-200 focus:border-amber-500 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-slate-300 font-semibold text-[10px] mb-1">
+                          Secondary Phone (Optional)
+                        </label>
+                        <input
+                          type="text"
+                          value={newContactAltPhone}
+                          onChange={(e) => setNewContactAltPhone(e.target.value)}
+                          placeholder="+233 20 987 6543"
+                          className="w-full rounded-xl bg-slate-900 border border-slate-800 p-2 text-slate-200 focus:border-amber-500 focus:outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-slate-300 font-semibold text-[10px] mb-1">
+                          Residential Address
+                        </label>
+                        <input
+                          type="text"
+                          value={newContactAddress}
+                          onChange={(e) => setNewContactAddress(e.target.value)}
+                          placeholder="Plot 14 East Legon, Accra"
+                          className="w-full rounded-xl bg-slate-900 border border-slate-800 p-2 text-slate-200 focus:border-amber-500 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-end pt-1">
+                      <button
+                        type="button"
+                        onClick={handleAddEmergencyContactSubmit}
+                        disabled={!newContactName || !newContactPhone}
+                        className="px-4 py-2 rounded-xl bg-amber-600 text-white font-bold text-[11px] hover:bg-amber-500 transition disabled:opacity-50 disabled:cursor-not-allowed shadow"
+                      >
+                        + Add Emergency Contact
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* List of Registered Emergency Contacts */}
+                  <div className="space-y-3">
+                    <h5 className="font-bold text-slate-300 text-xs">
+                      Registered Emergency Contacts ({editingEmployee.emergencyContacts?.length || 0})
+                    </h5>
+
+                    {(!editingEmployee.emergencyContacts || editingEmployee.emergencyContacts.length === 0) ? (
+                      <p className="text-slate-500 text-xs italic p-3 rounded-xl bg-slate-950 border border-slate-800 text-center">
+                        No emergency contacts registered yet.
+                      </p>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {editingEmployee.emergencyContacts.map((contact, idx) => (
+                          <div
+                            key={contact.id || idx}
+                            className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-2 relative"
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="font-bold text-amber-300 text-xs">
+                                {contact.name}
+                              </span>
+                              <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                                {contact.relation}
+                              </span>
+                            </div>
+
+                            <p className="text-[11px] text-slate-200 font-mono flex items-center gap-1.5">
+                              <Phone className="h-3 w-3 text-emerald-400" /> {contact.phone}
+                              {contact.altPhone && <span className="text-slate-500">/ {contact.altPhone}</span>}
+                            </p>
+
+                            {contact.address && (
+                              <p className="text-[10px] text-slate-400 flex items-center gap-1.5">
+                                <MapPin className="h-3 w-3 text-rose-400 shrink-0" /> {contact.address}
+                              </p>
+                            )}
+
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveEmergencyContact(idx)}
+                              className="absolute top-3 right-3 text-rose-400 hover:text-rose-300 p-1"
+                              title="Remove Contact"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 5: POSITION & COMPENSATION */}
               {editActiveTab === 'employment' && (
                 <div className="space-y-4">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1172,14 +2329,14 @@ export const EmployeeDirectory: React.FC = () => {
                 </div>
               )}
 
-              {/* TAB 3: MEDICAL LICENSES & CERTIFICATIONS */}
+              {/* TAB 6: MEDICAL LICENSES & CERTIFICATIONS */}
               {editActiveTab === 'licenses' && (
                 <div className="space-y-4">
                   <div className="flex items-center justify-between bg-slate-950 p-3 rounded-xl border border-slate-800">
                     <div>
                       <h4 className="font-bold text-white text-xs">Medical Practice Licenses & Certs File</h4>
                       <p className="text-[10px] text-slate-400">
-                        Update DHA, MOH, BLS, ACLS, and clinical licenses attached to this file.
+                        Update Medical Council, MOH, BLS, ACLS, and clinical licenses attached to this file.
                       </p>
                     </div>
                     <button
@@ -1303,7 +2460,7 @@ export const EmployeeDirectory: React.FC = () => {
                 </div>
               )}
 
-              {/* TAB 4: HEALTH & DIGITAL SIGNATURE */}
+              {/* TAB 7: HEALTH & DIGITAL SIGNATURE */}
               {editActiveTab === 'health' && (
                 <div className="space-y-4">
                   <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-3">
@@ -2087,7 +3244,7 @@ export const EmployeeDirectory: React.FC = () => {
                 <input
                   type="email"
                   required
-                  placeholder={`${missingEmailModalEmp.firstName.toLowerCase()}.${missingEmailModalEmp.lastName.toLowerCase()}@popejohnpaul2med.org`}
+                  placeholder={`${(missingEmailModalEmp.firstName || 'staff').toLowerCase()}.${(missingEmailModalEmp.lastName || 'member').toLowerCase()}@popejohnpaul2med.org`}
                   value={promptEmailValue}
                   onChange={(e) => setPromptEmailValue(e.target.value)}
                   className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3.5 py-2.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
@@ -2113,6 +3270,11 @@ export const EmployeeDirectory: React.FC = () => {
           </div>
         </div>
       )}
+
+      <CreateStaffAccountModal
+        isOpen={isCreateHrAccountModalOpen}
+        onClose={() => setIsCreateHrAccountModalOpen(false)}
+      />
     </div>
   );
 };

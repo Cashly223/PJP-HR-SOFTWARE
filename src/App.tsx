@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { HrmsProvider, useHrms } from './context/HrmsContext';
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
+import { LoginPage } from './components/auth/LoginPage';
 import { ExecutiveDashboard } from './components/dashboard/ExecutiveDashboard';
 import { EmployeeDirectory } from './components/employees/EmployeeDirectory';
 import { CredentialTracker } from './components/credentials/CredentialTracker';
@@ -22,16 +23,54 @@ import { RestApiBrowser } from './components/api/RestApiBrowser';
 import { DepartmentConferencePlatform } from './components/conference/DepartmentConferencePlatform';
 import { SystemCustomizationPanel } from './components/customization/SystemCustomizationPanel';
 import { OrgHierarchyView } from './components/employees/OrgHierarchyView';
+import { StaffFileManager } from './components/files/StaffFileManager';
+import { StaffMemberDashboard } from './components/dashboard/StaffMemberDashboard';
+import { AccessRestricted } from './components/access/AccessRestricted';
+import { ChangePasswordModal } from './components/auth/ChangePasswordModal';
 import { AIAssistantModal } from './components/AIAssistantModal';
 import { MobileAppSimulator } from './components/MobileAppSimulator';
+import { HospitalNoticeBoard } from './components/noticeboard/HospitalNoticeBoard';
+import { StaffChatRoom } from './components/chat/StaffChatRoom';
+import { BirthdayNotificationBanner } from './components/birthday/BirthdayNotificationBanner';
+import { DigitalSuggestionBox } from './components/suggestions/DigitalSuggestionBox';
+import { InformationHub } from './components/infohub/InformationHub';
 
 const AppContent: React.FC = () => {
-  const { activeTab, isAiModalOpen, setIsAiModalOpen, isMobileSimOpen, setIsMobileSimOpen } = useHrms();
+  const { isAuthenticated, activeTab, currentUser, activeRole, hasModuleAccess } = useHrms();
+  const [isAiModalOpen, setIsAiModalOpen] = useState(false);
+  const [isMobileSimOpen, setIsMobileSimOpen] = useState(false);
+  const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
+
+  if (!isAuthenticated) {
+    return <LoginPage />;
+  }
+
+  const isExecRole = ['super_admin', 'facility_head', 'hr_director', 'hr_manager'].includes(activeRole);
 
   const renderTabContent = () => {
+    // RBAC Security Check
+    if (!hasModuleAccess(activeRole, currentUser?.id, activeTab)) {
+      return <AccessRestricted moduleName={activeTab} />;
+    }
+
     switch (activeTab) {
       case 'dashboard':
-        return <ExecutiveDashboard />;
+        return (
+          <div className="space-y-6">
+            <BirthdayNotificationBanner />
+            {isExecRole ? <ExecutiveDashboard /> : <StaffMemberDashboard />}
+          </div>
+        );
+      case 'notice_board':
+        return <HospitalNoticeBoard />;
+      case 'staff_chat':
+        return <StaffChatRoom />;
+      case 'suggestions':
+        return <DigitalSuggestionBox />;
+      case 'info_hub':
+        return <InformationHub />;
+      case 'staff_files':
+        return <StaffFileManager />;
       case 'customization':
         return <SystemCustomizationPanel />;
       case 'conference':
@@ -83,7 +122,10 @@ const AppContent: React.FC = () => {
       {/* Main Container */}
       <div className="flex flex-1 flex-col overflow-hidden">
         {/* Header Bar */}
-        <Header />
+        <Header
+          onOpenAIAssistant={() => setIsAiModalOpen(true)}
+          onChangePasswordClick={() => setIsChangePasswordOpen(true)}
+        />
 
         {/* View Content Area */}
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 bg-slate-50 dark:bg-slate-950">
@@ -94,6 +136,11 @@ const AppContent: React.FC = () => {
       {/* Modals & Simulators */}
       <AIAssistantModal isOpen={isAiModalOpen} onClose={() => setIsAiModalOpen(false)} />
       {isMobileSimOpen && <MobileAppSimulator onClose={() => setIsMobileSimOpen(false)} />}
+      <ChangePasswordModal
+        isOpen={isChangePasswordOpen || currentUser?.mustChangePassword === true}
+        onClose={() => setIsChangePasswordOpen(false)}
+        isMandatory={currentUser?.mustChangePassword === true}
+      />
     </div>
   );
 };

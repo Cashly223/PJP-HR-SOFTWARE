@@ -53,9 +53,48 @@ export interface MedicalLicense {
 }
 
 export interface EmergencyContact {
+  id?: string;
   name: string;
   relation: string;
   phone: string;
+  altPhone?: string;
+  address?: string;
+  email?: string;
+}
+
+export interface GhanaCardInfo {
+  cardPin: string; // e.g. GHA-721098342-1
+  issueDate?: string;
+  expiryDate?: string;
+  verificationStatus: 'Verified' | 'Pending Verification' | 'Rejected';
+  frontCopyUrl?: string;
+  frontCopyName?: string;
+  backCopyUrl?: string;
+  backCopyName?: string;
+}
+
+export interface EducationItem {
+  id: string;
+  institution: string;
+  qualification: string; // e.g. BSc Nursing, MBChB, Diploma in Pharmacy, WASSCE, Master of Public Health
+  fieldOfStudy: string;
+  startYear?: string;
+  graduationYear: string;
+  gradeOrClass?: string;
+  certificateUrl?: string;
+  certificateFileName?: string;
+}
+
+export interface OfficialDocument {
+  id: string;
+  title: string;
+  type: 'Appointment Letter' | 'Assumption of Duty Letter' | 'Transfer Document' | 'Other Official Document';
+  fileUrl: string;
+  fileName: string;
+  fileSize?: number;
+  uploadedAt: string;
+  uploadedBy?: string;
+  notes?: string;
 }
 
 export interface VaccinationRecord {
@@ -64,6 +103,33 @@ export interface VaccinationRecord {
   doseDate: string;
   status: 'Completed' | 'Pending Booster';
   certificateUrl?: string;
+}
+
+export interface StaffFile {
+  id: string;
+  ownerUid: string;
+  ownerEmail: string;
+  ownerName: string;
+  fileName: string;
+  fileType: string; // pdf, image, doc, xls, txt, zip
+  fileSize: number;
+  fileData: string; // base64 or text or url
+  category:
+    | 'Medical License'
+    | 'Clinical Certification'
+    | 'HR Contract'
+    | 'Appointment Letter'
+    | 'Assumption of Duty Letter'
+    | 'Transfer Document'
+    | 'Ghana Card / ID'
+    | 'Educational Certificate'
+    | 'Performance Review'
+    | 'Personal Document'
+    | 'Other';
+  description?: string;
+  uploadedAt: string;
+  updatedAt: string;
+  permissionGrantedByHr: boolean;
 }
 
 export interface Employee {
@@ -93,6 +159,19 @@ export interface Employee {
   bankAccount: string;
   emergencyContacts: EmergencyContact[];
   vaccinations: VaccinationRecord[];
+  ghanaCardInfo?: GhanaCardInfo;
+  educationList?: EducationItem[];
+  officialDocuments?: OfficialDocument[];
+  appointmentLetterUrl?: string;
+  appointmentLetterName?: string;
+  assumptionOfDutyUrl?: string;
+  assumptionOfDutyName?: string;
+  transferDocumentUrl?: string;
+  transferDocumentName?: string;
+  mustChangePassword?: boolean;
+  filePermissionGranted?: boolean;
+  defaultPassword?: string;
+  dateOfBirth?: string;
   occupationalHealth: {
     lastExamDate: string;
     fitForDuty: boolean;
@@ -207,6 +286,8 @@ export interface LeaveRequest {
   id: string;
   employeeId: string;
   employeeName: string;
+  staffId?: string;
+  grade?: string;
   department: string;
   unit?: string;
   leaveType: 'Annual Leave' | 'Sick / Medical' | 'Maternity' | 'Paternity' | 'Study / CME' | 'Hazard / Emergency' | 'Unpaid';
@@ -219,6 +300,38 @@ export interface LeaveRequest {
   currentStage: WorkflowStage;
   workflow: MultiTierWorkflow;
   appliedOn: string;
+
+  // PART A (APPLICATION)
+  leaveYear?: number;
+  leaveEntitlement?: number;
+  deferredLeaveDaysDue?: number;
+  leaveDaysEarned?: number;
+  addressOnLeave?: string;
+  phoneOnLeave?: string;
+  applicantSignedDate?: string;
+
+  // PART B (RECOMMENDATION)
+  recommendationStatus?: 'RECOMMENDED' | 'NOT RECOMMENDED';
+  replacementRequired?: 'REQUIRED' | 'NOT REQUIRED';
+  unitHeadSignedBy?: string;
+  unitHeadSignedDate?: string;
+  deptHeadSignedBy?: string;
+  deptHeadSignedDate?: string;
+
+  // PART C (VALIDATION)
+  outstandingLeaveDays?: number;
+  validatedStartDate?: string;
+  validatedEndDate?: string;
+  dateOfResumption?: string;
+  hrRemarks?: string;
+  hrSignedBy?: string;
+  hrSignedDate?: string;
+
+  // PART D (APPROVAL)
+  daysGranted?: number;
+  approvalRemarks?: string;
+  facilityInChargeSignedBy?: string;
+  facilityInChargeSignedDate?: string;
 }
 
 export interface PayrollRecord {
@@ -288,6 +401,27 @@ export interface TrainingCourse {
   progressPercent: number;
   score?: number;
   certificateIssued: boolean;
+  instructor?: string;
+  scheduledDate?: string;
+  sessionTime?: string;
+  venue?: string;
+  totalAttendees?: number;
+}
+
+export interface TrainingAttendanceRecord {
+  id: string;
+  courseId: string;
+  courseTitle: string;
+  employeeId: string;
+  employeeName: string;
+  department: string;
+  trainingDate: string;
+  sessionTime: string;
+  checkInTime: string;
+  status: 'Present' | 'Absent' | 'Late' | 'Excused';
+  verificationMethod: 'QR Code Scan' | 'Biometric Verification' | 'Instructor Sign-off' | 'Digital Roll-call';
+  verifiedBy?: string;
+  cmeHoursEarned: number;
 }
 
 export interface IncidentReport {
@@ -578,4 +712,100 @@ export interface SystemCustomizationSettings {
   lastUpdatedBy?: string;
   lastUpdatedAt?: string;
 }
+
+export interface StaffAccessPermissions {
+  employeeId: string;
+  employeeName?: string;
+  email?: string;
+  grantedModules: string[]; // Module IDs granted by HR (e.g., 'recruitment', 'audit', 'reports', 'assets')
+  grantedAt?: string;
+  grantedBy?: string;
+  notes?: string;
+}
+
+export interface ExpenseClaim {
+  id: string;
+  employeeId: string;
+  employeeName: string;
+  department: string;
+  claimType: 'CME & Clinical Training' | 'Medical Equipment & Tools' | 'Travel & Mileage' | 'Hazard & Shift Expense' | 'Other';
+  amount: number;
+  description: string;
+  receiptUrl?: string;
+  submittedDate: string;
+  status: 'Pending' | 'Approved' | 'Rejected' | 'Reimbursed';
+  approvedBy?: string;
+  approvedDate?: string;
+}
+
+export interface NoticeBoardPost {
+  id: string;
+  title: string;
+  content: string;
+  authorId: string;
+  authorName: string;
+  authorRole: string;
+  category: 'Urgent Alert' | 'Clinical Policy' | 'HR Announcement' | 'Hospital Event' | 'General Notice';
+  priority: 'High' | 'Normal';
+  targetDepartment: string;
+  isPinned: boolean;
+  postedAt: string;
+  likesCount: number;
+  likedBy: string[];
+  acknowledgements: string[];
+}
+
+export interface ChatMessage {
+  id: string;
+  channelId: string;
+  senderId: string;
+  senderName: string;
+  senderRole: string;
+  senderDepartment: string;
+  senderAvatar: string;
+  content: string;
+  timestamp: string;
+  reactions?: Record<string, number>;
+}
+
+export interface ChatChannel {
+  id: string;
+  name: string;
+  description: string;
+  icon?: string;
+}
+
+export interface SuggestionItem {
+  id: string;
+  title: string;
+  details: string;
+  category: 'Patient Care & Safety' | 'Staff Welfare & Amenities' | 'HR Policies' | 'Equipment & Facilities' | 'IT & Systems' | 'General Innovation';
+  isAnonymous: boolean;
+  submittedBy?: string;
+  submittedByDept?: string;
+  submittedAt: string;
+  status: 'Submitted' | 'Under Review' | 'Planned' | 'Implemented' | 'Declined';
+  upvotes: number;
+  upvotedBy: string[];
+  responseFromManagement?: {
+    responderName: string;
+    responderRole: string;
+    message: string;
+    updatedAt: string;
+  };
+}
+
+export interface InfoHubArticle {
+  id: string;
+  title: string;
+  category: 'Vision & Mission' | 'Leave Policies' | 'Study Leave Policies' | 'Promotion & Demotion' | 'Code of Conduct & Ethics' | 'Hospital Guidelines';
+  summary: string;
+  content: string;
+  lastUpdated: string;
+  version: string;
+  author: string;
+  downloadablePdfName?: string;
+  tags: string[];
+}
+
 

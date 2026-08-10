@@ -1,0 +1,60 @@
+{
+  "entities": {
+    "employees": {
+      "title": "Employee",
+      "description": "Staff profiles, credentials, HR file permissions, and account settings",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "empCode": { "type": "string" },
+        "firstName": { "type": "string" },
+        "lastName": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string" },
+        "department": { "type": "string" },
+        "jobTitle": { "type": "string" },
+        "status": { "type": "string" },
+        "photo": { "type": "string" },
+        "mustChangePassword": { "type": "boolean" },
+        "filePermissionGranted": { "type": "boolean" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["uid", "email", "role", "firstName", "lastName"]
+    },
+    "staff_files": {
+      "title": "Staff File",
+      "description": "User documents and files uploaded by staff or managed by HR",
+      "type": "object",
+      "properties": {
+        "ownerUid": { "type": "string" },
+        "ownerEmail": { "type": "string" },
+        "fileName": { "type": "string" },
+        "fileType": { "type": "string" },
+        "fileSize": { "type": "number" },
+        "fileData": { "type": "string" },
+        "category": { "type": "string" },
+        "description": { "type": "string" },
+        "uploadedAt": { "type": "string" },
+        "updatedAt": { "type": "string" },
+        "permissionGrantedByHr": { "type": "boolean" }
+      },
+      "required": ["ownerUid", "fileName", "fileData"]
+    },
+    "audit_logs": {
+      "title": "Audit Log",
+      "description": "System security and HR audit logs",
+      "type": "object",
+      "properties": {
+        "timestamp": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "userRole": { "type": "string" },
+        "action": { "type": "string" },
+        "module": { "type": "string" },
+        "details": { "type": "string" }
+      },
+      "required": ["action", "timestamp"]
+    }
+  }
+}

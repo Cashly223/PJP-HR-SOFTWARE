@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { useHrms } from '../../context/HrmsContext';
 import { CurrencyCode, SystemCustomizationSettings } from '../../types/hrms';
+import { AccessControlPanel } from '../access/AccessControlPanel';
 
 export const SystemCustomizationPanel: React.FC = () => {
   const { systemCustomization, updateSystemCustomization, activeRole, setActiveRole } = useHrms();
@@ -30,7 +31,7 @@ export const SystemCustomizationPanel: React.FC = () => {
   // Check if active user role is HR or Administrator
   const isHRorAdmin = ['super_admin', 'facility_head', 'hr_director', 'hr_manager'].includes(activeRole);
 
-  const [activeTab, setActiveTab] = useState<'branding' | 'workflows' | 'security' | 'email' | 'modules'>('branding');
+  const [activeTab, setActiveTab] = useState<'branding' | 'access_control' | 'workflows' | 'security' | 'email' | 'modules'>('access_control');
   const [formData, setFormData] = useState<SystemCustomizationSettings>({ ...systemCustomization });
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
@@ -182,10 +183,21 @@ export const SystemCustomizationPanel: React.FC = () => {
       {/* Navigation Tabs */}
       <div className="flex flex-wrap items-center gap-2 bg-white dark:bg-slate-900 p-2 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm text-xs font-bold">
         <button
+          onClick={() => setActiveTab('access_control')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition ${
+            activeTab === 'access_control'
+              ? 'bg-emerald-600 text-white shadow'
+              : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+          }`}
+        >
+          <ShieldCheck className="h-4 w-4" /> Access Control & Staff Permissions
+        </button>
+
+        <button
           onClick={() => setActiveTab('branding')}
           className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition ${
             activeTab === 'branding'
-              ? 'bg-emerald-600 text-white shadow'
+              ? 'bg-teal-600 text-white shadow'
               : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
           }`}
         >
@@ -237,8 +249,12 @@ export const SystemCustomizationPanel: React.FC = () => {
         </button>
       </div>
 
+      {/* TAB: ACCESS CONTROL & STAFF PERMISSIONS */}
+      {activeTab === 'access_control' && <AccessControlPanel />}
+
       {/* Main Configuration Form */}
-      <form onSubmit={handleSave} className="space-y-6">
+      {activeTab !== 'access_control' && (
+        <form onSubmit={handleSave} className="space-y-6">
         {/* TAB 1: HOSPITAL BRANDING & THEME */}
         {activeTab === 'branding' && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -628,6 +644,7 @@ export const SystemCustomizationPanel: React.FC = () => {
           </button>
         </div>
       </form>
+      )}
     </div>
   );
 };

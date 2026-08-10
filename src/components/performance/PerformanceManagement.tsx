@@ -26,7 +26,11 @@ import { useHrms } from '../../context/HrmsContext';
 import { PerformanceReview, ClinicalCompetency, PerformanceGoal } from '../../types/hrms';
 
 export const PerformanceManagement: React.FC = () => {
-  const { performanceReviews, employees, addPerformanceReview, updatePerformanceReview } = useHrms();
+  const { performanceReviews, employees, addPerformanceReview, updatePerformanceReview, activeRole, currentUser } = useHrms();
+
+  const isHRorAdmin = ['super_admin', 'facility_head', 'hr_director', 'hr_manager', 'dept_head', 'unit_head'].includes(activeRole);
+  const currentEmpName = currentUser?.name || '';
+  const currentEmpEmail = currentUser?.email || '';
 
   // Search & Filters
   const [searchTerm, setSearchTerm] = useState('');
@@ -54,10 +58,18 @@ export const PerformanceManagement: React.FC = () => {
 
   // Filtered List
   const filteredReviews = performanceReviews.filter((r) => {
+    if (!isHRorAdmin) {
+      const isSelf =
+        r.employeeId === currentUser?.id ||
+        (currentEmpName && (r.employeeName || '').toLowerCase().includes(currentEmpName.toLowerCase().split(' ')[0])) ||
+        (currentEmpEmail && (r.employeeName || '').toLowerCase().includes(currentEmpEmail.split('@')[0].toLowerCase()));
+      if (!isSelf) return false;
+    }
+
     const matchesSearch =
-      r.employeeName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      r.jobTitle.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      r.department.toLowerCase().includes(searchTerm.toLowerCase());
+      (r.employeeName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (r.jobTitle || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (r.department || '').toLowerCase().includes(searchTerm.toLowerCase());
 
     const matchesStatus = statusFilter === 'All' || r.status === statusFilter;
     const matchesPeriod = periodFilter === 'All' || r.reviewPeriod === periodFilter;

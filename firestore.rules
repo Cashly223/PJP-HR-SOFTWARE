@@ -1,0 +1,44 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Employees collection
+    match /employees/{employeeId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isAuthenticated();
+    }
+
+    // Staff Files collection
+    match /staff_files/{fileId} {
+      allow read: if isAuthenticated() && (
+        resource.data.ownerUid == request.auth.uid || 
+        resource.data.ownerEmail == request.auth.token.email ||
+        request.auth.uid != null
+      );
+      allow create: if isAuthenticated();
+      allow update, delete: if isAuthenticated() && (
+        resource.data.ownerUid == request.auth.uid ||
+        request.auth.uid != null
+      );
+    }
+
+    // Audit logs collection
+    match /audit_logs/{logId} {
+      allow read, create: if isAuthenticated();
+    }
+
+    // Fallback for subcollections or other documents
+    match /{document=**} {
+      allow read, write: if isAuthenticated();
+    }
+  }
+}

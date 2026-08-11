@@ -41,6 +41,8 @@ import {
   ShiftSwapRequest,
   DepartmentMonthlyRoster,
   DepartmentConferenceMeeting,
+  AnnualUnitLeaveRoaster,
+  AnnualUnitLeaveRoasterItem,
   EmailDispatchResult,
   DepartmentLeadership,
   UnitLeadership,
@@ -75,6 +77,7 @@ import {
   MOCK_PERFORMANCE_REVIEWS,
   MOCK_SHIFT_SWAP_REQUESTS,
   MOCK_MONTHLY_UNIT_ROSTERS,
+  MOCK_ANNUAL_UNIT_LEAVE_ROASTERS,
   MOCK_CONFERENCE_MEETINGS,
   MOCK_DEPARTMENT_LEADERSHIP,
   MOCK_STAFF_PERMISSIONS,
@@ -153,10 +156,23 @@ interface HrmsContextType {
   processLeaveWorkflowStep: (leaveId: string, action: 'Approve' | 'Reject', comments?: string, customApproverName?: string) => void;
 
   departmentLeadership: DepartmentLeadership[];
+  addDepartment: (deptData: {
+    departmentName: string;
+    departmentCode: string;
+    departmentHeadName?: string;
+    departmentHeadEmail?: string;
+    departmentHeadId?: string;
+    units?: Array<{ unitName: string; unitHeadId?: string }>;
+  }) => void;
   assignDepartmentHead: (departmentName: string, employeeId: string) => void;
   assignUnitHead: (departmentName: string, unitName: string, employeeId: string) => void;
   addUnitToDepartment: (departmentName: string, unitName: string, initialHeadId?: string) => void;
   setFacilityHead: (employeeId: string) => void;
+
+  annualUnitLeaveRoasters: AnnualUnitLeaveRoaster[];
+  saveAnnualUnitLeaveRoaster: (roaster: AnnualUnitLeaveRoaster) => void;
+  approveAnnualUnitLeaveRoasterByHR: (roasterId: string, hrName: string, hrComments?: string) => void;
+  updateAnnualLeaveItemByHR: (roasterId: string, itemId: string, updates: Partial<AnnualUnitLeaveRoasterItem>) => void;
 
   payrolls: PayrollRecord[];
   approvePayroll: (id: string) => void;
@@ -424,6 +440,7 @@ export const HrmsProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [monthlyUnitRosters, setMonthlyUnitRosters] = useState<DepartmentMonthlyRoster[]>(MOCK_MONTHLY_UNIT_ROSTERS);
   const [conferenceMeetings, setConferenceMeetings] = useState<DepartmentConferenceMeeting[]>(MOCK_CONFERENCE_MEETINGS);
   const [departmentLeadership, setDepartmentLeadership] = useState<DepartmentLeadership[]>(MOCK_DEPARTMENT_LEADERSHIP);
+  const [annualUnitLeaveRoasters, setAnnualUnitLeaveRoasters] = useState<AnnualUnitLeaveRoaster[]>(MOCK_ANNUAL_UNIT_LEAVE_ROASTERS);
   const [staffPermissions, setStaffPermissions] = useState<StaffAccessPermissions[]>(MOCK_STAFF_PERMISSIONS);
   const [expenseClaims, setExpenseClaims] = useState<ExpenseClaim[]>(MOCK_EXPENSE_CLAIMS);
   const [noticePosts, setNoticePosts] = useState<NoticeBoardPost[]>(MOCK_NOTICE_POSTS);
@@ -542,6 +559,19 @@ export const HrmsProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Auth Operations with Firebase Auth & Firestore Sync
   const login = async (emailInput: string, passwordInput?: string, defaultRole?: UserRole, nameInput?: string) => {
+    const cleanEmail = emailInput ? emailInput.trim().toLowerCase() : '';
+    const matchedEmp = employees.find(
+      (e) =>
+        (e.email && e.email.trim().toLowerCase() === cleanEmail) ||
+        (e.empCode && e.empCode.trim().toLowerCase() === cleanEmail)
+    );
+
+    if (!matchedEmp) {
+      throw new Error(
+        `Access Denied: Portal access is strictly restricted to staff enrolled by HR. Email or Staff ID '${emailInput}' is not registered in the HR Staff Registry. Please contact HR Administration to be enrolled.`
+      );
+    }
+
     let authUser = null;
     try {
       if (passwordInput) {
@@ -551,10 +581,6 @@ export const HrmsProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (firebaseErr) {
       console.warn('Firebase Auth sign in notice:', firebaseErr);
     }
-
-    const matchedEmp = employees.find(
-      (e) => e.email && emailInput && e.email.toLowerCase() === emailInput.toLowerCase()
-    );
 
     let userRole = defaultRole || (matchedEmp ? matchedEmp.role : activeRole);
     let name = nameInput || (matchedEmp ? `${matchedEmp.firstName} ${matchedEmp.lastName}` : emailInput.split('@')[0]);
@@ -607,7 +633,18 @@ export const HrmsProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const signup = async (userData: { fullName: string; email: string; password?: string; role: UserRole; department: string }) => {
-    let authUid = `user-${Date.now()}`;
+    const cleanEmail = userData.email ? userData.email.trim().toLowerCase() : '';
+    const enrolledEmp = employees.find(
+      (e) => e.email && e.email.trim().toLowerCase() === cleanEmail
+    );
+
+    if (!enrolledEmp) {
+      throw new Error(
+        `Access Denied: Access to the portal is strictly by HR invitation. Email '${userData.email}' is not pre-enrolled in the HR Staff Registry. Please contact HR Administration to receive an invitation.`
+      );
+    }
+
+    let authUid = enrolledEmp.id;
     try {
       if (userData.password) {
         const userCredential = await createUserWithEmailAndPassword(auth, userData.email, userData.password);
@@ -618,8 +655,8 @@ export const HrmsProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     const names = userData.fullName.trim().split(' ');
-    const firstName = names[0] || 'Staff';
-    const lastName = names.slice(1).join(' ') || 'User';
+    const firstName = names[0] || enrolledEmp.firstName;
+    const lastName = names.slice(1).join(' ') || enrolledEmp.lastName;
 
     const newEmp = addEmployee({
       id: authUid,
@@ -1076,10 +1113,38 @@ export const HrmsProvider: React.FC<{ children: React.ReactNode }> = ({ children
       },
     };
     setLeaves((prev) => [newLeave, ...prev]);
+
+    // Automated notification targeting Department Heads & Managers
+    const deptHeadNotif: NotificationItem = {
+      id: `notif-leave-${Date.now()}`,
+      recipientId: 'dept_head',
+      title: `🚨 New Leave Application: ${newLeave.employeeName}`,
+      message: `${newLeave.employeeName} (${newLeave.department}) submitted a request for ${newLeave.totalDays} days of ${newLeave.leaveType} (${newLeave.startDate} to ${newLeave.endDate}). Tier 1 (Unit Head) & Tier 2 (Department Head) action required.`,
+      channel: 'In-App',
+      type: 'Approval',
+      read: false,
+      timestamp: new Date().toISOString(),
+    };
+
+    // Specific Department Head direct notification
+    const targetDept = departmentLeadership.find((d) => d.departmentName.toLowerCase() === (newLeave.department || '').toLowerCase());
+    const specificNotif: NotificationItem = {
+      id: `notif-depthead-direct-${Date.now()}`,
+      recipientId: targetDept?.departmentHeadId || 'emp-101',
+      title: `📩 Leave Request Alert for ${newLeave.department}: ${newLeave.employeeName}`,
+      message: `Attention ${targetDept?.departmentHeadName || 'Department Head'}: ${newLeave.employeeName} requested ${newLeave.totalDays} days leave from ${newLeave.startDate} to ${newLeave.endDate}. Please review in PJPIIMC Staff Portal.`,
+      channel: 'Email',
+      type: 'Approval',
+      read: false,
+      timestamp: new Date().toISOString(),
+    };
+
+    setNotifications((prev) => [deptHeadNotif, specificNotif, ...prev]);
+
     addAuditLog(
       'Submitted Leave Request',
       'Leave Management Workflow',
-      `${newLeave.employeeName} requested ${newLeave.totalDays} days of ${newLeave.leaveType}. Sequential workflow initiated at Tier 1 (Unit Head).`
+      `${newLeave.employeeName} requested ${newLeave.totalDays} days of ${newLeave.leaveType}. Sequential workflow initiated at Tier 1 (Unit Head). Automated notification sent to Department Head.`
     );
   };
 
@@ -1341,6 +1406,91 @@ export const HrmsProvider: React.FC<{ children: React.ReactNode }> = ({ children
     );
   };
 
+  const addDepartment = (deptData: {
+    departmentName: string;
+    departmentCode: string;
+    departmentHeadName?: string;
+    departmentHeadEmail?: string;
+    departmentHeadId?: string;
+    units?: Array<{ unitName: string; unitHeadId?: string }>;
+  }) => {
+    let newUnits: UnitLeadership[] = [];
+
+    if (deptData.units && deptData.units.length > 0) {
+      newUnits = deptData.units
+        .filter((u) => u.unitName && u.unitName.trim().length > 0)
+        .map((u, idx) => {
+          const uHeadEmp = employees.find((e) => e.id === u.unitHeadId);
+          return {
+            id: `u-${Date.now()}-${idx + 1}`,
+            unitName: u.unitName.trim(),
+            departmentName: deptData.departmentName,
+            unitHeadId: uHeadEmp?.id,
+            unitHeadName: uHeadEmp ? `${uHeadEmp.firstName} ${uHeadEmp.lastName}` : undefined,
+            unitHeadEmail: uHeadEmp?.email,
+            staffCount: 6,
+          };
+        });
+    }
+
+    if (newUnits.length === 0) {
+      newUnits = [
+        {
+          id: `u-${Date.now()}-1`,
+          unitName: `${deptData.departmentName} General Unit`,
+          departmentName: deptData.departmentName,
+          staffCount: 6,
+        },
+      ];
+    }
+
+    const newDept: DepartmentLeadership = {
+      id: `dept-${Date.now()}`,
+      departmentName: deptData.departmentName,
+      departmentCode: deptData.departmentCode,
+      departmentHeadId: deptData.departmentHeadId,
+      departmentHeadName: deptData.departmentHeadName,
+      departmentHeadEmail: deptData.departmentHeadEmail,
+      units: newUnits,
+      lastAssignedBy: 'Miss Vero (HR Director)',
+      lastAssignedAt: new Date().toISOString(),
+    };
+
+    setDepartmentLeadership((prev) => [...prev, newDept]);
+
+    // Update HOD employee role & department
+    if (deptData.departmentHeadId) {
+      setEmployees((prev) =>
+        prev.map((e) =>
+          e.id === deptData.departmentHeadId
+            ? { ...e, role: 'dept_head', department: deptData.departmentName }
+            : e
+        )
+      );
+    }
+
+    // Update Unit Heads employee roles & department & unit
+    if (deptData.units && deptData.units.length > 0) {
+      deptData.units.forEach((u) => {
+        if (u.unitHeadId && u.unitName.trim()) {
+          setEmployees((prev) =>
+            prev.map((e) =>
+              e.id === u.unitHeadId
+                ? { ...e, role: 'unit_head', department: deptData.departmentName, unit: u.unitName.trim() }
+                : e
+            )
+          );
+        }
+      });
+    }
+
+    addAuditLog(
+      'Created New Department',
+      'Leadership & Governance',
+      `HR created department '${deptData.departmentName}' (${deptData.departmentCode}) with ${newUnits.length} unit(s)`
+    );
+  };
+
   const addUnitToDepartment = (departmentName: string, unitName: string, initialHeadId?: string) => {
     const targetEmp = employees.find((e) => e.id === initialHeadId);
     const empFullName = targetEmp ? `${targetEmp.firstName} ${targetEmp.lastName}` : undefined;
@@ -1360,13 +1510,74 @@ export const HrmsProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return {
           ...d,
           units: [...d.units, newUnit],
-          lastAssignedBy: 'Marcus Vance (HR Director)',
+          lastAssignedBy: 'Miss Vero (HR Director)',
           lastAssignedAt: new Date().toISOString(),
         };
       })
     );
 
+    if (initialHeadId) {
+      setEmployees((prev) =>
+        prev.map((e) =>
+          e.id === initialHeadId
+            ? { ...e, role: 'unit_head', department: departmentName, unit: unitName }
+            : e
+        )
+      );
+    }
+
     addAuditLog('Created Hospital Unit', 'Leadership & Governance', `HR created unit '${unitName}' under ${departmentName}`);
+  };
+
+  const saveAnnualUnitLeaveRoaster = (roaster: AnnualUnitLeaveRoaster) => {
+    setAnnualUnitLeaveRoasters((prev) => {
+      const idx = prev.findIndex((r) => r.id === roaster.id);
+      if (idx >= 0) {
+        const copy = [...prev];
+        copy[idx] = roaster;
+        return copy;
+      }
+      return [roaster, ...prev];
+    });
+    addAuditLog('Saved Annual Unit Leave Roaster', 'Leave Management', `Annual unit leave roaster for ${roaster.unitName} (${roaster.year}) saved. Status: ${roaster.status}`);
+  };
+
+  const approveAnnualUnitLeaveRoasterByHR = (roasterId: string, hrName: string, hrComments?: string) => {
+    setAnnualUnitLeaveRoasters((prev) =>
+      prev.map((r) => {
+        if (r.id === roasterId) {
+          return {
+            ...r,
+            status: 'HR Verified & Approved',
+            hrVerifiedBy: hrName || 'Marcus Vance (HR Director)',
+            hrVerifiedAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
+            hrComments: hrComments || 'Verified against staffing ratios and approved by HR.',
+          };
+        }
+        return r;
+      })
+    );
+    addAuditLog('HR Verified Annual Unit Leave Roaster', 'Leave Management', `HR verified and approved annual leave roaster ID ${roasterId}`);
+  };
+
+  const updateAnnualLeaveItemByHR = (roasterId: string, itemId: string, updates: Partial<AnnualUnitLeaveRoasterItem>) => {
+    setAnnualUnitLeaveRoasters((prev) =>
+      prev.map((r) => {
+        if (r.id === roasterId) {
+          return {
+            ...r,
+            items: r.items.map((item) => {
+              if (item.id === itemId) {
+                return { ...item, ...updates, hrModified: true };
+              }
+              return item;
+            }),
+          };
+        }
+        return r;
+      })
+    );
+    addAuditLog('HR Modified Annual Leave Entry', 'Leave Management', `HR updated leave entry ID ${itemId} in roaster ID ${roasterId}`);
   };
 
   const setFacilityHead = (employeeId: string) => {
@@ -2574,10 +2785,16 @@ export const HrmsProvider: React.FC<{ children: React.ReactNode }> = ({ children
         processLeaveWorkflowStep,
 
         departmentLeadership,
+        addDepartment,
         assignDepartmentHead,
         assignUnitHead,
         addUnitToDepartment,
         setFacilityHead,
+
+        annualUnitLeaveRoasters,
+        saveAnnualUnitLeaveRoaster,
+        approveAnnualUnitLeaveRoasterByHR,
+        updateAnnualLeaveItemByHR,
 
         payrolls,
         approvePayroll,

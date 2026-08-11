@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   User,
   PlaneTakeoff,
@@ -18,16 +18,24 @@ import {
   Lock,
   Building2,
   Stethoscope,
+  BellRing,
+  ChevronRight,
+  AlertCircle,
 } from 'lucide-react';
 import { useHrms } from '../../context/HrmsContext';
+import { SubordinateRequestModal } from '../notifications/SubordinateRequestModal';
 
 export const StaffMemberDashboard: React.FC = () => {
   const {
     currentUser,
     activeRole,
     employees,
+    departmentLeadership,
     leaves,
     rosters,
+    shiftSwapRequests,
+    monthlyUnitRosters,
+    expenseClaims,
     attendance,
     courses,
     payrolls,
@@ -38,12 +46,60 @@ export const StaffMemberDashboard: React.FC = () => {
     selectedHospital,
   } = useHrms();
 
+  const [isSubordinateModalOpen, setIsSubordinateModalOpen] = useState(false);
+
   // Find employee profile
   const emp = employees.find(
     (e) => (e.email && currentUser?.email && e.email.toLowerCase() === currentUser.email.toLowerCase()) || e.id === currentUser?.id
   ) || employees[0];
 
   const empFirstName = emp?.firstName || '';
+
+  // Leadership checks
+  const isUnitHead =
+    activeRole === 'unit_head' ||
+    emp?.role === 'unit_head' ||
+    departmentLeadership.some((d) =>
+      d.units.some(
+        (u) =>
+          u.unitHeadId === emp?.id ||
+          (u.unitHeadEmail && currentUser?.email && u.unitHeadEmail.toLowerCase() === currentUser.email.toLowerCase())
+      )
+    );
+
+  const isDeptHead =
+    activeRole === 'dept_head' ||
+    emp?.role === 'dept_head' ||
+    departmentLeadership.some(
+      (d) =>
+        d.departmentHeadId === emp?.id ||
+        (d.departmentHeadEmail && currentUser?.email && d.departmentHeadEmail.toLowerCase() === currentUser.email.toLowerCase())
+    );
+
+  const isLeadership = isUnitHead || isDeptHead || ['hr_director', 'hr_manager', 'facility_head', 'super_admin'].includes(activeRole);
+
+  // Subordinate pending counts
+  const pendingLeaves = leaves.filter((l) => l.status === 'Pending');
+  const pendingSwaps = shiftSwapRequests.filter((s) => s.status === 'Pending_Lead_Approval');
+  const pendingRosters = monthlyUnitRosters.filter((r) => r.status === 'Submitted_To_HOD' || r.status === 'Pending HR Approval');
+  const pendingExpenses = expenseClaims.filter((e) => e.status === 'Pending');
+
+  const totalSubordinatePending = pendingLeaves.length + pendingSwaps.length + pendingRosters.length + pendingExpenses.length;
+
+  // Auto-Pop Up on Mount if there are pending subordinate requests and not dismissed in session
+  useEffect(() => {
+    if (isLeadership && totalSubordinatePending > 0) {
+      const dismissed = sessionStorage.getItem('dismissed_subordinate_popup_session');
+      if (!dismissed) {
+        setIsSubordinateModalOpen(true);
+      }
+    }
+  }, [isLeadership, totalSubordinatePending]);
+
+  const handleCloseModal = () => {
+    setIsSubordinateModalOpen(false);
+    sessionStorage.setItem('dismissed_subordinate_popup_session', 'true');
+  };
 
   // Calculated staff stats
   const myLeaves = leaves.filter((l) => (l.employeeName || '').toLowerCase().includes(empFirstName.toLowerCase()));
@@ -144,6 +200,42 @@ export const StaffMemberDashboard: React.FC = () => {
           )}
         </div>
       </div>
+
+      {/* Subordinate Approvals Notification Banner for Unit/Department Heads */}
+      {isLeadership && totalSubordinatePending > 0 && (
+        <div className="rounded-3xl border border-amber-500/30 bg-gradient-to-r from-amber-950/70 via-slate-900 to-slate-950 p-5 shadow-xl text-amber-100 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+          <div className="flex items-start gap-3.5">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-amber-500/20 text-amber-400 border border-amber-500/30">
+              <BellRing className="h-6 w-6 animate-pulse" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="rounded-full bg-amber-500/20 px-2.5 py-0.5 text-[10px] font-extrabold text-amber-300 border border-amber-500/30">
+                  Leadership Notice: {isUnitHead ? 'Unit Head (HOU)' : isDeptHead ? 'Department Head (HOD)' : 'Management Review'}
+                </span>
+                <span className="text-[10px] font-mono text-amber-400/80">
+                  {totalSubordinatePending} Subordinate Request(s) Awaiting Decision
+                </span>
+              </div>
+              <h3 className="mt-1 text-base font-extrabold text-white">
+                Subordinates in your unit/department have submitted requests that require your approval.
+              </h3>
+              <p className="text-xs text-slate-300 mt-0.5">
+                Includes {pendingLeaves.length} leave application(s), {pendingSwaps.length} shift swap proposal(s), and {pendingRosters.length} duty roster(s).
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={() => setIsSubordinateModalOpen(true)}
+            className="flex items-center gap-2 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 px-5 py-3 text-xs font-black shadow-lg transition shrink-0"
+          >
+            <BellRing className="h-4 w-4" />
+            <span>Review Subordinate Requests ({totalSubordinatePending})</span>
+            <ChevronRight className="h-4 w-4" />
+          </button>
+        </div>
+      )}
 
       {/* Staff Key Overview Cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">

@@ -21,10 +21,12 @@ import {
   AlertTriangle,
   UserCheck,
   UploadCloud,
+  Grid,
 } from 'lucide-react';
 import { useHrms } from '../../context/HrmsContext';
 import { ShiftRoster, ShiftSwapRequest } from '../../types/hrms';
 import { DepartmentRosterUploader } from './DepartmentRosterUploader';
+import { MonthlyDutyRoasterGrid } from './MonthlyDutyRoasterGrid';
 
 export const ShiftRosterManager: React.FC = () => {
   const {
@@ -40,7 +42,7 @@ export const ShiftRosterManager: React.FC = () => {
   } = useHrms();
 
   // Active Main Tab
-  const [activeTab, setActiveTab] = useState<'roster' | 'swaps' | 'monthly_rosters'>('roster');
+  const [activeTab, setActiveTab] = useState<'roster' | 'swaps' | 'monthly_rosters' | 'monthly_duty_roaster'>('monthly_duty_roaster');
 
   // New Roster Assignment Modal State
   const [isAddRosterModalOpen, setIsAddRosterModalOpen] = useState(false);
@@ -237,7 +239,18 @@ export const ShiftRosterManager: React.FC = () => {
       </div>
 
       {/* Navigation Tabs */}
-      <div className="flex items-center gap-2 border-b border-slate-800 pb-1">
+      <div className="flex flex-wrap items-center gap-2 border-b border-slate-800 pb-1">
+        <button
+          onClick={() => setActiveTab('monthly_duty_roaster')}
+          className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-lg transition ${
+            activeTab === 'monthly_duty_roaster'
+              ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+          }`}
+        >
+          <Grid className="h-4 w-4 text-emerald-400" /> Monthly Duty Roaster (30 Staff Grid)
+        </button>
+
         <button
           onClick={() => setActiveTab('roster')}
           className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-lg transition ${
@@ -246,7 +259,7 @@ export const ShiftRosterManager: React.FC = () => {
               : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
           }`}
         >
-          <CalendarDays className="h-4 w-4" /> Active Duty Roster ({rosters.length})
+          <CalendarDays className="h-4 w-4" /> Active Shift Schedule ({rosters.length})
         </button>
 
         <button
@@ -273,7 +286,7 @@ export const ShiftRosterManager: React.FC = () => {
               : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
           }`}
         >
-          <UploadCloud className="h-4 w-4" /> Department Monthly Rosters
+          <UploadCloud className="h-4 w-4" /> Roster Documents & Uploads
           {monthlyUnitRosters.filter((r) => r.status === 'Pending HR Approval').length > 0 && (
             <span className="ml-1 rounded-full bg-amber-500 px-2 py-0.5 text-[10px] font-bold text-slate-950">
               {monthlyUnitRosters.filter((r) => r.status === 'Pending HR Approval').length} HR Pending
@@ -281,6 +294,9 @@ export const ShiftRosterManager: React.FC = () => {
           )}
         </button>
       </div>
+
+      {/* TAB 0: MONTHLY DUTY ROASTER (30 STAFF VERTICAL GRID) */}
+      {activeTab === 'monthly_duty_roaster' && <MonthlyDutyRoasterGrid />}
 
       {/* TAB 3: DEPARTMENT MONTHLY ROSTER UPLOAD & HR APPROVAL */}
       {activeTab === 'monthly_rosters' && <DepartmentRosterUploader />}

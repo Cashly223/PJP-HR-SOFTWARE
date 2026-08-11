@@ -30,6 +30,7 @@ import {
   BookOpen,
 } from 'lucide-react';
 import { useHrms } from '../context/HrmsContext';
+import { PjpiimcLogo } from './common/PjpiimcLogo';
 
 interface SidebarProps {
   collapsed?: boolean;
@@ -81,16 +82,18 @@ export const Sidebar: React.FC<SidebarProps> = () => {
 
   return (
     <aside className="flex w-64 flex-col border-r border-slate-200 bg-slate-900 text-slate-100 dark:border-slate-800 dark:bg-slate-950">
-      {/* Brand & Logo */}
-      <div className="flex h-16 items-center border-b border-slate-800 px-6 gap-3">
-        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-400 text-white shadow-md">
-          <Stethoscope className="h-5 w-5" />
+      {/* Brand & Official Coat of Arms Crest Logo */}
+      <div className="flex h-16 items-center border-b border-slate-800 px-4 gap-2.5">
+        <div className="p-1 rounded-xl bg-slate-950 border border-slate-800 shadow-md shrink-0">
+          <PjpiimcLogo size="sm" />
         </div>
-        <div>
-          <h1 className="text-base font-bold tracking-tight text-white flex items-center gap-1.5">
-            AuraHR <span className="rounded bg-emerald-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-400">MED</span>
+        <div className="min-w-0">
+          <h1 className="text-sm font-black tracking-tight text-white truncate flex items-center gap-1">
+            PJPIIMC <span className="rounded bg-emerald-500/20 px-1 py-0.2 text-[9px] font-extrabold text-emerald-400">PORTAL</span>
           </h1>
-          <p className="text-[10px] text-slate-400 truncate max-w-[140px]">{selectedHospital.name}</p>
+          <p className="text-[10px] text-slate-400 truncate max-w-[145px]" title={selectedHospital.name}>
+            {selectedHospital.name}
+          </p>
         </div>
       </div>
 

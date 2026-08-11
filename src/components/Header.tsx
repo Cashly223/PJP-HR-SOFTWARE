@@ -7,6 +7,7 @@ import {
   Moon,
   Sun,
   Bell,
+  BellRing,
   Sparkles,
   Smartphone,
   Check,
@@ -17,6 +18,8 @@ import {
 } from 'lucide-react';
 import { useHrms } from '../context/HrmsContext';
 import { UserRole, LanguageCode, CurrencyCode } from '../types/hrms';
+import { PjpiimcLogo } from './common/PjpiimcLogo';
+import { SubordinateRequestModal } from './notifications/SubordinateRequestModal';
 
 interface HeaderProps {
   onOpenAIAssistant: () => void;
@@ -42,10 +45,23 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAIAssistant, onChangePassw
     markNotificationRead,
     currentUser,
     logout,
+    leaves,
+    shiftSwapRequests,
+    monthlyUnitRosters,
+    expenseClaims,
   } = useHrms();
 
   const [showNotifications, setShowNotifications] = useState(false);
+  const [isSubordinateModalOpen, setIsSubordinateModalOpen] = useState(false);
+
   const unreadCount = notifications.filter((n) => !n.read).length;
+
+  // Subordinate Pending Requests Count for Leadership
+  const pendingLeavesCount = leaves.filter((l) => l.status === 'Pending').length;
+  const pendingSwapsCount = shiftSwapRequests.filter((s) => s.status === 'Pending_Lead_Approval').length;
+  const pendingRostersCount = monthlyUnitRosters.filter((r) => r.status === 'Submitted_To_HOD' || r.status === 'Pending HR Approval').length;
+  const pendingExpensesCount = expenseClaims.filter((e) => e.status === 'Pending').length;
+  const totalSubordinatePending = pendingLeavesCount + pendingSwapsCount + pendingRostersCount + pendingExpensesCount;
 
   const rolesList: { role: UserRole; label: string }[] = [
     { role: 'super_admin', label: 'Super Admin' },
@@ -61,14 +77,14 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAIAssistant, onChangePassw
 
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-slate-200 bg-white/95 px-4 backdrop-blur dark:border-slate-800 dark:bg-slate-900/95 sm:px-6">
-      {/* Left: Hospital Switcher */}
+      {/* Left: Hospital Switcher with Crest Logo */}
       <div className="flex items-center gap-3">
-        <div className="flex items-center gap-2 rounded-lg bg-emerald-50 px-3 py-1.5 dark:bg-emerald-950/50">
-          <Building2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+        <div className="flex items-center gap-2 rounded-xl bg-slate-100 dark:bg-slate-800/80 px-2.5 py-1 border border-slate-200 dark:border-slate-700/60 shadow-sm">
+          <PjpiimcLogo size="sm" className="shrink-0" />
           <select
             value={selectedHospital.id}
             onChange={(e) => setSelectedHospitalId(e.target.value)}
-            className="bg-transparent font-semibold text-slate-800 focus:outline-none dark:text-slate-100 text-sm cursor-pointer"
+            className="bg-transparent font-bold text-slate-800 focus:outline-none dark:text-slate-100 text-xs sm:text-sm cursor-pointer"
           >
             {hospitals.map((h) => (
               <option key={h.id} value={h.id} className="dark:bg-slate-900 text-slate-900 dark:text-slate-100">
@@ -78,7 +94,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAIAssistant, onChangePassw
           </select>
         </div>
 
-        <span className="hidden text-xs text-slate-400 sm:inline">
+        <span className="hidden text-xs text-slate-500 font-medium sm:inline">
           {selectedHospital.branches} Branches • {selectedHospital.totalBeds} Beds
         </span>
       </div>
@@ -163,6 +179,21 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAIAssistant, onChangePassw
         >
           {darkMode ? <Sun className="h-4 w-4 text-amber-400" /> : <Moon className="h-4 w-4" />}
         </button>
+
+        {/* Subordinate Requests Bell Button for Leadership */}
+        {['unit_head', 'dept_head', 'hr_director', 'hr_manager', 'facility_head', 'super_admin'].includes(activeRole) && (
+          <button
+            onClick={() => setIsSubordinateModalOpen(true)}
+            className="relative flex items-center gap-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 border border-amber-500/30 px-2.5 py-1.5 text-xs font-bold transition shadow-sm"
+            title="Subordinate Requests Awaiting Approval"
+          >
+            <BellRing className="h-4 w-4 animate-pulse text-amber-400" />
+            <span className="hidden sm:inline font-extrabold text-amber-300">Subordinate Requests</span>
+            <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-amber-500 text-[10px] font-black text-slate-950 px-1">
+              {totalSubordinatePending}
+            </span>
+          </button>
+        )}
 
         {/* Notification Bell */}
         <div className="relative">
@@ -253,6 +284,12 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAIAssistant, onChangePassw
           </button>
         </div>
       </div>
+
+      {/* Subordinate Requests Modal */}
+      <SubordinateRequestModal
+        isOpen={isSubordinateModalOpen}
+        onClose={() => setIsSubordinateModalOpen(false)}
+      />
     </header>
   );
 };

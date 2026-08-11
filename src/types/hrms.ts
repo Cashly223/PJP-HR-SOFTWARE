@@ -181,6 +181,8 @@ export interface Employee {
   skills: string[];
   languages: string[];
   digitalSignatureUrl?: string;
+  leaveEntitlement?: number; // Annual leave entitlement in days (e.g. 30 days)
+  deferredLeaveDays?: number; // Carried over / deferred leave days
   portalAccess?: {
     username: string; // Email or Staff ID (empCode)
     usernameType: 'email' | 'empCode';
@@ -250,6 +252,35 @@ export interface DepartmentLeadership {
   facilityHeadEmail?: string;
   lastAssignedBy?: string;
   lastAssignedAt?: string;
+}
+
+export interface AnnualUnitLeaveRoasterItem {
+  id: string;
+  employeeId: string;
+  staffName: string;
+  empCode: string;
+  currentGrade: string; // e.g. Senior Medical Officer, Staff Nurse
+  leaveMonth: string; // e.g. 'April', 'August'
+  proposedStartDate: string; // e.g. '2027-04-15'
+  proposedEndDate: string; // e.g. '2027-05-15'
+  leaveDays: number;
+  hrRemarks?: string;
+  hrModified?: boolean;
+}
+
+export interface AnnualUnitLeaveRoaster {
+  id: string;
+  unitName: string;
+  departmentName: string;
+  year: number; // e.g. 2027
+  preparedByUnitHead: string;
+  unitHeadEmail?: string;
+  submittedAt: string;
+  status: 'Draft' | 'Submitted to HR' | 'HR Verified & Approved' | 'Revision Requested';
+  hrVerifiedBy?: string;
+  hrVerifiedAt?: string;
+  hrComments?: string;
+  items: AnnualUnitLeaveRoasterItem[];
 }
 
 export type WorkflowStage =

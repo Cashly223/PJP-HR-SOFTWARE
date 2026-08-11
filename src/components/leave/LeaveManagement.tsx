@@ -24,6 +24,8 @@ import {
 import { useHrms } from '../../context/HrmsContext';
 import { LeaveRequest, WorkflowStage, UserRole } from '../../types/hrms';
 import { OfficialLeaveFormViewModal } from './OfficialLeaveFormViewModal';
+import { AnnualUnitLeaveRoasterManager } from './AnnualUnitLeaveRoasterManager';
+import { CalendarDays } from 'lucide-react';
 
 export const LeaveManagement: React.FC = () => {
   const {
@@ -35,8 +37,14 @@ export const LeaveManagement: React.FC = () => {
     activeRole,
     setActiveRole,
     currentUser,
+    updateEmployee,
   } = useHrms();
 
+  const [activeTabMode, setActiveTabMode] = useState<'applications' | 'entitlements' | 'report' | 'annual_roaster'>('applications');
+  const [reportSearchTerm, setReportSearchTerm] = useState('');
+  const [reportDeptFilter, setReportDeptFilter] = useState('All');
+  const [reportStatusFilter, setReportStatusFilter] = useState('All');
+  const [isReportPrintModalOpen, setIsReportPrintModalOpen] = useState(false);
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
   const [selectedEmpId, setSelectedEmpId] = useState(employees[0]?.id || '');
   
@@ -51,8 +59,12 @@ export const LeaveManagement: React.FC = () => {
   const [deferredLeaveDaysDue, setDeferredLeaveDaysDue] = useState<number>(0);
   const [leaveDaysEarned, setLeaveDaysEarned] = useState<number>(30);
   const [days, setDays] = useState(7);
-  const [startDate, setStartDate] = useState('2026-08-20');
-  const [endDate, setEndDate] = useState('2026-08-27');
+  const [startDate, setStartDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [endDate, setEndDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 7);
+    return d.toISOString().split('T')[0];
+  });
   const [addressOnLeave, setAddressOnLeave] = useState('Hospital Staff Residence Quarters House 14');
   const [phoneOnLeave, setPhoneOnLeave] = useState('+233 20 555 0192');
   const [reason, setReason] = useState('Annual leave application & mandatory rest duration.');
@@ -63,7 +75,19 @@ export const LeaveManagement: React.FC = () => {
     leave: LeaveRequest | null;
   }>({ open: false, leave: null });
 
-  // Auto populate selected employee info
+  // Computed Outstanding Days
+  const [outstandingLeaveDays, setOutstandingLeaveDays] = useState<number>(30);
+  const [totalUsedLeaveDays, setTotalUsedLeaveDays] = useState<number>(0);
+
+  // Entitlements Management Modal
+  const [entitlementEditModal, setEntitlementEditModal] = useState<{
+    open: boolean;
+    emp: any | null;
+  }>({ open: false, emp: null });
+  const [editEntitlementVal, setEditEntitlementVal] = useState(30);
+  const [editDeferredVal, setEditDeferredVal] = useState(0);
+
+  // Auto populate selected employee info & dynamic outstanding leave days from staff DB
   useEffect(() => {
     const emp = employees.find((e) => e.id === selectedEmpId);
     if (emp) {
@@ -72,8 +96,47 @@ export const LeaveManagement: React.FC = () => {
       setDepartment(emp.department || 'Intensive Care Unit (ICU)');
       setUnit(emp.unit || 'ICU Ward 2B');
       setPhoneOnLeave(emp.mobilePhone || '+233 20 555 0192');
+
+      const empEnt = emp.leaveEntitlement ?? 30;
+      const empDef = emp.deferredLeaveDays ?? 0;
+      setLeaveEntitlement(empEnt);
+      setDeferredLeaveDaysDue(empDef);
+      setLeaveDaysEarned(empEnt);
+
+      // Compute total approved days taken by this employee from DB
+      const approvedLeaves = leaves.filter(
+        (l) => l.employeeId === emp.id && l.status === 'Approved'
+      );
+      const used = approvedLeaves.reduce((acc, l) => acc + (l.daysGranted || l.totalDays || 0), 0);
+      setTotalUsedLeaveDays(used);
+      setOutstandingLeaveDays(Math.max(0, (empEnt + empDef) - used));
     }
-  }, [selectedEmpId, employees]);
+  }, [selectedEmpId, employees, leaves]);
+
+  // Automatic Calculation of days between Commencement Date & Return Date
+  useEffect(() => {
+    if (startDate && endDate) {
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
+        const diffMs = end.getTime() - start.getTime();
+        const computedDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+        if (computedDays > 0) {
+          setDays(computedDays);
+        }
+      }
+    }
+  }, [startDate, endDate]);
+
+  // When user updates days count directly, adjust end date automatically
+  const handleDaysChange = (newDays: number) => {
+    setDays(newDays);
+    if (startDate && newDays > 0) {
+      const start = new Date(startDate);
+      start.setDate(start.getDate() + newDays);
+      setEndDate(start.toISOString().split('T')[0]);
+    }
+  };
 
   // Review Modal State for Approvers
   const [reviewModal, setReviewModal] = useState<{
@@ -98,6 +161,66 @@ export const LeaveManagement: React.FC = () => {
     setTimeout(() => setToastMsg(null), 4000);
   };
 
+  const handleExportStaffLeaveReportCSV = () => {
+    const headers = [
+      'Staff ID',
+      'Staff Name',
+      'Department',
+      'Role Title',
+      'Annual Entitlement Days',
+      'Deferred Days',
+      'Total Net Entitlement',
+      'Approved Days Taken',
+      'Pending Days Requested',
+      'Outstanding Days Balance',
+      'Utilization Rate (%)',
+      'Status'
+    ];
+
+    const rows = employees.map((emp) => {
+      const annual = emp.leaveEntitlement || 30;
+      const def = emp.deferredLeaveDays || 0;
+      const tot = annual + def;
+      const appLeaves = leaves.filter((l) => l.employeeId === emp.id && l.status === 'Approved');
+      const taken = appLeaves.reduce((acc, l) => acc + (l.daysGranted || l.totalDays || (l as any).days || 0), 0);
+      const pendLeaves = leaves.filter((l) => l.employeeId === emp.id && l.status === 'Pending');
+      const pend = pendLeaves.reduce((acc, l) => acc + (l.daysGranted || l.totalDays || (l as any).days || 0), 0);
+      const rem = tot - taken;
+      const util = tot > 0 ? Math.min(100, Math.round((taken / tot) * 100)) : 0;
+      const isOnLeave = leaves.some((l) => l.employeeId === emp.id && l.status === 'Approved');
+
+      return [
+        `"${emp.empCode || 'STF-100'}"`,
+        `"${emp.firstName} ${emp.lastName}"`,
+        `"${emp.department}"`,
+        `"${emp.jobTitle}"`,
+        annual,
+        def,
+        tot,
+        taken,
+        pend,
+        rem,
+        `"${util}%"`,
+        `"${isOnLeave ? 'On Active Leave' : 'On Duty'}"`
+      ];
+    });
+
+    const csvContent =
+      'data:text/csv;charset=utf-8,' +
+      `"POPE JOHN PAUL II MEDICAL CENTRE (PJPIIMC) - OFFICIAL STAFF LEAVE REPORT"\n` +
+      `"Report Date: ${new Date().toLocaleDateString()}"\n` +
+      `"Generated By: Human Resources Division"\n\n` +
+      [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `PJPIIMC_Staff_Leave_Report_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const handleCreateLeave = (e: React.FormEvent) => {
     e.preventDefault();
     const emp = employees.find((e) => e.id === selectedEmpId);
@@ -115,6 +238,7 @@ export const LeaveManagement: React.FC = () => {
       leaveEntitlement: Number(leaveEntitlement),
       deferredLeaveDaysDue: Number(deferredLeaveDaysDue),
       leaveDaysEarned: Number(leaveDaysEarned),
+      outstandingLeaveDays: Number(outstandingLeaveDays),
       totalDays: Number(days),
       startDate,
       endDate,
@@ -281,7 +405,481 @@ export const LeaveManagement: React.FC = () => {
             </button>
           </div>
         )}
+
+        {/* Header Mode Navigation Tabs */}
+        <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-3 mt-4">
+          <button
+            onClick={() => setActiveTabMode('applications')}
+            className={`px-4 py-2 rounded-xl font-bold text-xs transition flex items-center gap-2 ${
+              activeTabMode === 'applications'
+                ? 'bg-emerald-600 text-white shadow-md'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
+            }`}
+          >
+            <PlaneTakeoff className="h-4 w-4" /> Official Leave Applications & Workflow
+          </button>
+          <button
+            onClick={() => setActiveTabMode('entitlements')}
+            className={`px-4 py-2 rounded-xl font-bold text-xs transition flex items-center gap-2 ${
+              activeTabMode === 'entitlements'
+                ? 'bg-indigo-600 text-white shadow-md'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
+            }`}
+          >
+            <ShieldCheck className="h-4 w-4 text-amber-400" /> Setup Employee Leave Entitlements
+          </button>
+          <button
+            onClick={() => setActiveTabMode('report')}
+            className={`px-4 py-2 rounded-xl font-bold text-xs transition flex items-center gap-2 ${
+              activeTabMode === 'report'
+                ? 'bg-purple-600 text-white shadow-md'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
+            }`}
+          >
+            <FileText className="h-4 w-4 text-purple-300" /> HR Staff Leave Report
+          </button>
+          <button
+            onClick={() => setActiveTabMode('annual_roaster')}
+            className={`px-4 py-2 rounded-xl font-bold text-xs transition flex items-center gap-2 ${
+              activeTabMode === 'annual_roaster'
+                ? 'bg-teal-600 text-white shadow-md'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
+            }`}
+          >
+            <CalendarDays className="h-4 w-4 text-teal-300" /> Annual Unit Leave Roaster (2027)
+          </button>
+        </div>
       </div>
+
+      {/* MODE 4: ANNUAL UNIT LEAVE ROASTER TAB */}
+      {activeTabMode === 'annual_roaster' && (
+        <AnnualUnitLeaveRoasterManager />
+      )}
+
+      {/* MODE 3: HR STAFF LEAVE REPORT TAB */}
+      {activeTabMode === 'report' && (
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900 space-y-5">
+          {/* Report Top Header */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-4">
+            <div>
+              <span className="text-[10px] font-extrabold uppercase tracking-widest text-purple-600 dark:text-purple-400 block">
+                Human Resources Audit & Leave Liabilities
+              </span>
+              <h3 className="text-lg font-black text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                <FileText className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                PJPIIMC Staff Leave Master Report
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Pope John Paul II Medical Centre - Comprehensive staff leave breakdown, entitlement tracking, approved leave utilization, and remaining balances.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={handleExportStaffLeaveReportCSV}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-200 text-xs font-bold transition border border-slate-200 dark:border-slate-700"
+              >
+                <FileText className="h-4 w-4 text-emerald-500" /> Export CSV Report
+              </button>
+              <button
+                onClick={() => window.print()}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition shadow"
+              >
+                <Printer className="h-4 w-4" /> Print Official Report
+              </button>
+            </div>
+          </div>
+
+          {/* KPI Analytics Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80">
+              <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase">Total Staff</span>
+              <div className="text-2xl font-black text-slate-900 dark:text-white mt-1">{employees.length}</div>
+              <p className="text-[10px] text-slate-500 mt-0.5">Active workforce</p>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-indigo-50/50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800/50">
+              <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase">Gross Entitlement</span>
+              <div className="text-2xl font-black text-indigo-700 dark:text-indigo-300 mt-1">
+                {employees.reduce((acc, e) => acc + (e.leaveEntitlement || 30) + (e.deferredLeaveDays || 0), 0)}
+              </div>
+              <p className="text-[10px] text-indigo-600 dark:text-indigo-400/80 mt-0.5">Annual + Deferred days</p>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-emerald-50/50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/50">
+              <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase">Days Taken (Approved)</span>
+              <div className="text-2xl font-black text-emerald-700 dark:text-emerald-300 mt-1">
+                {leaves.filter((l) => l.status === 'Approved').reduce((acc, l) => acc + (l.daysGranted || l.totalDays || (l as any).days || 0), 0)}
+              </div>
+              <p className="text-[10px] text-emerald-600 dark:text-emerald-400/80 mt-0.5">Utilized leave days</p>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-amber-50/50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50">
+              <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase">Pending Approval</span>
+              <div className="text-2xl font-black text-amber-700 dark:text-amber-300 mt-1">
+                {leaves.filter((l) => l.status === 'Pending').reduce((acc, l) => acc + (l.daysGranted || l.totalDays || (l as any).days || 0), 0)}
+              </div>
+              <p className="text-[10px] text-amber-600 dark:text-amber-400/80 mt-0.5">In workflow pipeline</p>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-purple-50/50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800/50">
+              <span className="text-[10px] font-bold text-purple-600 dark:text-purple-400 uppercase">Net Liability Days</span>
+              <div className="text-2xl font-black text-purple-700 dark:text-purple-300 mt-1">
+                {employees.reduce((acc, e) => {
+                  const tot = (e.leaveEntitlement || 30) + (e.deferredLeaveDays || 0);
+                  const taken = leaves.filter((l) => l.employeeId === e.id && l.status === 'Approved').reduce((a, l) => a + (l.daysGranted || l.totalDays || (l as any).days || 0), 0);
+                  return acc + (tot - taken);
+                }, 0)}
+              </div>
+              <p className="text-[10px] text-purple-600 dark:text-purple-400/80 mt-0.5">Outstanding staff balance</p>
+            </div>
+          </div>
+
+          {/* Filters Bar */}
+          <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between bg-slate-50 dark:bg-slate-950 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search staff name, code, or role..."
+                value={reportSearchTerm}
+                onChange={(e) => setReportSearchTerm(e.target.value)}
+                className="w-full pl-9 pr-4 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs focus:border-purple-500 focus:outline-none"
+              />
+            </div>
+
+            <div className="flex items-center gap-2">
+              <select
+                value={reportDeptFilter}
+                onChange={(e) => setReportDeptFilter(e.target.value)}
+                className="px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs focus:border-purple-500 focus:outline-none"
+              >
+                <option value="All">All Departments</option>
+                <option value="Intensive Care Unit (ICU)">ICU & Critical Care</option>
+                <option value="Cardiology & Intensive Care">Cardiology</option>
+                <option value="Emergency & Trauma">Emergency & Trauma</option>
+                <option value="Surgical Services & OT">Surgical Services</option>
+                <option value="Human Resources & Workforce">Human Resources</option>
+              </select>
+
+              <select
+                value={reportStatusFilter}
+                onChange={(e) => setReportStatusFilter(e.target.value)}
+                className="px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs focus:border-purple-500 focus:outline-none"
+              >
+                <option value="All">All Statuses</option>
+                <option value="OnLeave">Currently On Leave</option>
+                <option value="HighLiability">High Balance (&gt;25 Days)</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Staff Leave Report Table */}
+          <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-100 dark:bg-slate-950 text-slate-600 dark:text-slate-400 font-bold uppercase tracking-wider border-b border-slate-200 dark:border-slate-800">
+                <tr>
+                  <th className="px-4 py-3.5">Staff Member</th>
+                  <th className="px-4 py-3.5">Department & Role</th>
+                  <th className="px-4 py-3.5 text-center">Annual</th>
+                  <th className="px-4 py-3.5 text-center">Deferred</th>
+                  <th className="px-4 py-3.5 text-center">Net Total</th>
+                  <th className="px-4 py-3.5 text-center">Days Taken</th>
+                  <th className="px-4 py-3.5 text-center">Outstanding</th>
+                  <th className="px-4 py-3.5">Utilization Bar</th>
+                  <th className="px-4 py-3.5 text-center">Leave Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200 dark:divide-slate-800 bg-white dark:bg-slate-900">
+                {employees
+                  .filter((emp) => {
+                    const matchesSearch =
+                      `${emp.firstName} ${emp.lastName}`.toLowerCase().includes(reportSearchTerm.toLowerCase()) ||
+                      (emp.empCode || '').toLowerCase().includes(reportSearchTerm.toLowerCase()) ||
+                      (emp.jobTitle || '').toLowerCase().includes(reportSearchTerm.toLowerCase());
+
+                    const matchesDept = reportDeptFilter === 'All' || emp.department === reportDeptFilter;
+
+                    const annual = emp.leaveEntitlement || 30;
+                    const def = emp.deferredLeaveDays || 0;
+                    const tot = annual + def;
+                    const appLeaves = leaves.filter((l) => l.employeeId === emp.id && l.status === 'Approved');
+                    const taken = appLeaves.reduce((acc, l) => acc + (l.daysGranted || l.totalDays || (l as any).days || 0), 0);
+                    const rem = tot - taken;
+                    const isOnLeave = leaves.some((l) => l.employeeId === emp.id && l.status === 'Approved');
+
+                    let matchesStatus = true;
+                    if (reportStatusFilter === 'OnLeave') matchesStatus = isOnLeave;
+                    if (reportStatusFilter === 'HighLiability') matchesStatus = rem > 25;
+
+                    return matchesSearch && matchesDept && matchesStatus;
+                  })
+                  .map((emp) => {
+                    const annual = emp.leaveEntitlement || 30;
+                    const def = emp.deferredLeaveDays || 0;
+                    const tot = annual + def;
+                    const appLeaves = leaves.filter((l) => l.employeeId === emp.id && l.status === 'Approved');
+                    const taken = appLeaves.reduce((acc, l) => acc + (l.daysGranted || l.totalDays || (l as any).days || 0), 0);
+                    const rem = tot - taken;
+                    const util = tot > 0 ? Math.min(100, Math.round((taken / tot) * 100)) : 0;
+                    const isOnLeave = leaves.some((l) => l.employeeId === emp.id && l.status === 'Approved');
+
+                    return (
+                      <tr key={emp.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
+                        <td className="px-4 py-3.5">
+                          <div className="flex items-center gap-3">
+                            <img
+                              src={emp.photo || 'https://images.unsplash.com/photo-1537368910025-700350fe46c7?w=150&auto=format&fit=crop&q=80'}
+                              alt={emp.firstName}
+                              className="h-8 w-8 rounded-full object-cover ring-1 ring-slate-300 dark:ring-slate-700"
+                            />
+                            <div>
+                              <p className="font-bold text-slate-900 dark:text-white">
+                                {emp.firstName} {emp.lastName}
+                              </p>
+                              <span className="text-[10px] text-purple-600 dark:text-purple-400 font-mono font-semibold">
+                                {emp.empCode || 'STF-1001'}
+                              </span>
+                            </div>
+                          </div>
+                        </td>
+
+                        <td className="px-4 py-3.5">
+                          <p className="font-bold text-slate-800 dark:text-slate-200">{emp.department}</p>
+                          <p className="text-[10px] text-slate-500">{emp.jobTitle}</p>
+                        </td>
+
+                        <td className="px-4 py-3.5 text-center font-bold text-indigo-600 dark:text-indigo-400">
+                          {annual}
+                        </td>
+
+                        <td className="px-4 py-3.5 text-center font-bold text-amber-500">
+                          {def}
+                        </td>
+
+                        <td className="px-4 py-3.5 text-center font-bold text-slate-900 dark:text-white bg-slate-50 dark:bg-slate-800/50">
+                          {tot}
+                        </td>
+
+                        <td className="px-4 py-3.5 text-center font-bold text-emerald-600 dark:text-emerald-400">
+                          {taken}
+                        </td>
+
+                        <td className="px-4 py-3.5 text-center font-extrabold text-purple-600 dark:text-purple-400">
+                          {rem}
+                        </td>
+
+                        <td className="px-4 py-3.5">
+                          <div className="w-28 space-y-1">
+                            <div className="flex items-center justify-between text-[10px] font-bold">
+                              <span>{util}%</span>
+                              <span className="text-slate-400">{taken}/{tot}d</span>
+                            </div>
+                            <div className="h-2 w-full rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
+                              <div
+                                className={`h-full ${
+                                  util > 75
+                                    ? 'bg-rose-500'
+                                    : util > 40
+                                    ? 'bg-amber-500'
+                                    : 'bg-emerald-500'
+                                }`}
+                                style={{ width: `${util}%` }}
+                              ></div>
+                            </div>
+                          </div>
+                        </td>
+
+                        <td className="px-4 py-3.5 text-center">
+                          {isOnLeave ? (
+                            <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                              On Leave
+                            </span>
+                          ) : (
+                            <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                              On Duty
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* MODE 2: EMPLOYEE LEAVE ENTITLEMENT SETUP TAB */}
+      {activeTabMode === 'entitlements' && (
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-4">
+            <div>
+              <h3 className="text-base font-extrabold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                <ShieldCheck className="h-5 w-5 text-indigo-500" />
+                Staff Database Leave Entitlement Configuration
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Configure annual leave entitlement days and deferred carried-over leave per staff member in the staff database.
+              </p>
+            </div>
+
+            <button
+              onClick={() => {
+                employees.forEach((emp) => {
+                  updateEmployee(emp.id, { leaveEntitlement: 30, deferredLeaveDays: 0 });
+                });
+                showToast('Reset default 30-day Annual Leave Entitlement for all active staff members.');
+              }}
+              className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition flex items-center gap-1.5 border border-slate-200 dark:border-slate-700 shrink-0"
+            >
+              <Sparkles className="h-3.5 w-3.5 text-amber-500" /> Apply Default 30 Days to All Staff
+            </button>
+          </div>
+
+          {/* Entitlements Staff Table */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs text-slate-800 dark:text-slate-200">
+              <thead className="bg-slate-50 dark:bg-slate-800/60 uppercase text-[10px] font-extrabold tracking-wider text-slate-500">
+                <tr>
+                  <th className="p-3 rounded-l-xl">Staff Member</th>
+                  <th className="p-3">Staff ID & Dept</th>
+                  <th className="p-3">Annual Entitlement</th>
+                  <th className="p-3">Deferred Days</th>
+                  <th className="p-3">Total Used</th>
+                  <th className="p-3">Outstanding Balance</th>
+                  <th className="p-3 rounded-r-xl text-right">Configure</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                {employees.map((emp) => {
+                  const ent = emp.leaveEntitlement ?? 30;
+                  const def = emp.deferredLeaveDays ?? 0;
+                  const approvedLeaves = leaves.filter((l) => l.employeeId === emp.id && l.status === 'Approved');
+                  const used = approvedLeaves.reduce((acc, l) => acc + (l.daysGranted || l.totalDays || 0), 0);
+                  const outstanding = Math.max(0, (ent + def) - used);
+
+                  return (
+                    <tr key={emp.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition">
+                      <td className="p-3 font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2.5">
+                        <img src={emp.photo} alt="" className="h-8 w-8 rounded-full object-cover border border-slate-200 dark:border-slate-700" />
+                        <div>
+                          <div>{emp.firstName} {emp.lastName}</div>
+                          <div className="text-[10px] font-normal text-slate-400">{emp.jobTitle}</div>
+                        </div>
+                      </td>
+                      <td className="p-3 font-mono font-medium">
+                        <div className="text-slate-700 dark:text-slate-300 font-bold">{emp.empCode || 'STF-1001'}</div>
+                        <div className="text-[10px] text-slate-400">{emp.department}</div>
+                      </td>
+                      <td className="p-3 font-extrabold text-indigo-600 dark:text-indigo-400 text-sm">
+                        {ent} Days
+                      </td>
+                      <td className="p-3 font-bold text-amber-600 dark:text-amber-400">
+                        {def} Days
+                      </td>
+                      <td className="p-3 font-semibold text-rose-600 dark:text-rose-400">
+                        {used} Days
+                      </td>
+                      <td className="p-3">
+                        <span className="px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 font-extrabold text-xs">
+                          {outstanding} Days
+                        </span>
+                      </td>
+                      <td className="p-3 text-right">
+                        <button
+                          onClick={() => {
+                            setEntitlementEditModal({ open: true, emp });
+                            setEditEntitlementVal(ent);
+                            setEditDeferredVal(def);
+                          }}
+                          className="px-3 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-300 font-bold text-xs hover:bg-indigo-100 transition border border-indigo-200 dark:border-indigo-800"
+                        >
+                          Edit Entitlement
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Employee Entitlement Modal */}
+      {entitlementEditModal.open && entitlementEditModal.emp && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 space-y-4">
+            <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div>
+                <h3 className="font-extrabold text-sm flex items-center gap-2">
+                  <ShieldCheck className="h-4 w-4 text-indigo-500" />
+                  Setup Leave Entitlement
+                </h3>
+                <p className="text-xs text-slate-500">
+                  {entitlementEditModal.emp.firstName} {entitlementEditModal.emp.lastName} ({entitlementEditModal.emp.empCode})
+                </p>
+              </div>
+              <button onClick={() => setEntitlementEditModal({ open: false, emp: null })}>✕</button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="block font-bold mb-1">Annual Leave Entitlement (Days)</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={90}
+                  value={editEntitlementVal}
+                  onChange={(e) => setEditEntitlementVal(Number(e.target.value))}
+                  className="w-full rounded-xl border border-slate-300 dark:border-slate-700 p-2.5 dark:bg-slate-800 font-bold text-indigo-600 dark:text-indigo-400 text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold mb-1">Deferred / Carried-Over Leave Days</label>
+                <input
+                  type="number"
+                  min={0}
+                  max={60}
+                  value={editDeferredVal}
+                  onChange={(e) => setEditDeferredVal(Number(e.target.value))}
+                  className="w-full rounded-xl border border-slate-300 dark:border-slate-700 p-2.5 dark:bg-slate-800 font-bold text-amber-500 text-sm"
+                />
+              </div>
+
+              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-[11px] text-slate-500">
+                Net Annual Entitlement Total: <strong className="text-emerald-600 dark:text-emerald-400">{editEntitlementVal + editDeferredVal} Days</strong>. This updates the staff database record dynamically.
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setEntitlementEditModal({ open: false, emp: null })}
+                className="px-4 py-2 rounded-xl border border-slate-300 dark:border-slate-700 font-bold text-xs text-slate-600 dark:text-slate-300"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  updateEmployee(entitlementEditModal.emp.id, {
+                    leaveEntitlement: editEntitlementVal,
+                    deferredLeaveDays: editDeferredVal,
+                  });
+                  showToast(`Updated leave entitlement for ${entitlementEditModal.emp.firstName} ${entitlementEditModal.emp.lastName} to ${editEntitlementVal} days.`);
+                  setEntitlementEditModal({ open: false, emp: null });
+                }}
+                className="px-4 py-2 rounded-xl bg-indigo-600 text-white font-bold text-xs hover:bg-indigo-500 shadow"
+              >
+                Save Entitlement
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Workflow Stage Filter Pills */}
       <div className="flex flex-wrap items-center justify-between gap-3 bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
@@ -737,8 +1335,24 @@ export const LeaveManagement: React.FC = () => {
 
               {/* PART A (APPLICATION DATA) */}
               <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 space-y-3">
-                <div className="font-extrabold text-emerald-600 dark:text-emerald-400 uppercase text-[11px] tracking-wider">
-                  PART A — LEAVE APPLICATION DETAILS
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-700/80 pb-2">
+                  <div className="font-extrabold text-emerald-600 dark:text-emerald-400 uppercase text-[11px] tracking-wider">
+                    PART A — LEAVE APPLICATION DETAILS
+                  </div>
+
+                  <div className="px-3 py-1 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300 font-extrabold text-[11px]">
+                    📊 Outstanding Leave Balance: {outstandingLeaveDays} Days
+                  </div>
+                </div>
+
+                {/* Staff Database Live Balance Badge */}
+                <div className="p-2.5 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-[11px] text-indigo-900 dark:text-indigo-200 flex items-center justify-between">
+                  <span>
+                    Staff DB Record: Annual Entitlement ({leaveEntitlement}d) + Deferred ({deferredLeaveDaysDue}d) - Approved Taken ({totalUsedLeaveDays}d)
+                  </span>
+                  <strong className="text-indigo-600 dark:text-indigo-400 font-extrabold text-xs">
+                    {outstandingLeaveDays} Days Outstanding
+                  </strong>
                 </div>
 
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -773,19 +1387,19 @@ export const LeaveManagement: React.FC = () => {
                   </div>
 
                   <div>
-                    <label className="block font-bold mb-1 text-[10px]">LEAVE DAYS EARNED</label>
+                    <label className="block font-bold mb-1 text-[10px]">OUTSTANDING DAYS</label>
                     <input
                       type="number"
-                      value={leaveDaysEarned}
-                      onChange={(e) => setLeaveDaysEarned(Number(e.target.value))}
-                      className="w-full rounded-xl border border-slate-300 dark:border-slate-700 p-2 dark:bg-slate-800 font-medium"
+                      readOnly
+                      value={outstandingLeaveDays}
+                      className="w-full rounded-xl border border-emerald-500/50 bg-emerald-50 dark:bg-emerald-950/40 p-2 text-emerald-600 dark:text-emerald-400 font-extrabold"
                     />
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
-                    <label className="block font-bold mb-1 text-[10px]">PROPOSED COMMENCEMENT DATE</label>
+                    <label className="block font-bold mb-1 text-[10px]">COMMENCEMENT DATE</label>
                     <input
                       type="date"
                       value={startDate}
@@ -795,7 +1409,7 @@ export const LeaveManagement: React.FC = () => {
                   </div>
 
                   <div>
-                    <label className="block font-bold mb-1 text-[10px]">PROPOSED END DATE</label>
+                    <label className="block font-bold mb-1 text-[10px]">RESUMPTION / RETURN DATE</label>
                     <input
                       type="date"
                       value={endDate}
@@ -805,16 +1419,21 @@ export const LeaveManagement: React.FC = () => {
                   </div>
 
                   <div>
-                    <label className="block font-bold mb-1 text-[10px]">NUMBER OF DAYS APPLIED FOR</label>
+                    <label className="block font-bold mb-1 text-[10px]">CALCULATED DURATION (DAYS)</label>
                     <input
                       type="number"
                       min={1}
                       max={90}
                       value={days}
-                      onChange={(e) => setDays(Number(e.target.value))}
-                      className="w-full rounded-xl border border-slate-300 dark:border-slate-700 p-2 dark:bg-slate-800 font-bold text-emerald-600 dark:text-emerald-400"
+                      onChange={(e) => handleDaysChange(Number(e.target.value))}
+                      className="w-full rounded-xl border border-emerald-500/50 bg-emerald-50/50 dark:bg-slate-800 p-2 font-black text-emerald-600 dark:text-emerald-400 text-sm"
                     />
                   </div>
+                </div>
+
+                <div className="p-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-800 dark:text-amber-300 font-semibold flex items-center justify-between">
+                  <span>⚡ Auto-Calculated Duration: <strong>{days} Days</strong></span>
+                  <span className="text-[10px] opacity-80">{startDate} to {endDate}</span>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

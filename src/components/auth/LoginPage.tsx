@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { useHrms } from '../../context/HrmsContext';
 import { UserRole } from '../../types/hrms';
+import { PjpiimcLogo } from '../common/PjpiimcLogo';
 
 export const LoginPage: React.FC = () => {
   const { login, signup, systemCustomization, darkMode, setDarkMode } = useHrms();
@@ -46,40 +47,68 @@ export const LoginPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
 
   // Demo accounts quick-login list
-  const demoAccounts = [
+  const primaryLeadershipAccounts = [
     {
-      name: 'Dr. Arthur Kingsley',
-      email: 'a.kingsley@stjudehealth.org',
+      name: 'Rev. Fr. Mike',
+      email: 'rev.fr.mike@pjpiimc.org',
       role: 'facility_head' as UserRole,
-      roleLabel: 'Head of Facility / CMO',
-      avatar: 'https://images.unsplash.com/photo-1537368910025-700350fe46c7?w=150&auto=format&fit=crop&q=80',
-      badgeBg: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20',
+      roleLabel: 'Head of Facility / CEO',
+      avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&auto=format&fit=crop&q=80',
+      badgeBg: 'bg-amber-500/10 text-amber-400 border-amber-500/30',
     },
     {
-      name: 'Marcus Vance',
-      email: 'm.vance@stjudehealth.org',
+      name: 'Miss Vero',
+      email: 'miss.vero@pjpiimc.org',
       role: 'hr_director' as UserRole,
-      roleLabel: 'Global HR Director',
-      avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
-      badgeBg: 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20',
+      roleLabel: 'HR Director',
+      avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80',
+      badgeBg: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/30',
     },
     {
-      name: 'Dr. Sarah Jenkins',
-      email: 's.jenkins@stjudehealth.org',
+      name: 'Mr. Frimpong',
+      email: 'mr.frimpong@pjpiimc.org',
+      role: 'hr_manager' as UserRole,
+      roleLabel: 'HR Manager',
+      avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80',
+      badgeBg: 'bg-purple-500/10 text-purple-400 border-purple-500/30',
+    },
+    {
+      name: 'Miss Lumor',
+      email: 'miss.lumor@pjpiimc.org',
       role: 'dept_head' as UserRole,
-      roleLabel: 'Chief Physician / HOD',
-      avatar: 'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?w=150&auto=format&fit=crop&q=80',
-      badgeBg: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20',
+      roleLabel: 'Nurse Manager (Nursing Directorate)',
+      avatar: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150&auto=format&fit=crop&q=80',
+      badgeBg: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
     },
     {
-      name: 'Elena Rostova',
-      email: 'e.rostova@stjudehealth.org',
-      role: 'nurse' as UserRole,
-      roleLabel: 'Senior ICU Nurse',
-      avatar: 'https://images.unsplash.com/photo-1594824813566-78a9327d3b5b?w=150&auto=format&fit=crop&q=80',
-      badgeBg: 'bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/20',
+      name: 'Miss Emelia',
+      email: 'miss.emelia@pjpiimc.org',
+      role: 'unit_head' as UserRole,
+      roleLabel: 'Nurse Manager (ICU & Wards)',
+      avatar: 'https://images.unsplash.com/photo-1567532939604-b6b5b0db2604?w=150&auto=format&fit=crop&q=80',
+      badgeBg: 'bg-teal-500/10 text-teal-400 border-teal-500/30',
     },
   ];
+
+  const enrolledStaffAccounts = [
+    { name: 'Dr. Kwame Mensah', email: 'kwame.mensah@pjpiimc.org', role: 'doctor' as UserRole, roleLabel: 'Senior Consultant', avatar: 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=150&auto=format&fit=crop&q=80', badgeBg: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30' },
+    { name: 'Sister Rita Appiah', email: 'rita.appiah@pjpiimc.org', role: 'nurse' as UserRole, roleLabel: 'Emergency Nurse', avatar: 'https://images.unsplash.com/photo-1551836022-d5d88e9218df?w=150&auto=format&fit=crop&q=80', badgeBg: 'bg-sky-500/10 text-sky-400 border-sky-500/30' },
+    { name: 'Mr. Joseph Osei', email: 'joseph.osei@pjpiimc.org', role: 'pharmacist' as UserRole, roleLabel: 'Chief Pharmacist', avatar: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=150&auto=format&fit=crop&q=80', badgeBg: 'bg-blue-500/10 text-blue-400 border-blue-500/30' },
+    { name: 'Dr. Grace Lawson', email: 'grace.lawson@pjpiimc.org', role: 'doctor' as UserRole, roleLabel: 'Pediatric Specialist', avatar: 'https://images.unsplash.com/photo-1594824813566-78a9327d3b5b?w=150&auto=format&fit=crop&q=80', badgeBg: 'bg-rose-500/10 text-rose-400 border-rose-500/30' },
+    { name: 'Mr. Kofi Poku', email: 'kofi.poku@pjpiimc.org', role: 'lab_tech' as UserRole, roleLabel: 'Lab Scientist', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80', badgeBg: 'bg-amber-500/10 text-amber-400 border-amber-500/30' },
+    { name: 'Miss Abena Serwaa', email: 'abena.serwaa@pjpiimc.org', role: 'radiologist' as UserRole, roleLabel: 'Radiographer', avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80', badgeBg: 'bg-violet-500/10 text-violet-400 border-violet-500/30' },
+    { name: 'Mr. Samuel Gyasi', email: 'samuel.gyasi@pjpiimc.org', role: 'biomedical_engineer' as UserRole, roleLabel: 'Biomedical Lead', avatar: 'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?w=150&auto=format&fit=crop&q=80', badgeBg: 'bg-orange-500/10 text-orange-400 border-orange-500/30' },
+    { name: 'Mrs. Perpetual Addo', email: 'perpetual.addo@pjpiimc.org', role: 'accountant' as UserRole, roleLabel: 'Payroll Officer', avatar: 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=150&auto=format&fit=crop&q=80', badgeBg: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' },
+    { name: 'Mr. Emmanuel Tetteh', email: 'emmanuel.tetteh@pjpiimc.org', role: 'receptionist' as UserRole, roleLabel: 'Intake Officer', avatar: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=150&auto=format&fit=crop&q=80', badgeBg: 'bg-slate-500/10 text-slate-300 border-slate-500/30' },
+    { name: 'Sister Mercy Boateng', email: 'mercy.boateng@pjpiimc.org', role: 'nurse' as UserRole, roleLabel: 'Theatre Nurse', avatar: 'https://images.unsplash.com/photo-1548142813-c348350df52b?w=150&auto=format&fit=crop&q=80', badgeBg: 'bg-fuchsia-500/10 text-fuchsia-400 border-fuchsia-500/30' },
+    { name: 'Dr. Daniel Kwarteng', email: 'daniel.kwarteng@pjpiimc.org', role: 'doctor' as UserRole, roleLabel: 'OPD Doctor', avatar: 'https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?w=150&auto=format&fit=crop&q=80', badgeBg: 'bg-teal-500/10 text-teal-400 border-teal-500/30' },
+    { name: 'Miss Akosua Dankwa', email: 'akosua.dankwa@pjpiimc.org', role: 'quality_officer' as UserRole, roleLabel: 'Quality Lead', avatar: 'https://images.unsplash.com/photo-1560250097-0b93528c311a?w=150&auto=format&fit=crop&q=80', badgeBg: 'bg-green-500/10 text-green-400 border-green-500/30' },
+    { name: 'Mr. Benjamin Koomson', email: 'benjamin.koomson@pjpiimc.org', role: 'physiotherapist' as UserRole, roleLabel: 'Physiotherapist', avatar: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=150&auto=format&fit=crop&q=80', badgeBg: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/30' },
+    { name: 'Miss Patricia Owusu', email: 'patricia.owusu@pjpiimc.org', role: 'nurse' as UserRole, roleLabel: 'Infection Control', avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80', badgeBg: 'bg-red-500/10 text-red-400 border-red-500/30' },
+    { name: 'Mr. Charles Acheampong', email: 'charles.acheampong@pjpiimc.org', role: 'operations_officer' as UserRole, roleLabel: 'Transport Lead', avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80', badgeBg: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30' },
+  ];
+
+  const [activeDemoTab, setActiveDemoTab] = useState<'leadership' | 'staff'>('leadership');
 
   const handleQuickLogin = async (accEmail: string, accRole: UserRole, accName: string) => {
     setErrorMsg(null);
@@ -154,30 +183,40 @@ export const LoginPage: React.FC = () => {
       <div className="absolute bottom-0 -right-40 h-96 w-96 rounded-full bg-indigo-600/20 blur-3xl pointer-events-none"></div>
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-[500px] w-[500px] rounded-full bg-teal-500/10 blur-3xl pointer-events-none"></div>
 
+      {/* Official Coat of Arms Watermark Backdrop */}
+      <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.07] dark:opacity-[0.11] scale-125 lg:scale-150 transition-all">
+        <PjpiimcLogo size="hero" className="w-[600px] h-[600px] filter drop-shadow-[0_0_50px_rgba(16,185,129,0.3)]" />
+      </div>
+
       {/* Main Glass Card Container */}
-      <div className="relative z-10 w-full max-w-5xl overflow-hidden rounded-3xl border border-slate-800 bg-slate-900/80 shadow-2xl backdrop-blur-xl grid grid-cols-1 lg:grid-cols-12">
+      <div className="relative z-10 w-full max-w-5xl overflow-hidden rounded-3xl border border-slate-800 bg-slate-900/85 shadow-2xl backdrop-blur-xl grid grid-cols-1 lg:grid-cols-12">
         
         {/* Left Side: Hospital Branding & Highlights (5 cols on lg) */}
-        <div className="lg:col-span-5 relative flex flex-col justify-between bg-gradient-to-br from-emerald-950/80 via-slate-900 to-indigo-950/80 p-8 border-b lg:border-b-0 lg:border-r border-slate-800">
-          <div className="space-y-6">
-            {/* Header / Logo */}
+        <div className="lg:col-span-5 relative flex flex-col justify-between bg-gradient-to-br from-emerald-950/90 via-slate-900 to-indigo-950/90 p-8 border-b lg:border-b-0 lg:border-r border-slate-800 overflow-hidden">
+          {/* Subtle Coat of Arms Accent in Left Panel */}
+          <div className="absolute -right-12 -bottom-12 opacity-15 pointer-events-none">
+            <PjpiimcLogo size="2xl" />
+          </div>
+
+          <div className="space-y-6 relative z-10">
+            {/* Header / Official Crest Logo */}
             <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-tr from-emerald-500 to-teal-400 shadow-lg text-white font-black text-xl">
-                <Hospital className="h-7 w-7" />
+              <div className="p-2 bg-slate-950/80 rounded-2xl border border-emerald-500/30 shadow-xl shrink-0">
+                <PjpiimcLogo size="lg" />
               </div>
               <div>
-                <h1 className="text-xl font-black text-white tracking-tight">
-                  {systemCustomization.hospitalName || 'St. Jude Teaching Hospital'}
+                <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+                  PJPIIMC STAFF PORTAL
                 </h1>
                 <span className="text-[10px] uppercase font-extrabold tracking-widest text-emerald-400 block">
-                  Healthcare HR Operating System
+                  Pope John Paul II Medical Centre - Jamasi
                 </span>
               </div>
             </div>
 
             <div className="p-4 rounded-2xl bg-slate-950/60 border border-slate-800 space-y-2">
               <div className="flex items-center gap-2 text-xs font-bold text-emerald-400">
-                <ShieldCheck className="h-4 w-4" /> HIPAA & JCAHO Compliant Auth
+                <ShieldCheck className="h-4 w-4 shrink-0" /> Enterprise Hospital HR Portal
               </div>
               <p className="text-xs text-slate-300 leading-relaxed">
                 Secure multi-tier access portal for executive clinical leaders, department heads, physicians, nurses, and HR administrators.
@@ -190,11 +229,39 @@ export const LoginPage: React.FC = () => {
                 <span className="text-xs font-extrabold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
                   <Sparkles className="h-3.5 w-3.5 text-amber-400" /> One-Click Demo Sign-In
                 </span>
-                <span className="text-[10px] text-slate-500 font-semibold">Pre-configured roles</span>
+                <span className="text-[10px] text-emerald-400 font-bold bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                  HR Invitation Only
+                </span>
               </div>
 
-              <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
-                {demoAccounts.map((acc) => (
+              {/* Sub-tabs for Leadership vs 15 Enrolled Staff */}
+              <div className="flex rounded-xl bg-slate-950 p-1 border border-slate-800 text-[11px] font-bold">
+                <button
+                  type="button"
+                  onClick={() => setActiveDemoTab('leadership')}
+                  className={`flex-1 py-1.5 rounded-lg transition text-center ${
+                    activeDemoTab === 'leadership'
+                      ? 'bg-emerald-600 text-white shadow'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Key Leadership (5)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveDemoTab('staff')}
+                  className={`flex-1 py-1.5 rounded-lg transition text-center ${
+                    activeDemoTab === 'staff'
+                      ? 'bg-emerald-600 text-white shadow'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  15 Enrolled Staff
+                </button>
+              </div>
+
+              <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                {(activeDemoTab === 'leadership' ? primaryLeadershipAccounts : enrolledStaffAccounts).map((acc) => (
                   <button
                     key={acc.email}
                     onClick={() => handleQuickLogin(acc.email, acc.role, acc.name)}
@@ -235,19 +302,22 @@ export const LoginPage: React.FC = () => {
         </div>
 
         {/* Right Side: Login & Sign Up Form (7 cols on lg) */}
-        <div className="lg:col-span-7 p-8 sm:p-10 flex flex-col justify-center space-y-6">
+        <div className="lg:col-span-7 p-8 sm:p-10 flex flex-col justify-center space-y-6 relative">
           
           {/* Form Mode Switcher (Sign In vs Sign Up) */}
           <div className="flex items-center justify-between border-b border-slate-800 pb-4">
-            <div>
-              <h2 className="text-2xl font-black text-white">
-                {mode === 'login' ? 'Sign In to Portal' : 'Create Staff Account'}
-              </h2>
-              <p className="text-xs text-slate-400 mt-1">
-                {mode === 'login'
-                  ? 'Enter your registered email and security password to proceed.'
-                  : 'Register a new clinical or administrative employee login account.'}
-              </p>
+            <div className="flex items-center gap-3">
+              <PjpiimcLogo size="md" className="shrink-0" />
+              <div>
+                <h2 className="text-xl sm:text-2xl font-black text-white">
+                  {mode === 'login' ? 'Sign In to Portal' : 'Create Staff Account'}
+                </h2>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  {mode === 'login'
+                    ? 'Pope John Paul II Medical Centre Staff Portal'
+                    : 'Register a new clinical or administrative employee login account.'}
+                </p>
+              </div>
             </div>
 
             <div className="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800">
@@ -342,7 +412,7 @@ export const LoginPage: React.FC = () => {
                 <input
                   type="email"
                   required
-                  placeholder="name@stjudehealth.org"
+                  placeholder="staff.id@pjpiimc.org"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full rounded-2xl bg-slate-950 border border-slate-800 pl-10 pr-4 py-2.5 text-xs text-white focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"

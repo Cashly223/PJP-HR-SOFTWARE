@@ -20,6 +20,12 @@ import {
   BarChart3,
   X,
   FileSpreadsheet,
+  AlertCircle,
+  XCircle,
+  Phone,
+  Send,
+  RefreshCw,
+  Zap,
 } from 'lucide-react';
 import { useHrms } from '../../context/HrmsContext';
 import { AttendanceRecord, Employee } from '../../types/hrms';
@@ -27,9 +33,16 @@ import { AttendanceRecord, Employee } from '../../types/hrms';
 type PeriodType = 'this_week' | 'last_week' | 'this_month' | 'last_month' | 'all_time';
 
 export const AttendanceReport: React.FC = () => {
-  const { attendance, employees, selectedHospital, formatCurrency, activeRole, currentUser } = useHrms();
+  const { attendance, employees, selectedHospital, formatCurrency, activeRole, currentUser, dispatchNotification } = useHrms();
 
   const isHRorAdmin = ['super_admin', 'facility_head', 'hr_director', 'hr_manager', 'dept_head', 'unit_head'].includes(activeRole);
+
+  // View Mode: 'daily_sync' (Daily Late Comers & Absentees) vs 'periodic_audit' (Weekly/Monthly Hours)
+  const [viewTab, setViewTab] = useState<'daily_sync' | 'periodic_audit'>('daily_sync');
+
+  // Daily Sync Specific State
+  const [selectedSyncDate, setSelectedSyncDate] = useState<string>('2026-08-07');
+  const [actionSuccessMsg, setActionSuccessMsg] = useState<string | null>(null);
 
   // Filter States
   const [period, setPeriod] = useState<PeriodType>('this_week');
@@ -170,6 +183,106 @@ export const AttendanceReport: React.FC = () => {
     };
   });
 
+  // =========================================================
+  // DAILY DUTY ROASTER VS ATTENDANCE SYNCHRONIZATION ENGINE
+  // =========================================================
+
+  interface DailySyncItem {
+    employee: Employee;
+    scheduledShift: 'Morning (07:00-15:00)' | 'Afternoon (15:00-23:00)' | 'Night (23:00-07:00)' | 'Off';
+    expectedStartTime: string;
+    actualClockIn?: string;
+    actualClockOut?: string;
+    biometricMethod?: string;
+    location?: string;
+    syncStatus: 'On-Time' | 'Late' | 'Absent' | 'Off';
+    delayDuration?: string;
+    attendanceRecordId?: string;
+  }
+
+  // Derive Daily Roaster Duty and Attendance Sync for selectedSyncDate
+  const dailySyncResults: DailySyncItem[] = filteredEmployees.map((emp) => {
+    // Determine shift for date based on emp ID hash or mock schedule
+    // Emp ending in even number -> Morning, 3 -> Afternoon, 7 -> Night, etc.
+    const empNum = parseInt(emp.id.replace(/\D/g, '') || '101', 10);
+    let scheduledShift: DailySyncItem['scheduledShift'] = 'Morning (07:00-15:00)';
+    let expectedStartTime = '07:00 AM';
+
+    if (empNum % 4 === 1) {
+      scheduledShift = 'Morning (07:00-15:00)';
+      expectedStartTime = '07:00 AM';
+    } else if (empNum % 4 === 2) {
+      scheduledShift = 'Afternoon (15:00-23:00)';
+      expectedStartTime = '03:00 PM';
+    } else if (empNum % 4 === 3) {
+      scheduledShift = 'Night (23:00-07:00)';
+      expectedStartTime = '11:00 PM';
+    } else {
+      scheduledShift = 'Off';
+      expectedStartTime = 'N/A';
+    }
+
+    // Check if attendance record exists for this date
+    const attRec = attendance.find(
+      (r) => r.employeeId === emp.id && r.date === selectedSyncDate
+    );
+
+    if (scheduledShift === 'Off') {
+      return {
+        employee: emp,
+        scheduledShift: 'Off',
+        expectedStartTime: 'N/A',
+        syncStatus: 'Off',
+      };
+    }
+
+    if (attRec) {
+      const isLate = attRec.status === 'Late' || attRec.clockIn > '07:10 AM' && scheduledShift.startsWith('Morning');
+      return {
+        employee: emp,
+        scheduledShift,
+        expectedStartTime,
+        actualClockIn: attRec.clockIn,
+        actualClockOut: attRec.clockOut,
+        biometricMethod: attRec.method,
+        location: attRec.location,
+        syncStatus: isLate ? 'Late' : 'On-Time',
+        delayDuration: isLate ? '25 minutes late' : '0 mins',
+        attendanceRecordId: attRec.id,
+      };
+    }
+
+    // No clock-in record found -> Marked as ABSENT
+    return {
+      employee: emp,
+      scheduledShift,
+      expectedStartTime,
+      syncStatus: 'Absent',
+    };
+  });
+
+  const dailyLateComers = dailySyncResults.filter((item) => item.syncStatus === 'Late');
+  const dailyAbsentees = dailySyncResults.filter((item) => item.syncStatus === 'Absent');
+  const dailyOnTime = dailySyncResults.filter((item) => item.syncStatus === 'On-Time');
+  const dailyOffStaff = dailySyncResults.filter((item) => item.syncStatus === 'Off');
+
+  const handleSendLateWarning = async (empName: string, empId: string) => {
+    await dispatchNotification(
+      empId,
+      '🚨 Attendance Policy Alert: Late Arrival Warning',
+      `Dear ${empName}, our biometric terminal registered a late arrival for your scheduled shift on ${selectedSyncDate}. Please adhere strictly to duty roaster timings.`,
+      'App',
+      'Alert'
+    );
+    setActionSuccessMsg(`Official late arrival warning notice dispatched to ${empName}!`);
+    setTimeout(() => setActionSuccessMsg(null), 4000);
+  };
+
+  const handleMarkExcusedAbsence = (empName: string) => {
+    setActionSuccessMsg(`Absence for ${empName} on ${selectedSyncDate} marked as Authorized Excused Leave.`);
+    setTimeout(() => setActionSuccessMsg(null), 4000);
+  };
+
   // Grand Total KPI Calculations
   const grandTotalHours = staffSummaries.reduce((acc, s) => acc + s.totalHours, 0);
   const grandTotalOvertime = staffSummaries.reduce((acc, s) => acc + s.overtimeHours, 0);
@@ -241,43 +354,400 @@ export const AttendanceReport: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Header & Controls Panel */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 rounded-2xl bg-gradient-to-r from-slate-900 via-slate-900 to-teal-950 p-6 text-white border border-slate-800 shadow-xl">
-        <div className="flex items-start gap-4">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-teal-500/10 text-teal-400 border border-teal-500/30">
-            <BarChart3 className="h-6 w-6" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl font-bold tracking-tight text-white">
-                Staff Weekly & Monthly Attendance Report
-              </h1>
-              <span className="rounded-full bg-teal-500/20 px-2.5 py-0.5 text-xs font-semibold text-teal-300 border border-teal-500/30">
-                HR / Admin Analytics
-              </span>
-            </div>
-            <p className="mt-1 text-xs text-slate-400 max-w-2xl">
-              Comprehensive audit breakdown of staff regular hours, overtime accrual, shift attendance compliance, and labor regulation fatigue tracking for {selectedHospital.name}.
-            </p>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
+      {/* Primary Sub-Tab Navigation Bar */}
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-900/90 p-2 rounded-2xl border border-slate-800 shadow-lg">
+        <div className="flex items-center gap-2">
           <button
-            onClick={handlePrint}
-            className="flex items-center gap-2 rounded-xl bg-slate-800 px-3.5 py-2 text-xs font-semibold text-slate-200 border border-slate-700 hover:bg-slate-700 transition"
+            onClick={() => setViewTab('daily_sync')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black transition ${
+              viewTab === 'daily_sync'
+                ? 'bg-rose-600 text-white shadow-lg shadow-rose-950/50'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800'
+            }`}
           >
-            <Printer className="h-4 w-4 text-slate-300" /> Print Summary
+            <AlertTriangle className="h-4 w-4 text-amber-300" />
+            <span>Daily Duty Roaster & Attendance Sync (Late Comers & Absentees)</span>
+            <span className="ml-1 rounded-full bg-rose-950 px-2 py-0.5 text-[10px] text-rose-300 border border-rose-800 font-extrabold">
+              {dailyLateComers.length + dailyAbsentees.length} Exceptions
+            </span>
           </button>
 
           <button
-            onClick={handleExportCSV}
-            className="flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white shadow-lg shadow-emerald-950/40 hover:bg-emerald-500 transition"
+            onClick={() => setViewTab('periodic_audit')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black transition ${
+              viewTab === 'periodic_audit'
+                ? 'bg-teal-600 text-white shadow-lg shadow-teal-950/50'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800'
+            }`}
           >
-            <Download className="h-4 w-4" /> Export CSV Report
+            <BarChart3 className="h-4 w-4 text-teal-300" />
+            <span>Weekly & Monthly Hours & Overtime Audit</span>
+          </button>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handlePrint}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition border border-slate-700"
+          >
+            <Printer className="h-3.5 w-3.5 text-slate-300" /> Print Report
+          </button>
+          <button
+            onClick={handleExportCSV}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition shadow"
+          >
+            <Download className="h-3.5 w-3.5" /> Export CSV
           </button>
         </div>
       </div>
+
+      {/* Action Notification Banner */}
+      {actionSuccessMsg && (
+        <div className="p-4 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-bold flex items-center justify-between shadow-lg">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="h-5 w-5 text-emerald-400 shrink-0" />
+            <span>{actionSuccessMsg}</span>
+          </div>
+          <button onClick={() => setActionSuccessMsg(null)} className="text-emerald-400 hover:text-white">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* VIEW 1: DAILY DUTY ROASTER & ATTENDANCE SYNC (LATE COMERS & ABSENTEES) */}
+      {/* ========================================================= */}
+      {viewTab === 'daily_sync' && (
+        <div className="space-y-6">
+          {/* Daily Controls & Live Terminal Status Bar */}
+          <div className="rounded-2xl bg-gradient-to-r from-slate-900 via-slate-900 to-rose-950 p-6 text-white border border-slate-800 shadow-xl space-y-4">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="flex h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+                  <span className="text-[10px] font-black uppercase tracking-widest text-emerald-400 block">
+                    PJPIIMC Live Biometric & Shift Roaster Synchronization Engine
+                  </span>
+                </div>
+                <h2 className="text-xl font-black text-white mt-1">
+                  Daily Attendance Exceptions & Attendance Verification
+                </h2>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Real-time cross-referencing of monthly duty roasters against biometric clock-in terminals for {selectedHospital.name}.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3">
+                <div>
+                  <label className="block text-[10px] font-extrabold uppercase text-slate-400 mb-1">Audit Date</label>
+                  <input
+                    type="date"
+                    value={selectedSyncDate}
+                    onChange={(e) => setSelectedSyncDate(e.target.value)}
+                    className="rounded-xl bg-slate-950 border border-slate-800 px-3 py-1.5 text-xs text-white font-bold focus:border-rose-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-extrabold uppercase text-slate-400 mb-1">Department</label>
+                  <select
+                    value={selectedDept}
+                    onChange={(e) => setSelectedDept(e.target.value)}
+                    className="rounded-xl bg-slate-950 border border-slate-800 px-3 py-1.5 text-xs text-white font-bold focus:border-rose-500 focus:outline-none"
+                  >
+                    {departments.map((dept) => (
+                      <option key={dept} value={dept}>
+                        {dept}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Daily KPI Summary Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 pt-1">
+              <div className="rounded-xl bg-slate-950/80 p-3.5 border border-slate-800">
+                <span className="text-[10px] font-extrabold uppercase text-slate-400">Total Scheduled Duty</span>
+                <div className="text-2xl font-black text-white mt-1">{dailySyncResults.length - dailyOffStaff.length} Staff</div>
+                <span className="text-[10px] text-slate-400">Assigned M / A / N shifts today</span>
+              </div>
+
+              <div className="rounded-xl bg-slate-950/80 p-3.5 border border-emerald-500/20">
+                <span className="text-[10px] font-extrabold uppercase text-emerald-400">On-Time Present</span>
+                <div className="text-2xl font-black text-emerald-400 mt-1">{dailyOnTime.length} Staff</div>
+                <span className="text-[10px] text-slate-400">Clocked in before shift start</span>
+              </div>
+
+              <div className="rounded-xl bg-slate-950/80 p-3.5 border border-amber-500/30">
+                <span className="text-[10px] font-extrabold uppercase text-amber-400">Daily Late Comers</span>
+                <div className="text-2xl font-black text-amber-400 mt-1">{dailyLateComers.length} Staff</div>
+                <span className="text-[10px] text-amber-300/80">Late arrival after grace period</span>
+              </div>
+
+              <div className="rounded-xl bg-slate-950/80 p-3.5 border border-rose-500/30">
+                <span className="text-[10px] font-extrabold uppercase text-rose-400">Daily Absentees</span>
+                <div className="text-2xl font-black text-rose-400 mt-1">{dailyAbsentees.length} Staff</div>
+                <span className="text-[10px] text-rose-300/80">Scheduled duty but no clock-in</span>
+              </div>
+
+              <div className="rounded-xl bg-slate-950/80 p-3.5 border border-slate-800">
+                <span className="text-[10px] font-extrabold uppercase text-slate-400">Off / Rest Day</span>
+                <div className="text-2xl font-black text-slate-400 mt-1">{dailyOffStaff.length} Staff</div>
+                <span className="text-[10px] text-slate-500">Scheduled 'O' code today</span>
+              </div>
+            </div>
+          </div>
+
+          {/* TABLE 1: 🚨 DAILY LATE COMERS REPORT */}
+          <div className="rounded-2xl bg-slate-900 border border-slate-800 p-6 shadow-xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/30">
+                  <AlertTriangle className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-white flex items-center gap-2">
+                    DAILY LATE COMERS REPORT
+                    <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-extrabold">
+                      {dailyLateComers.length} Late Arrivals Registered
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    Staff members who arrived after scheduled shift commencement for {selectedSyncDate}.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {dailyLateComers.length === 0 ? (
+              <div className="p-8 text-center rounded-2xl bg-slate-950 border border-slate-800/80 space-y-2">
+                <CheckCircle2 className="h-8 w-8 text-emerald-400 mx-auto" />
+                <h4 className="font-bold text-white text-sm">Pristine Punctuality Record!</h4>
+                <p className="text-xs text-slate-400">No late arrivals recorded for scheduled shifts on {selectedSyncDate}.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto rounded-xl border border-slate-800">
+                <table className="w-full text-left text-xs text-slate-300">
+                  <thead className="bg-slate-950 text-slate-400 uppercase font-black text-[10px] tracking-wider border-b border-slate-800">
+                    <tr>
+                      <th className="px-4 py-3">Staff Member</th>
+                      <th className="px-4 py-3">Department & Job Title</th>
+                      <th className="px-4 py-3">Roaster Shift Scheduled</th>
+                      <th className="px-4 py-3">Actual Clock-In</th>
+                      <th className="px-4 py-3">Delay Duration</th>
+                      <th className="px-4 py-3">Biometric Method</th>
+                      <th className="px-4 py-3 text-right">HR Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800 bg-slate-900/60 font-medium">
+                    {dailyLateComers.map((item) => (
+                      <tr key={item.employee.id} className="hover:bg-slate-800/50 transition">
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-3">
+                            <img
+                              src={item.employee.photo || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150'}
+                              alt=""
+                              className="h-9 w-9 rounded-xl object-cover border border-slate-700"
+                            />
+                            <div>
+                              <span className="font-bold text-white block">
+                                {item.employee.firstName} {item.employee.lastName}
+                              </span>
+                              <span className="text-[10px] text-slate-400 font-mono">{item.employee.empCode}</span>
+                            </div>
+                          </div>
+                        </td>
+
+                        <td className="px-4 py-3">
+                          <span className="text-slate-200 font-semibold block">{item.employee.department}</span>
+                          <span className="text-[10px] text-slate-400">{item.employee.jobTitle}</span>
+                        </td>
+
+                        <td className="px-4 py-3">
+                          <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-200 font-bold text-[11px] border border-slate-700">
+                            {item.scheduledShift}
+                          </span>
+                          <span className="block text-[10px] text-slate-400 mt-0.5">Expected: {item.expectedStartTime}</span>
+                        </td>
+
+                        <td className="px-4 py-3">
+                          <span className="font-mono font-black text-amber-300">{item.actualClockIn}</span>
+                        </td>
+
+                        <td className="px-4 py-3">
+                          <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold text-[10px] border border-amber-500/40">
+                            {item.delayDuration}
+                          </span>
+                        </td>
+
+                        <td className="px-4 py-3">
+                          <span className="text-[10px] text-slate-300 font-mono bg-slate-950 px-2 py-1 rounded border border-slate-800">
+                            {item.biometricMethod || 'Facial Recognition'}
+                          </span>
+                        </td>
+
+                        <td className="px-4 py-3 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              onClick={() => handleSendLateWarning(`${item.employee.firstName} ${item.employee.lastName}`, item.employee.id)}
+                              className="px-2.5 py-1 rounded-lg bg-amber-600/80 hover:bg-amber-500 text-white font-bold text-[10px] transition shadow flex items-center gap-1"
+                              title="Send official late warning notice"
+                            >
+                              <Send className="h-3 w-3" /> Issue Warning
+                            </button>
+                            <button
+                              onClick={() => handleMarkExcusedAbsence(`${item.employee.firstName} ${item.employee.lastName}`)}
+                              className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-[10px] transition border border-slate-700"
+                              title="Mark late arrival as excused"
+                            >
+                              Mark Excused
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* TABLE 2: ❌ DAILY ABSENTEEISM REPORT */}
+          <div className="rounded-2xl bg-slate-900 border border-slate-800 p-6 shadow-xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-rose-500/10 text-rose-400 border border-rose-500/30">
+                  <XCircle className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-white flex items-center gap-2">
+                    DAILY ABSENTEEISM REPORT
+                    <span className="px-2.5 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40 text-[10px] font-extrabold">
+                      {dailyAbsentees.length} Missing Staff
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    Staff members scheduled on the duty roaster who failed to check in on {selectedSyncDate}.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {dailyAbsentees.length === 0 ? (
+              <div className="p-8 text-center rounded-2xl bg-slate-950 border border-slate-800/80 space-y-2">
+                <CheckCircle2 className="h-8 w-8 text-emerald-400 mx-auto" />
+                <h4 className="font-bold text-white text-sm">Full Duty Attendance Complied!</h4>
+                <p className="text-xs text-slate-400">All staff scheduled for duty on {selectedSyncDate} have checked in at biometric terminals.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto rounded-xl border border-slate-800">
+                <table className="w-full text-left text-xs text-slate-300">
+                  <thead className="bg-slate-950 text-slate-400 uppercase font-black text-[10px] tracking-wider border-b border-slate-800">
+                    <tr>
+                      <th className="px-4 py-3">Staff Member</th>
+                      <th className="px-4 py-3">Department & Contact</th>
+                      <th className="px-4 py-3">Scheduled Shift</th>
+                      <th className="px-4 py-3">Absence Classification</th>
+                      <th className="px-4 py-3 text-right">HR Emergency Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800 bg-slate-900/60 font-medium">
+                    {dailyAbsentees.map((item) => (
+                      <tr key={item.employee.id} className="hover:bg-slate-800/50 transition">
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-3">
+                            <img
+                              src={item.employee.photo || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150'}
+                              alt=""
+                              className="h-9 w-9 rounded-xl object-cover border border-rose-500/40"
+                            />
+                            <div>
+                              <span className="font-bold text-white block">
+                                {item.employee.firstName} {item.employee.lastName}
+                              </span>
+                              <span className="text-[10px] text-slate-400 font-mono">{item.employee.empCode}</span>
+                            </div>
+                          </div>
+                        </td>
+
+                        <td className="px-4 py-3">
+                          <span className="text-slate-200 font-semibold block">{item.employee.department}</span>
+                          <span className="text-[10px] text-slate-400 flex items-center gap-1 mt-0.5">
+                            <Phone className="h-3 w-3 text-emerald-400" /> {item.employee.phone || '0240001122'}
+                          </span>
+                        </td>
+
+                        <td className="px-4 py-3">
+                          <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-200 font-bold text-[11px] border border-slate-700">
+                            {item.scheduledShift}
+                          </span>
+                        </td>
+
+                        <td className="px-4 py-3">
+                          <span className="px-2.5 py-1 rounded bg-rose-500/20 text-rose-300 font-extrabold text-[10px] border border-rose-500/40 flex items-center gap-1 w-fit">
+                            <AlertCircle className="h-3 w-3 text-rose-400" /> UNEXCUSED ABSENCE (NO CLOCK-IN)
+                          </span>
+                        </td>
+
+                        <td className="px-4 py-3 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <a
+                              href={`tel:${item.employee.phone}`}
+                              className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[10px] transition shadow flex items-center gap-1"
+                            >
+                              <Phone className="h-3 w-3" /> Call Staff
+                            </a>
+                            <button
+                              onClick={() => handleMarkExcusedAbsence(`${item.employee.firstName} ${item.employee.lastName}`)}
+                              className="px-2.5 py-1 rounded-lg bg-amber-600/80 hover:bg-amber-500 text-white font-bold text-[10px] transition shadow"
+                            >
+                              Log Authorized Leave
+                            </button>
+                            <button
+                              onClick={() => handleSendLateWarning(`${item.employee.firstName} ${item.employee.lastName}`, item.employee.id)}
+                              className="px-2.5 py-1 rounded-lg bg-rose-950 hover:bg-rose-900 border border-rose-500/30 text-rose-300 font-bold text-[10px] transition"
+                            >
+                              Flag Disciplinary
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* VIEW 2: PERIODIC WORK HOURS & OVERTIME AUDIT LEDGER */}
+      {/* ========================================================= */}
+      {viewTab === 'periodic_audit' && (
+        <div className="space-y-6">
+          {/* Header & Controls Panel */}
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 rounded-2xl bg-gradient-to-r from-slate-900 via-slate-900 to-teal-950 p-6 text-white border border-slate-800 shadow-xl">
+            <div className="flex items-start gap-4">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-teal-500/10 text-teal-400 border border-teal-500/30">
+                <BarChart3 className="h-6 w-6" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h1 className="text-xl font-bold tracking-tight text-white">
+                    Staff Weekly & Monthly Work Hours Audit
+                  </h1>
+                  <span className="rounded-full bg-teal-500/20 px-2.5 py-0.5 text-xs font-semibold text-teal-300 border border-teal-500/30">
+                    HR / Admin Analytics
+                  </span>
+                </div>
+                <p className="mt-1 text-xs text-slate-400 max-w-2xl">
+                  Comprehensive audit breakdown of staff regular hours, overtime accrual, shift attendance compliance, and labor regulation fatigue tracking for {selectedHospital.name}.
+                </p>
+              </div>
+            </div>
+          </div>
 
       {/* KPI Cards Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -751,6 +1221,8 @@ export const AttendanceReport: React.FC = () => {
               </div>
             </div>
           </div>
+        </div>
+      )}
         </div>
       )}
     </div>

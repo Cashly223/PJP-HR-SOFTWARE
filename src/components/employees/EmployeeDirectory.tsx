@@ -782,6 +782,13 @@ export const EmployeeDirectory: React.FC = () => {
           </div>
 
           <button
+            onClick={() => setActiveView('leadership')}
+            className="flex items-center gap-2 rounded-xl bg-amber-600 hover:bg-amber-500 px-4 py-2.5 text-xs font-bold text-white shadow transition active:scale-95 border border-amber-400/30"
+          >
+            <Building2 className="h-4 w-4" /> (ADD DEPARTMENT)
+          </button>
+
+          <button
             onClick={() => setIsCreateHrAccountModalOpen(true)}
             className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 px-4 py-2.5 text-xs font-bold text-white shadow transition active:scale-95 border border-indigo-400/30"
           >

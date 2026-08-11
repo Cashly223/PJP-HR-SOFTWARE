@@ -13,6 +13,8 @@ import {
   ArrowRight,
   Mail,
   Award,
+  FolderPlus,
+  Trash2,
 } from 'lucide-react';
 import { useHrms } from '../../context/HrmsContext';
 
@@ -23,12 +25,49 @@ export const DepartmentLeadershipManager: React.FC = () => {
     assignDepartmentHead,
     assignUnitHead,
     addUnitToDepartment,
+    addDepartment,
     setFacilityHead,
     activeRole,
   } = useHrms();
 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedDeptFilter, setSelectedDeptFilter] = useState('All');
+  
+  // Modal state for Add Department
+  const [isAddDeptModalOpen, setIsAddDeptModalOpen] = useState(false);
+  const [newDeptForm, setNewDeptForm] = useState<{
+    departmentName: string;
+    departmentCode: string;
+    headEmpId: string;
+    units: Array<{ unitName: string; unitHeadId: string }>;
+  }>({
+    departmentName: '',
+    departmentCode: '',
+    headEmpId: '',
+    units: [{ unitName: '', unitHeadId: '' }],
+  });
+
+  const handleAddUnitRow = () => {
+    setNewDeptForm((prev) => ({
+      ...prev,
+      units: [...prev.units, { unitName: '', unitHeadId: '' }],
+    }));
+  };
+
+  const handleRemoveUnitRow = (index: number) => {
+    setNewDeptForm((prev) => ({
+      ...prev,
+      units: prev.units.filter((_, i) => i !== index),
+    }));
+  };
+
+  const handleUpdateUnitRow = (index: number, field: 'unitName' | 'unitHeadId', value: string) => {
+    setNewDeptForm((prev) => {
+      const copy = [...prev.units];
+      copy[index] = { ...copy[index], [field]: value };
+      return { ...prev, units: copy };
+    });
+  };
   
   // Modal states for HR Assignment
   const [assignModal, setAssignModal] = useState<{
@@ -98,6 +137,37 @@ export const DepartmentLeadershipManager: React.FC = () => {
     addUnitToDepartment(newUnitModal.departmentName, newUnitModal.unitName, newUnitModal.headId || undefined);
     showToast(`Created Unit '${newUnitModal.unitName}' under ${newUnitModal.departmentName}`);
     setNewUnitModal({ open: false, departmentName: '', unitName: '', headId: '' });
+  };
+
+  const handleCreateDepartment = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newDeptForm.departmentName.trim()) return;
+
+    const selectedHeadEmp = employees.find((emp) => emp.id === newDeptForm.headEmpId);
+    const code = newDeptForm.departmentCode.trim() || `${newDeptForm.departmentName.substring(0, 4).toUpperCase()}-DEPT`;
+
+    const validUnits = newDeptForm.units.filter((u) => u.unitName.trim().length > 0);
+
+    addDepartment({
+      departmentName: newDeptForm.departmentName.trim(),
+      departmentCode: code,
+      departmentHeadId: selectedHeadEmp?.id,
+      departmentHeadName: selectedHeadEmp ? `${selectedHeadEmp.firstName} ${selectedHeadEmp.lastName}` : undefined,
+      departmentHeadEmail: selectedHeadEmp ? selectedHeadEmp.email : undefined,
+      units: validUnits.map((u) => ({
+        unitName: u.unitName.trim(),
+        unitHeadId: u.unitHeadId || undefined,
+      })),
+    });
+
+    showToast(`Created department '${newDeptForm.departmentName}' (${code}) with ${validUnits.length || 1} unit(s)`);
+    setIsAddDeptModalOpen(false);
+    setNewDeptForm({
+      departmentName: '',
+      departmentCode: '',
+      headEmpId: '',
+      units: [{ unitName: '', unitHeadId: '' }],
+    });
   };
 
   // Facility Head reference (shared across hospital)
@@ -223,8 +293,8 @@ export const DepartmentLeadershipManager: React.FC = () => {
 
       {/* Filter & Search Bar */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
-        <div className="flex items-center gap-3 flex-1">
-          <div className="relative flex-1 max-w-md">
+        <div className="flex flex-wrap items-center gap-3 flex-1">
+          <div className="relative flex-1 min-w-[220px] max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
             <input
               type="text"
@@ -247,6 +317,13 @@ export const DepartmentLeadershipManager: React.FC = () => {
               </option>
             ))}
           </select>
+
+          <button
+            onClick={() => setIsAddDeptModalOpen(true)}
+            className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 px-4 py-2 text-xs font-bold text-white shadow transition active:scale-95 border border-emerald-400/30 whitespace-nowrap"
+          >
+            <Plus className="h-4 w-4" /> (ADD DEPARTMENT)
+          </button>
         </div>
 
         <div className="text-xs font-medium text-slate-500 dark:text-slate-400">
@@ -477,6 +554,163 @@ export const DepartmentLeadershipManager: React.FC = () => {
       )}
 
       {/* Modal 2: Create New Unit */}
+      {/* Modal for Adding New Department */}
+      {isAddDeptModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm overflow-y-auto">
+          <div className="w-full max-w-xl rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 max-h-[90vh] overflow-y-auto">
+            <h3 className="font-extrabold text-base mb-1 flex items-center gap-2">
+              <Building2 className="h-5 w-5 text-emerald-500" />
+              Add New Hospital Department & Units
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
+              Register a new administrative or clinical department, assign a Department Head (HOD - Tier 2 Approver), and define operational units with their assigned Unit Heads (HOU - Tier 3 Approvers).
+            </p>
+
+            <form onSubmit={handleCreateDepartment} className="space-y-4 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="sm:col-span-2">
+                  <label className="block font-bold mb-1 text-slate-700 dark:text-slate-300">Department Name *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Dental & Maxillofacial Care"
+                    value={newDeptForm.departmentName}
+                    onChange={(e) => setNewDeptForm({ ...newDeptForm, departmentName: e.target.value })}
+                    className="w-full rounded-xl border border-slate-300 dark:border-slate-700 p-2.5 dark:bg-slate-800 font-semibold focus:ring-2 focus:ring-emerald-500 outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold mb-1 text-slate-700 dark:text-slate-300">Department Code</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. DENT-DEPT"
+                    value={newDeptForm.departmentCode}
+                    onChange={(e) => setNewDeptForm({ ...newDeptForm, departmentCode: e.target.value })}
+                    className="w-full rounded-xl border border-slate-300 dark:border-slate-700 p-2.5 dark:bg-slate-800 font-mono focus:ring-2 focus:ring-emerald-500 outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold mb-1 text-slate-700 dark:text-slate-300">
+                  Initial Department Head (HOD - Tier 2 Approver)
+                </label>
+                <select
+                  value={newDeptForm.headEmpId}
+                  onChange={(e) => setNewDeptForm({ ...newDeptForm, headEmpId: e.target.value })}
+                  className="w-full rounded-xl border border-slate-300 dark:border-slate-700 p-2.5 dark:bg-slate-800 font-medium focus:ring-2 focus:ring-emerald-500 outline-none"
+                >
+                  <option value="">-- Select Enrolled Staff Member (Optional) --</option>
+                  {employees.map((emp) => (
+                    <option key={emp.id} value={emp.id}>
+                      {emp.firstName} {emp.lastName} ({emp.jobTitle} • {emp.department})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Units under Department section */}
+              <div className="pt-2 border-t border-slate-200 dark:border-slate-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="font-extrabold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                      <FolderPlus className="h-4 w-4 text-emerald-500" />
+                      Department Units & Assigned Unit Heads (HOU)
+                    </h4>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      Add operational units under this department and assign Unit Heads (Tier 3 Approvers).
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleAddUnitRow}
+                    className="flex items-center gap-1 px-3 py-1.5 text-[11px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 rounded-xl hover:bg-emerald-500/20 transition"
+                  >
+                    <Plus className="h-3.5 w-3.5" /> Add Unit
+                  </button>
+                </div>
+
+                <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
+                  {newDeptForm.units.map((unitItem, index) => (
+                    <div
+                      key={index}
+                      className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-2 relative"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-extrabold text-slate-600 dark:text-slate-300">
+                          Unit #{index + 1}
+                        </span>
+                        {newDeptForm.units.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveUnitRow(index)}
+                            className="text-red-500 hover:text-red-600 p-1 rounded-lg hover:bg-red-500/10 transition"
+                            title="Remove unit"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 mb-0.5">
+                            Unit Name *
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="e.g. Dental OPD Clinic / Surgery Bay"
+                            value={unitItem.unitName}
+                            onChange={(e) => handleUpdateUnitRow(index, 'unitName', e.target.value)}
+                            className="w-full rounded-lg border border-slate-300 dark:border-slate-700 p-2 dark:bg-slate-900 font-medium focus:ring-2 focus:ring-emerald-500 outline-none"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 mb-0.5">
+                            Assigned Unit Head (HOU - Tier 3)
+                          </label>
+                          <select
+                            value={unitItem.unitHeadId}
+                            onChange={(e) => handleUpdateUnitRow(index, 'unitHeadId', e.target.value)}
+                            className="w-full rounded-lg border border-slate-300 dark:border-slate-700 p-2 dark:bg-slate-900 font-medium focus:ring-2 focus:ring-emerald-500 outline-none"
+                          >
+                            <option value="">-- Select Unit Head --</option>
+                            {employees.map((emp) => (
+                              <option key={emp.id} value={emp.id}>
+                                {emp.firstName} {emp.lastName} ({emp.jobTitle})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-3 border-t border-slate-200 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setIsAddDeptModalOpen(false)}
+                  className="rounded-xl border border-slate-300 dark:border-slate-700 px-4 py-2 font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="rounded-xl bg-emerald-600 px-5 py-2 font-bold text-white shadow hover:bg-emerald-500 transition flex items-center gap-1.5"
+                >
+                  <Building2 className="h-4 w-4" />
+                  Register Department & Units
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {newUnitModal.open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
           <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100">

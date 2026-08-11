@@ -12,7 +12,9 @@ export const CreateStaffAccountModal: React.FC<CreateStaffAccountModalProps> = (
   isOpen,
   onClose,
 }) => {
-  const { createStaffAccountByHR } = useHrms();
+  const { createStaffAccountByHR, activeRole, currentUser } = useHrms();
+
+  const isHR = ['hr_director', 'hr_manager', 'super_admin'].includes(activeRole);
 
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -76,22 +78,39 @@ export const CreateStaffAccountModal: React.FC<CreateStaffAccountModalProps> = (
           <X className="h-5 w-5" />
         </button>
 
-        <div className="flex items-center gap-3 mb-6">
+        <div className="flex items-center gap-3 mb-4">
           <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-tr from-indigo-500 to-purple-500 text-white shadow-lg">
             <UserPlus className="h-6 w-6" />
           </div>
           <div>
             <h3 className="text-lg font-black text-white flex items-center gap-2">
               HR Staff Account Provisioning
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-                HR Sole Auth
+              <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/40">
+                🔒 HR EXCLUSIVE AUTHORITY
               </span>
             </h3>
             <p className="text-xs text-slate-400">
-              Staff accounts are created solely by HR officers. Generates initial credentials & forces password change on first sign-in.
+              Human Resources is the sole authorized entity to provision employee logins during staff registration.
             </p>
           </div>
         </div>
+
+        {/* Mandatory Policy Banner */}
+        <div className="mb-4 p-3 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-[11px] font-semibold flex items-center gap-2">
+          <Shield className="h-4 w-4 shrink-0 text-amber-400" />
+          <span>
+            <strong>HR Policy Notice:</strong> HR is the ONLY authority empowered to issue employee logins & system credentials during employee registration.
+          </span>
+        </div>
+
+        {!isHR && (
+          <div className="mb-4 p-4 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-bold flex items-center gap-2">
+            <Lock className="h-5 w-5 text-rose-400 shrink-0" />
+            <span>
+              Access Restricted: Your current active role ({activeRole.replace('_', ' ').toUpperCase()}) is not authorized to register employee logins. Please switch to an HR Director / Manager role to proceed.
+            </span>
+          </div>
+        )}
 
         {error && (
           <div className="mb-4 flex items-center gap-2 p-3 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-medium">

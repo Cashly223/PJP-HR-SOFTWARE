@@ -1231,6 +1231,14 @@ export const HrmsProvider: React.FC<{ children: React.ReactNode }> = ({ children
             'Leave Management Workflow',
             `Leave ID ${leaveId} (${leave.employeeName}) REJECTED at ${currentStage} stage by ${approverName}. Reason: ${comments || 'None'}`
           );
+
+          dispatchNotification(
+            leave.employeeId || 'emp-101',
+            `❌ Leave Request Rejected (${currentStage})`,
+            `Your ${leave.leaveType} request (${leave.startDate} to ${leave.endDate}) was REJECTED at ${currentStage} stage by ${approverName}. Reason: ${comments || 'Operational constraints'}.`,
+            'In-App',
+            'Approval'
+          );
         } else {
           // APPROVE STEP
           if (currentStage === 'Unit Head') {
@@ -1252,6 +1260,14 @@ export const HrmsProvider: React.FC<{ children: React.ReactNode }> = ({ children
               'Leave Management Workflow',
               `Leave ID ${leaveId} (${leave.employeeName}) APPROVED at Tier 1 (Unit Head) by ${approverName}. Advanced to Tier 2 (Departmental Head).`
             );
+
+            dispatchNotification(
+              leave.employeeId || 'emp-101',
+              `✅ Leave Tier 1 Approved (Unit Head)`,
+              `Your ${leave.leaveType} application was approved by ${approverName} (Unit Head - Tier 1) and advanced to Department Head for Tier 2 approval.`,
+              'In-App',
+              'Approval'
+            );
           } else if (currentStage === 'Departmental Head') {
             updatedWorkflow.departmentHeadStep = {
               role: 'Departmental Head',
@@ -1269,6 +1285,14 @@ export const HrmsProvider: React.FC<{ children: React.ReactNode }> = ({ children
               'Tier 2 Approval (Departmental Head)',
               'Leave Management Workflow',
               `Leave ID ${leaveId} (${leave.employeeName}) APPROVED at Tier 2 (Departmental Head) by ${approverName}. Advanced to Tier 3 (HR).`
+            );
+
+            dispatchNotification(
+              leave.employeeId || 'emp-101',
+              `✅ Leave Tier 2 Approved (Department Head)`,
+              `Your ${leave.leaveType} application was approved by ${approverName} (Department Head - Tier 2) and advanced to HR for Tier 3 verification.`,
+              'In-App',
+              'Approval'
             );
           } else if (currentStage === 'HR') {
             updatedWorkflow.hrStep = {
@@ -1298,6 +1322,14 @@ export const HrmsProvider: React.FC<{ children: React.ReactNode }> = ({ children
               'Leave Management Workflow',
               `Leave ID ${leaveId} (${leave.employeeName}) APPROVED at Tier 3 (HR) by ${approverName}. Advanced to Tier 4 (Head of Facility).`
             );
+
+            dispatchNotification(
+              leave.employeeId || 'emp-101',
+              `✅ Leave Tier 3 Verified (HR Directorate)`,
+              `Your ${leave.leaveType} application was verified by ${approverName} (HR - Tier 3) and advanced to Head of Facility for final authorization.`,
+              'In-App',
+              'Approval'
+            );
           } else if (currentStage === 'Head of Facility') {
             updatedWorkflow.facilityHeadStep = {
               role: 'Head of Facility',
@@ -1318,6 +1350,14 @@ export const HrmsProvider: React.FC<{ children: React.ReactNode }> = ({ children
               'Tier 4 Final Approval (Head of Facility)',
               'Leave Management Workflow',
               `Leave ID ${leaveId} (${leave.employeeName}) FULLY APPROVED at Tier 4 (Head of Facility) by ${approverName}. Leave granted.`
+            );
+
+            dispatchNotification(
+              leave.employeeId || 'emp-101',
+              `🎉 Leave Application Fully Approved (Tier 4 Final)`,
+              `Congratulations! Your ${leave.leaveType} application for ${leave.totalDays} day(s) starting ${leave.startDate} has been fully authorized by ${approverName} (Head of Facility).`,
+              'In-App',
+              'Approval'
             );
           }
         }

@@ -2516,18 +2516,9 @@ export const HrmsProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // Currency Formatter
+  // Currency Formatter (Enforced GH₵ for all)
   const formatCurrency = (amount: number): string => {
-    const symbols: Record<CurrencyCode, string> = {
-      GHS: 'GH₵ ',
-      USD: '$',
-      EUR: '€',
-      GBP: '£',
-      AED: 'AED ',
-      INR: '₹',
-    };
-    const symbol = symbols[currency] || 'GH₵ ';
-    return `${symbol}${amount.toLocaleString()}`;
+    return `GH₵ ${amount.toLocaleString()}`;
   };
 
   // Translation Helper

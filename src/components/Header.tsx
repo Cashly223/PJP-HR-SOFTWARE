@@ -22,7 +22,7 @@ import { PjpiimcLogo } from './common/PjpiimcLogo';
 import { SubordinateRequestModal } from './notifications/SubordinateRequestModal';
 
 interface HeaderProps {
-  onOpenAIAssistant: () => void;
+  onOpenAIAssistant?: () => void;
   onChangePasswordClick?: () => void;
 }
 
@@ -77,39 +77,26 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAIAssistant, onChangePassw
 
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-slate-200 bg-white/95 px-4 backdrop-blur dark:border-slate-800 dark:bg-slate-900/95 sm:px-6">
-      {/* Left: Hospital Switcher with Crest Logo */}
+      {/* Left: Hospital Name Display */}
       <div className="flex items-center gap-3">
-        <div className="flex items-center gap-2 rounded-xl bg-slate-100 dark:bg-slate-800/80 px-2.5 py-1 border border-slate-200 dark:border-slate-700/60 shadow-sm">
+        <div className="flex items-center gap-2 rounded-xl bg-slate-100 dark:bg-slate-800/80 px-3 py-1.5 border border-slate-200 dark:border-slate-700/60 shadow-sm">
           <PjpiimcLogo size="sm" className="shrink-0" />
           <select
             value={selectedHospital.id}
             onChange={(e) => setSelectedHospitalId(e.target.value)}
-            className="bg-transparent font-bold text-slate-800 focus:outline-none dark:text-slate-100 text-xs sm:text-sm cursor-pointer"
+            className="bg-transparent font-extrabold text-slate-900 focus:outline-none dark:text-slate-100 text-xs sm:text-sm cursor-pointer"
           >
             {hospitals.map((h) => (
-              <option key={h.id} value={h.id} className="dark:bg-slate-900 text-slate-900 dark:text-slate-100">
-                {h.name} ({h.code})
+              <option key={h.id} value={h.id} className="dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-bold">
+                {h.name}
               </option>
             ))}
           </select>
         </div>
-
-        <span className="hidden text-xs text-slate-500 font-medium sm:inline">
-          {selectedHospital.branches} Branches • {selectedHospital.totalBeds} Beds
-        </span>
       </div>
 
       {/* Right Controls */}
       <div className="flex items-center gap-2 sm:gap-3">
-        {/* AI Assistant Button */}
-        <button
-          onClick={onOpenAIAssistant}
-          className="flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:from-emerald-700 hover:to-teal-700 transition"
-        >
-          <Sparkles className="h-4 w-4 text-amber-300 animate-pulse" />
-          <span className="hidden sm:inline">AuraAI Assistant</span>
-        </button>
-
         {/* Mobile App Toggle */}
         <button
           onClick={() => setMobileViewActive(!mobileViewActive)}
@@ -124,20 +111,15 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAIAssistant, onChangePassw
           <span className="hidden md:inline">Mobile App</span>
         </button>
 
-        {/* RBAC Quick Role Switcher */}
-        <div className="relative flex items-center rounded-lg bg-slate-100 px-2 py-1 dark:bg-slate-800">
-          <UserCheck className="mr-1 h-3.5 w-3.5 text-slate-500" />
-          <select
-            value={activeRole}
-            onChange={(e) => setActiveRole(e.target.value as UserRole)}
-            className="bg-transparent text-xs font-medium text-slate-700 focus:outline-none dark:text-slate-300 cursor-pointer"
-          >
-            {rolesList.map((r) => (
-              <option key={r.role} value={r.role} className="dark:bg-slate-900 text-slate-900 dark:text-slate-100">
-                {r.label}
-              </option>
-            ))}
-          </select>
+        {/* Official Assigned Role Badge (Solely Determined by HR) */}
+        <div
+          className="flex items-center gap-1.5 rounded-lg bg-slate-100 px-2.5 py-1.5 text-xs font-bold text-slate-800 dark:bg-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700/60"
+          title="Your official role is solely determined and assigned by HR"
+        >
+          <UserCheck className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+          <span className="whitespace-nowrap">
+            {rolesList.find((r) => r.role === activeRole)?.label || activeRole}
+          </span>
         </div>
 
         {/* Language Selector */}
@@ -155,20 +137,13 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAIAssistant, onChangePassw
           </select>
         </div>
 
-        {/* Currency Selector */}
-        <div className="hidden items-center rounded-lg bg-slate-100 px-2 py-1 dark:bg-slate-800 sm:flex">
-          <DollarSign className="mr-1 h-3.5 w-3.5 text-slate-500" />
-          <select
-            value={currency}
-            onChange={(e) => setCurrency(e.target.value as CurrencyCode)}
-            className="bg-transparent text-xs font-medium text-slate-700 focus:outline-none dark:text-slate-300 cursor-pointer"
-          >
-            <option value="USD" className="dark:bg-slate-900">USD ($)</option>
-            <option value="EUR" className="dark:bg-slate-900">EUR (€)</option>
-            <option value="GBP" className="dark:bg-slate-900">GBP (£)</option>
-            <option value="AED" className="dark:bg-slate-900">AED</option>
-            <option value="INR" className="dark:bg-slate-900">INR (₹)</option>
-          </select>
+        {/* Enforced Currency Indicator (GH₵ Ghana Cedi) */}
+        <div
+          className="hidden sm:flex items-center rounded-lg bg-slate-100 px-2.5 py-1.5 text-xs font-black text-slate-800 dark:bg-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700/60"
+          title="Ghana Cedi (GH₵) is enforced as system currency"
+        >
+          <span className="text-emerald-500 font-black mr-1">GH₵</span>
+          <span>GHS</span>
         </div>
 
         {/* Dark Mode Toggle */}

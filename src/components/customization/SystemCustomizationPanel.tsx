@@ -112,22 +112,8 @@ export const SystemCustomizationPanel: React.FC = () => {
               </p>
             </div>
 
-            <div className="pt-2 flex flex-col sm:flex-row items-center gap-3">
-              <span className="text-xs text-slate-400 font-semibold">Switch role for testing / demo:</span>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setActiveRole('hr_director')}
-                  className="rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white shadow hover:bg-emerald-500 transition"
-                >
-                  Switch to HR Director
-                </button>
-                <button
-                  onClick={() => setActiveRole('facility_head')}
-                  className="rounded-xl bg-amber-600 px-4 py-2 text-xs font-bold text-white shadow hover:bg-amber-500 transition"
-                >
-                  Switch to Head of Facility
-                </button>
-              </div>
+            <div className="pt-2">
+              <span className="text-xs text-slate-400 font-semibold">Note: User roles are strictly determined and assigned by HR Administrators.</span>
             </div>
           </div>
         </div>
@@ -309,16 +295,11 @@ export const SystemCustomizationPanel: React.FC = () => {
                     Hospital Standard Accounting Currency
                   </label>
                   <select
-                    value={formData.currency}
-                    onChange={(e) => handleChange('currency', e.target.value as CurrencyCode)}
-                    className="w-full rounded-xl border border-slate-300 dark:border-slate-700 p-2.5 dark:bg-slate-800 font-bold"
+                    value="GHS"
+                    disabled
+                    className="w-full rounded-xl border border-slate-300 dark:border-slate-700 p-2.5 dark:bg-slate-800 font-bold bg-slate-100 text-slate-800 dark:text-slate-200 cursor-not-allowed"
                   >
-                    <option value="GHS">GHS (Ghanaian Cedi ₵)</option>
-                    <option value="USD">USD (US Dollar $)</option>
-                    <option value="EUR">EUR (Euro €)</option>
-                    <option value="GBP">GBP (British Pound £)</option>
-                    <option value="AED">AED (UAE Dirham)</option>
-                    <option value="INR">INR (Indian Rupee ₹)</option>
+                    <option value="GHS">GH₵ - Ghanaian Cedi (GHS - Enforced System-wide)</option>
                   </select>
                 </div>
               </div>

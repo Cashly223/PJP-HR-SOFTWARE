@@ -352,26 +352,15 @@ export const LeaveManagement: React.FC = () => {
             </p>
           </div>
 
-          {/* Quick Role Switcher for Testing/Demonstrating Workflow */}
+          {/* Active Assigned Role Badge (Solely Determined by HR) */}
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800/80 p-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs">
               <span className="font-bold text-slate-500 dark:text-slate-400 flex items-center gap-1">
-                <Crown className="h-3.5 w-3.5 text-amber-500" /> Active Role:
+                <Crown className="h-3.5 w-3.5 text-amber-500" /> Assigned HR Role:
               </span>
-              <select
-                value={activeRole}
-                onChange={(e) => setActiveRole(e.target.value as UserRole)}
-                className="bg-white dark:bg-slate-900 font-bold text-emerald-600 dark:text-emerald-400 border border-slate-300 dark:border-slate-700 rounded-lg px-2 py-1 focus:outline-none"
-              >
-                <option value="unit_head">Tier 1: Unit Head (HOU)</option>
-                <option value="dept_head">Tier 2: Department Head (HOD)</option>
-                <option value="hr_director">Tier 3: HR Director</option>
-                <option value="hr_manager">Tier 3: HR Manager</option>
-                <option value="facility_head">Tier 4: Head of Facility (CMO/CEO)</option>
-                <option value="super_admin">Super Admin (All Approvals Override)</option>
-                <option value="doctor">Doctor (Staff Member)</option>
-                <option value="nurse">Nurse (Staff Member)</option>
-              </select>
+              <span className="font-extrabold text-emerald-600 dark:text-emerald-400 capitalize">
+                {activeRole.replace('_', ' ')}
+              </span>
             </div>
 
             <button

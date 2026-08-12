@@ -49,7 +49,7 @@ export const MOCK_HOSPITALS: Hospital[] = [
     branches: 2,
     totalBeds: 420,
     country: 'United Kingdom',
-    currency: 'GBP',
+    currency: 'GHS',
   },
   {
     id: 'hosp-3',
@@ -60,7 +60,7 @@ export const MOCK_HOSPITALS: Hospital[] = [
     branches: 1,
     totalBeds: 260,
     country: 'United Arab Emirates',
-    currency: 'AED',
+    currency: 'GHS',
   },
 ];
 
@@ -534,7 +534,7 @@ export const MOCK_EMPLOYEES: Employee[] = [
     employmentType: 'Full-Time',
     joinDate: '2015-01-05',
     salary: 28000,
-    currency: 'USD',
+    currency: 'GHS',
     status: 'Active',
     medicalLicenses: [
       {
@@ -646,7 +646,7 @@ export const MOCK_EMPLOYEES: Employee[] = [
     employmentType: 'Full-Time',
     joinDate: '2019-03-15',
     salary: 18500,
-    currency: 'USD',
+    currency: 'GHS',
     status: 'Active',
     medicalLicenses: [
       {
@@ -703,7 +703,7 @@ export const MOCK_EMPLOYEES: Employee[] = [
     employmentType: 'Full-Time',
     joinDate: '2021-08-01',
     salary: 7800,
-    currency: 'USD',
+    currency: 'GHS',
     status: 'Active',
     medicalLicenses: [
       {
@@ -759,7 +759,7 @@ export const MOCK_EMPLOYEES: Employee[] = [
     employmentType: 'Full-Time',
     joinDate: '2017-01-10',
     salary: 14200,
-    currency: 'USD',
+    currency: 'GHS',
     status: 'Active',
     medicalLicenses: [],
     passportNo: 'P-88192039',
@@ -793,7 +793,7 @@ export const MOCK_EMPLOYEES: Employee[] = [
     employmentType: 'Full-Time',
     joinDate: '2020-04-12',
     salary: 19800,
-    currency: 'USD',
+    currency: 'GHS',
     status: 'Active',
     medicalLicenses: [
       {
@@ -849,7 +849,7 @@ export const MOCK_EMPLOYEES: Employee[] = [
     employmentType: 'Full-Time',
     joinDate: '2018-09-01',
     salary: 21000,
-    currency: 'USD',
+    currency: 'GHS',
     status: 'Active',
     medicalLicenses: [
       {
@@ -894,7 +894,7 @@ export const MOCK_EMPLOYEES: Employee[] = [
     employmentType: 'Full-Time',
     joinDate: '2021-02-15',
     salary: 9500,
-    currency: 'USD',
+    currency: 'GHS',
     status: 'Active',
     medicalLicenses: [],
     passportNo: 'P-44102918',
@@ -928,7 +928,7 @@ export const MOCK_EMPLOYEES: Employee[] = [
     employmentType: 'Full-Time',
     joinDate: '2016-06-20',
     salary: 24500,
-    currency: 'USD',
+    currency: 'GHS',
     status: 'Active',
     medicalLicenses: [
       {
@@ -973,7 +973,7 @@ export const MOCK_EMPLOYEES: Employee[] = [
     employmentType: 'Full-Time',
     joinDate: '2023-01-10',
     salary: 6800,
-    currency: 'USD',
+    currency: 'GHS',
     status: 'Active',
     medicalLicenses: [
       {
@@ -1720,7 +1720,7 @@ export const MOCK_PAYROLL: PayrollRecord[] = [
     pensionDeduction: 1100,
     insuranceDeduction: 650,
     netPay: 16650,
-    currency: 'USD',
+    currency: 'GHS',
     status: 'Paid',
   },
   {
@@ -1739,7 +1739,7 @@ export const MOCK_PAYROLL: PayrollRecord[] = [
     pensionDeduction: 500,
     insuranceDeduction: 320,
     netPay: 7480,
-    currency: 'USD',
+    currency: 'GHS',
     status: 'Approved',
   },
 ];

@@ -7,7 +7,8 @@ export type UserRole =
   | 'facility_head'
   | 'doctor'
   | 'nurse'
-  | 'auditor';
+  | 'auditor'
+  | string;
 
 export type LanguageCode = 'en' | 'es' | 'fr' | 'ar';
 export type CurrencyCode = 'GHS' | 'USD' | 'EUR' | 'GBP' | 'AED' | 'INR';
@@ -153,12 +154,12 @@ export interface Employee {
   currency: CurrencyCode;
   status: 'Active' | 'On Leave' | 'Suspended' | 'Exited';
   medicalLicenses: MedicalLicense[];
-  passportNo: string;
-  nationalId: string;
-  taxId: string;
-  bankAccount: string;
-  emergencyContacts: EmergencyContact[];
-  vaccinations: VaccinationRecord[];
+  passportNo?: string;
+  nationalId?: string;
+  taxId?: string;
+  bankAccount?: string;
+  emergencyContacts?: EmergencyContact[];
+  vaccinations?: VaccinationRecord[];
   ghanaCardInfo?: GhanaCardInfo;
   educationList?: EducationItem[];
   officialDocuments?: OfficialDocument[];
@@ -172,27 +173,27 @@ export interface Employee {
   filePermissionGranted?: boolean;
   defaultPassword?: string;
   dateOfBirth?: string;
-  occupationalHealth: {
+  occupationalHealth?: {
     lastExamDate: string;
     fitForDuty: boolean;
     notes: string;
   };
-  education: string;
-  skills: string[];
-  languages: string[];
+  education?: string;
+  skills?: string[];
+  languages?: string[];
   digitalSignatureUrl?: string;
   leaveEntitlement?: number; // Annual leave entitlement in days (e.g. 30 days)
   deferredLeaveDays?: number; // Carried over / deferred leave days
   portalAccess?: {
     username: string; // Email or Staff ID (empCode)
     usernameType: 'email' | 'empCode';
-    tempPassword: string; // Email, Staff ID, or custom
-    passwordType: 'empCode' | 'email' | 'custom';
-    accountCreated: boolean;
+    tempPassword?: string; // Email, Staff ID, or custom
+    passwordType?: 'empCode' | 'email' | 'custom';
+    accountCreated?: boolean;
     accountCreatedAt?: string;
     invitedAt?: string;
-    inviteStatus: 'Not Invited' | 'Invitation Sent' | 'Portal Activated' | 'Login Locked';
-    authMethod: 'Password' | 'SSO' | '2FA';
+    inviteStatus?: 'Not Invited' | 'Invitation Sent' | 'Portal Activated' | 'Login Locked';
+    authMethod?: 'Password' | 'SSO' | '2FA';
     lastLogin?: string;
     mustChangePassword?: boolean;
   };

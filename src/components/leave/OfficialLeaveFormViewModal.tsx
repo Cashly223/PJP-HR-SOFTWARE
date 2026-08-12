@@ -16,6 +16,8 @@ import {
   Download,
 } from 'lucide-react';
 import { LeaveRequest } from '../../types/hrms';
+import { PjpiimcLogo } from '../common/PjpiimcLogo';
+import { formatLeaveDaysText } from '../../lib/leaveUtils';
 
 interface OfficialLeaveFormViewModalProps {
   isOpen: boolean;
@@ -196,11 +198,141 @@ export const OfficialLeaveFormViewModal: React.FC<OfficialLeaveFormViewModalProp
     <button class="btn" onclick="window.print()">Print Form / Save PDF</button>
   </div>
 
-  <div class="header">
-    <div class="subtitle">DEPARTMENT OF HUMAN RESOURCE MANAGEMENT • OFFICIAL HEALTHCARE RECORDS</div>
-    <h1>${hospitalName}</h1>
-    <h2>OFFICIAL LEAVE APPLICATION FORM</h2>
-    <p>Form Ref: HR-LAF/2026/REV-04 • Pope John Paul II Personnel Code • Document ID: ${leave.id}</p>
+  <div class="header" style="display: flex; align-items: center; justify-content: space-between; gap: 16px; border-bottom: 2px solid #0f172a; padding-bottom: 10px; margin-bottom: 12px;">
+    <div style="width: 110px; height: 115px; flex-shrink: 0;">
+      <svg viewBox="0 0 200 210" fill="none" xmlns="http://www.w3.org/2000/svg" style="width: 100%; height: 100%;">
+        <path d="M75 22 C 75 12, 125 12, 125 22 C 145 22, 150 28, 125 28 C 120 28, 80 28, 75 28 C 50 28, 55 22, 75 22 Z" fill="#007A33"/>
+        <ellipse cx="100" cy="20" rx="28" ry="8" fill="#006428"/>
+        <path d="M 80 25 C 50 20, 20 30, 25 50 C 30 70, 55 50, 50 80 C 45 105, 30 110, 30 160" stroke="#007A33" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+        <path d="M 75 27 C 40 40, 60 70, 42 100 C 35 120, 45 140, 42 160" stroke="#007A33" stroke-width="2.5" fill="none"/>
+        <path d="M 46 95 L 42 110 L 50 110 Z" fill="#007A33"/>
+        <path d="M 36 125 L 31 142 L 40 142 Z" fill="#007A33"/>
+        <path d="M 48 125 L 43 142 L 52 142 Z" fill="#007A33"/>
+        <path d="M 26 155 L 20 180 L 30 180 Z" fill="#007A33"/>
+        <path d="M 38 155 L 32 180 L 42 180 Z" fill="#007A33"/>
+        <path d="M 50 155 L 44 180 L 54 180 Z" fill="#007A33"/>
+        <path d="M 120 25 C 150 20, 180 30, 175 50 C 170 70, 145 50, 150 80 C 155 105, 170 110, 170 160" stroke="#007A33" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+        <path d="M 125 27 C 160 40, 140 70, 158 100 C 165 120, 155 140, 158 160" stroke="#007A33" stroke-width="2.5" fill="none"/>
+        <path d="M 154 95 L 150 110 L 158 110 Z" fill="#007A33"/>
+        <path d="M 152 125 L 148 142 L 157 142 Z" fill="#007A33"/>
+        <path d="M 164 125 L 160 142 L 169 142 Z" fill="#007A33"/>
+        <path d="M 150 155 L 146 180 L 156 180 Z" fill="#007A33"/>
+        <path d="M 162 155 L 158 180 L 168 180 Z" fill="#007A33"/>
+        <path d="M 174 155 L 170 180 L 180 180 Z" fill="#007A33"/>
+        <rect x="96" y="15" width="8" height="185" fill="#EAB308" stroke="#854D0E" stroke-width="1"/>
+        <path d="M 100 198 L 96 208 L 104 208 Z" fill="#EAB308"/>
+        <rect x="78" y="42" width="44" height="8" fill="#EAB308" stroke="#854D0E" stroke-width="1"/>
+        <circle cx="100" cy="15" r="5" fill="#EAB308" stroke="#854D0E" stroke-width="1"/>
+        <circle cx="76" cy="46" r="5" fill="#EAB308" stroke="#854D0E" stroke-width="1"/>
+        <circle cx="124" cy="46" r="5" fill="#EAB308" stroke="#854D0E" stroke-width="1"/>
+        <path d="M 52 64 L 148 64 C 148 120, 142 145, 100 160 C 58 145, 52 120, 52 64 Z" fill="#FFDE00" stroke="#1E293B" stroke-width="2.5"/>
+        <path d="M 52 64 L 100 64 L 100 110 C 80 110, 58 105, 52 95 Z" fill="#D92D20" stroke="#1E293B" stroke-width="1.5"/>
+        <path d="M 100 64 L 148 64 L 148 95 C 142 105, 120 110, 100 110 Z" fill="#007A33" stroke="#1E293B" stroke-width="1.5"/>
+        <g transform="translate(76, 122)">
+          <path d="M 2 4 C 12 -2, 36 -2, 46 4 L 44 8 C 34 3, 14 3, 4 8 Z" fill="#1E293B"/>
+          <rect x="20" y="8" width="8" height="16" rx="2" fill="#1E293B"/>
+          <circle cx="24" cy="16" r="2" fill="#FFDE00"/>
+          <path d="M 8 8 C 12 12, 12 20, 8 24 L 12 24 C 16 19, 16 13, 12 8 Z" fill="#1E293B"/>
+          <path d="M 40 8 C 36 12, 36 20, 40 24 L 36 24 C 32 19, 32 13, 36 8 Z" fill="#1E293B"/>
+          <rect x="4" y="24" width="40" height="5" rx="1.5" fill="#1E293B"/>
+        </g>
+        <g transform="translate(58, 72)">
+          <path d="M 2 4 Q 10 1, 18 5 L 18 25 Q 10 21, 2 24 Z" fill="#FFFFFF" stroke="#1E293B" stroke-width="1"/>
+          <path d="M 18 5 Q 26 1, 34 4 L 34 24 Q 26 21, 18 25 Z" fill="#FFFFFF" stroke="#1E293B" stroke-width="1"/>
+          <text x="6" y="18" font-family="serif" font-size="11" font-weight="bold" fill="#1E293B">A</text>
+          <text x="22" y="18" font-family="serif" font-size="11" font-weight="bold" fill="#1E293B">Ω</text>
+        </g>
+        <g transform="translate(108, 70)">
+          <ellipse cx="16" cy="18" rx="10" ry="7" fill="#FFFFFF" stroke="#1E293B" stroke-width="1"/>
+          <circle cx="8" cy="12" r="4.5" fill="#FFFFFF" stroke="#1E293B" stroke-width="1"/>
+          <line x1="10" y1="24" x2="10" y2="29" stroke="#1E293B" stroke-width="1.5"/>
+          <line x1="14" y1="24" x2="14" y2="29" stroke="#1E293B" stroke-width="1.5"/>
+          <line x1="18" y1="24" x2="18" y2="29" stroke="#1E293B" stroke-width="1.5"/>
+          <line x1="22" y1="24" x2="22" y2="29" stroke="#1E293B" stroke-width="1.5"/>
+          <line x1="12" y1="4" x2="12" y2="25" stroke="#1E293B" stroke-width="1.5"/>
+          <line x1="8" y1="8" x2="16" y2="8" stroke="#1E293B" stroke-width="1.5"/>
+          <path d="M 12 5 L 24 8 L 20 12 L 24 15 L 12 12 Z" fill="#FFFFFF" stroke="#1E293B" stroke-width="1"/>
+          <line x1="15" y1="8.5" x2="15" y2="12.5" stroke="#D92D20" stroke-width="1"/>
+          <line x1="13" y1="10.5" x2="19" y2="10.5" stroke="#D92D20" stroke-width="1"/>
+        </g>
+        <g>
+          <path d="M 22 178 Q 60 170, 100 182 Q 140 170, 178 178 L 188 195 Q 140 185, 100 197 Q 60 185, 12 195 Z" fill="#FFDE00" stroke="#1E293B" stroke-width="1.5"/>
+          <path d="M 12 195 L 24 186 L 22 178 Z" fill="#D97706"/>
+          <path d="M 188 195 L 176 186 L 178 178 Z" fill="#D97706"/>
+          <text x="100" y="189" text-anchor="middle" font-family="Georgia, serif" font-size="9.5" font-weight="bold" letter-spacing="0.8" fill="#1E293B">FIAT VOLUNTAS DEI</text>
+        </g>
+      </svg>
+    </div>
+    <div style="flex: 1; text-align: center;">
+      <div class="subtitle">DEPARTMENT OF HUMAN RESOURCE MANAGEMENT • OFFICIAL HEALTHCARE RECORDS</div>
+      <h1>${hospitalName}</h1>
+      <h2>OFFICIAL LEAVE APPLICATION FORM</h2>
+      <p>Form Ref: HR-LAF/2026/REV-04 • Pope John Paul II Personnel Code • Document ID: ${leave.id}</p>
+    </div>
+    <div style="width: 110px; height: 115px; flex-shrink: 0;">
+      <svg viewBox="0 0 200 210" fill="none" xmlns="http://www.w3.org/2000/svg" style="width: 100%; height: 100%;">
+        <path d="M75 22 C 75 12, 125 12, 125 22 C 145 22, 150 28, 125 28 C 120 28, 80 28, 75 28 C 50 28, 55 22, 75 22 Z" fill="#007A33"/>
+        <ellipse cx="100" cy="20" rx="28" ry="8" fill="#006428"/>
+        <path d="M 80 25 C 50 20, 20 30, 25 50 C 30 70, 55 50, 50 80 C 45 105, 30 110, 30 160" stroke="#007A33" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+        <path d="M 75 27 C 40 40, 60 70, 42 100 C 35 120, 45 140, 42 160" stroke="#007A33" stroke-width="2.5" fill="none"/>
+        <path d="M 46 95 L 42 110 L 50 110 Z" fill="#007A33"/>
+        <path d="M 36 125 L 31 142 L 40 142 Z" fill="#007A33"/>
+        <path d="M 48 125 L 43 142 L 52 142 Z" fill="#007A33"/>
+        <path d="M 26 155 L 20 180 L 30 180 Z" fill="#007A33"/>
+        <path d="M 38 155 L 32 180 L 42 180 Z" fill="#007A33"/>
+        <path d="M 50 155 L 44 180 L 54 180 Z" fill="#007A33"/>
+        <path d="M 120 25 C 150 20, 180 30, 175 50 C 170 70, 145 50, 150 80 C 155 105, 170 110, 170 160" stroke="#007A33" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+        <path d="M 125 27 C 160 40, 140 70, 158 100 C 165 120, 155 140, 158 160" stroke="#007A33" stroke-width="2.5" fill="none"/>
+        <path d="M 154 95 L 150 110 L 158 110 Z" fill="#007A33"/>
+        <path d="M 152 125 L 148 142 L 157 142 Z" fill="#007A33"/>
+        <path d="M 164 125 L 160 142 L 169 142 Z" fill="#007A33"/>
+        <path d="M 150 155 L 146 180 L 156 180 Z" fill="#007A33"/>
+        <path d="M 162 155 L 158 180 L 168 180 Z" fill="#007A33"/>
+        <path d="M 174 155 L 170 180 L 180 180 Z" fill="#007A33"/>
+        <rect x="96" y="15" width="8" height="185" fill="#EAB308" stroke="#854D0E" stroke-width="1"/>
+        <path d="M 100 198 L 96 208 L 104 208 Z" fill="#EAB308"/>
+        <rect x="78" y="42" width="44" height="8" fill="#EAB308" stroke="#854D0E" stroke-width="1"/>
+        <circle cx="100" cy="15" r="5" fill="#EAB308" stroke="#854D0E" stroke-width="1"/>
+        <circle cx="76" cy="46" r="5" fill="#EAB308" stroke="#854D0E" stroke-width="1"/>
+        <circle cx="124" cy="46" r="5" fill="#EAB308" stroke="#854D0E" stroke-width="1"/>
+        <path d="M 52 64 L 148 64 C 148 120, 142 145, 100 160 C 58 145, 52 120, 52 64 Z" fill="#FFDE00" stroke="#1E293B" stroke-width="2.5"/>
+        <path d="M 52 64 L 100 64 L 100 110 C 80 110, 58 105, 52 95 Z" fill="#D92D20" stroke="#1E293B" stroke-width="1.5"/>
+        <path d="M 100 64 L 148 64 L 148 95 C 142 105, 120 110, 100 110 Z" fill="#007A33" stroke="#1E293B" stroke-width="1.5"/>
+        <g transform="translate(76, 122)">
+          <path d="M 2 4 C 12 -2, 36 -2, 46 4 L 44 8 C 34 3, 14 3, 4 8 Z" fill="#1E293B"/>
+          <rect x="20" y="8" width="8" height="16" rx="2" fill="#1E293B"/>
+          <circle cx="24" cy="16" r="2" fill="#FFDE00"/>
+          <path d="M 8 8 C 12 12, 12 20, 8 24 L 12 24 C 16 19, 16 13, 12 8 Z" fill="#1E293B"/>
+          <path d="M 40 8 C 36 12, 36 20, 40 24 L 36 24 C 32 19, 32 13, 36 8 Z" fill="#1E293B"/>
+          <rect x="4" y="24" width="40" height="5" rx="1.5" fill="#1E293B"/>
+        </g>
+        <g transform="translate(58, 72)">
+          <path d="M 2 4 Q 10 1, 18 5 L 18 25 Q 10 21, 2 24 Z" fill="#FFFFFF" stroke="#1E293B" stroke-width="1"/>
+          <path d="M 18 5 Q 26 1, 34 4 L 34 24 Q 26 21, 18 25 Z" fill="#FFFFFF" stroke="#1E293B" stroke-width="1"/>
+          <text x="6" y="18" font-family="serif" font-size="11" font-weight="bold" fill="#1E293B">A</text>
+          <text x="22" y="18" font-family="serif" font-size="11" font-weight="bold" fill="#1E293B">Ω</text>
+        </g>
+        <g transform="translate(108, 70)">
+          <ellipse cx="16" cy="18" rx="10" ry="7" fill="#FFFFFF" stroke="#1E293B" stroke-width="1"/>
+          <circle cx="8" cy="12" r="4.5" fill="#FFFFFF" stroke="#1E293B" stroke-width="1"/>
+          <line x1="10" y1="24" x2="10" y2="29" stroke="#1E293B" stroke-width="1.5"/>
+          <line x1="14" y1="24" x2="14" y2="29" stroke="#1E293B" stroke-width="1.5"/>
+          <line x1="18" y1="24" x2="18" y2="29" stroke="#1E293B" stroke-width="1.5"/>
+          <line x1="22" y1="24" x2="22" y2="29" stroke="#1E293B" stroke-width="1.5"/>
+          <line x1="12" y1="4" x2="12" y2="25" stroke="#1E293B" stroke-width="1.5"/>
+          <line x1="8" y1="8" x2="16" y2="8" stroke="#1E293B" stroke-width="1.5"/>
+          <path d="M 12 5 L 24 8 L 20 12 L 24 15 L 12 12 Z" fill="#FFFFFF" stroke="#1E293B" stroke-width="1"/>
+          <line x1="15" y1="8.5" x2="15" y2="12.5" stroke="#D92D20" stroke-width="1"/>
+          <line x1="13" y1="10.5" x2="19" y2="10.5" stroke="#D92D20" stroke-width="1"/>
+        </g>
+        <g>
+          <path d="M 22 178 Q 60 170, 100 182 Q 140 170, 178 178 L 188 195 Q 140 185, 100 197 Q 60 185, 12 195 Z" fill="#FFDE00" stroke="#1E293B" stroke-width="1.5"/>
+          <path d="M 12 195 L 24 186 L 22 178 Z" fill="#D97706"/>
+          <path d="M 188 195 L 176 186 L 178 178 Z" fill="#D97706"/>
+          <text x="100" y="189" text-anchor="middle" font-family="Georgia, serif" font-size="9.5" font-weight="bold" letter-spacing="0.8" fill="#1E293B">FIAT VOLUNTAS DEI</text>
+        </g>
+      </svg>
+    </div>
   </div>
 
   <div class="section" style="background-color: #f8fafc;">
@@ -228,10 +360,10 @@ export const OfficialLeaveFormViewModal: React.FC<OfficialLeaveFormViewModalProp
     </div>
     <div class="grid-3" style="margin-bottom: 6px;">
       <div class="box"><span class="box-label">APPLICATION LEAVE YEAR</span><span class="box-val">${leave.leaveYear || 2026}</span></div>
-      <div class="box"><span class="box-label">LEAVE ENTITLEMENT</span><span class="box-val">${leave.leaveEntitlement || 30} Days</span></div>
-      <div class="box"><span class="box-label">DEFERRED DAYS DUE</span><span class="box-val">${leave.deferredLeaveDaysDue || 0} Days</span></div>
-      <div class="box"><span class="box-label">LEAVE DAYS EARNED</span><span class="box-val">${leave.leaveDaysEarned || 30} Days</span></div>
-      <div class="box" style="background-color: #ecfdf5;"><span class="box-label" style="color: #047857;">DAYS APPLIED FOR</span><span class="box-val" style="color: #047857; font-size: 12px;">${leave.totalDays} Days</span></div>
+      <div class="box"><span class="box-label">LEAVE ENTITLEMENT</span><span class="box-val">${formatLeaveDaysText(leave.leaveEntitlement || 30, leave.leaveType)}</span></div>
+      <div class="box"><span class="box-label">DEFERRED DAYS DUE</span><span class="box-val">${formatLeaveDaysText(leave.deferredLeaveDaysDue || 0, leave.leaveType)}</span></div>
+      <div class="box"><span class="box-label">LEAVE DAYS EARNED</span><span class="box-val">${formatLeaveDaysText(leave.leaveDaysEarned || 30, leave.leaveType)}</span></div>
+      <div class="box" style="background-color: #ecfdf5;"><span class="box-label" style="color: #047857;">DAYS APPLIED FOR</span><span class="box-val" style="color: #047857; font-size: 12px;">${formatLeaveDaysText(leave.totalDays, leave.leaveType, { showCalendarLabel: true })}</span></div>
       <div class="box"><span class="box-label">COMMENCEMENT DATE</span><span class="box-val">${leave.startDate}</span></div>
     </div>
     <div class="box" style="margin-bottom: 6px;">
@@ -283,7 +415,7 @@ export const OfficialLeaveFormViewModal: React.FC<OfficialLeaveFormViewModalProp
       <span style="font-size: 9px; color: #059669;">Human Resource Verification</span>
     </div>
     <div class="grid-4" style="margin-bottom: 6px;">
-      <div class="box"><span class="box-label">OUTSTANDING DAYS</span><span class="box-val">${leave.outstandingLeaveDays ?? Math.max(0, (leave.leaveEntitlement || 30) - leave.totalDays)} Days</span></div>
+      <div class="box"><span class="box-label">OUTSTANDING DAYS</span><span class="box-val">${formatLeaveDaysText(leave.outstandingLeaveDays ?? Math.max(0, (leave.leaveEntitlement || 30) - leave.totalDays), leave.leaveType)}</span></div>
       <div class="box"><span class="box-label">START DATE</span><span class="box-val">${leave.validatedStartDate || leave.startDate}</span></div>
       <div class="box"><span class="box-label">END DATE</span><span class="box-val">${leave.validatedEndDate || leave.endDate}</span></div>
       <div class="box" style="background-color: #ecfdf5;"><span class="box-label" style="color: #047857;">RESUMPTION DATE</span><span class="box-val" style="color: #047857;">${leave.dateOfResumption || 'Day Following End Date'}</span></div>
@@ -307,7 +439,7 @@ export const OfficialLeaveFormViewModal: React.FC<OfficialLeaveFormViewModalProp
     <div class="grid-2" style="margin-bottom: 6px;">
       <div class="box">
         <span class="box-label">NUMBER OF DAYS GRANTED</span>
-        <strong style="font-size: 11px; color: #d97706;">${leave.daysGranted ?? leave.totalDays} Days</strong>
+        <strong style="font-size: 11px; color: #d97706;">${formatLeaveDaysText(leave.daysGranted ?? leave.totalDays, leave.leaveType, { showCalendarLabel: true })}</strong>
       </div>
       <div class="box">
         <span class="box-label">EXECUTIVE APPROVAL STATUS</span>
@@ -458,20 +590,28 @@ export const OfficialLeaveFormViewModal: React.FC<OfficialLeaveFormViewModalProp
         {/* Form Body - Document Paper Styling */}
         <div className="flex-1 overflow-y-auto p-6 sm:p-10 space-y-5 font-sans text-xs bg-slate-900 print:p-4 print:bg-white print:text-black print:overflow-visible">
           
-          {/* Document Header */}
-          <div className="text-center pb-4 border-b-2 border-slate-700 print:border-black space-y-1 print-avoid-break">
-            <div className="hidden print:block text-[9px] uppercase font-bold text-gray-500 tracking-widest mb-1">
-              DEPARTMENT OF HUMAN RESOURCE MANAGEMENT • OFFICIAL HEALTHCARE RECORDS
+          {/* Document Header with 2 Hospital Logos */}
+          <div className="flex items-center justify-between pb-4 border-b-2 border-slate-700 print:border-black print-avoid-break gap-4">
+            <div className="shrink-0 flex items-center justify-center p-2 bg-slate-950/40 rounded-2xl border border-slate-800 print:border-none print:bg-transparent">
+              <PjpiimcLogo size="xl" />
             </div>
-            <h1 className="text-lg sm:text-xl font-black uppercase tracking-wider text-white print:text-black">
-              {hospitalName}
-            </h1>
-            <h2 className="text-xs sm:text-sm font-extrabold text-amber-400 print:text-black tracking-widest uppercase">
-              OFFICIAL LEAVE APPLICATION FORM
-            </h2>
-            <p className="text-[10px] text-slate-400 print:text-gray-600 italic">
-              Form Ref: HR-LAF/2026/REV-04 • Pope John Paul II Personnel Code • Document ID: {leave.id}
-            </p>
+            <div className="text-center space-y-1 flex-1">
+              <div className="text-[9px] uppercase font-extrabold text-emerald-400 print:text-black tracking-widest">
+                DEPARTMENT OF HUMAN RESOURCE MANAGEMENT • OFFICIAL HEALTHCARE RECORDS
+              </div>
+              <h1 className="text-lg sm:text-xl font-black uppercase tracking-wider text-white print:text-black">
+                {hospitalName}
+              </h1>
+              <h2 className="text-xs sm:text-sm font-extrabold text-amber-400 print:text-black tracking-widest uppercase">
+                OFFICIAL LEAVE APPLICATION FORM
+              </h2>
+              <p className="text-[10px] text-slate-400 print:text-gray-600 italic">
+                Form Ref: HR-LAF/2026/REV-04 • Pope John Paul II Personnel Code • Document ID: {leave.id}
+              </p>
+            </div>
+            <div className="shrink-0 flex items-center justify-center p-2 bg-slate-950/40 rounded-2xl border border-slate-800 print:border-none print:bg-transparent">
+              <PjpiimcLogo size="xl" />
+            </div>
           </div>
 
           {/* Top Particulars Box */}
@@ -525,22 +665,22 @@ export const OfficialLeaveFormViewModal: React.FC<OfficialLeaveFormViewModalProp
 
               <div className="p-2.5 rounded-xl bg-slate-900 print:bg-gray-100 border border-slate-800/80 print:border-gray-400">
                 <span className="text-[9px] text-slate-400 print:text-gray-800 block font-bold">LEAVE ENTITLEMENT</span>
-                <span className="font-black text-white print:text-black text-xs">{leave.leaveEntitlement || 30} Days</span>
+                <span className="font-black text-white print:text-black text-xs">{formatLeaveDaysText(leave.leaveEntitlement || 30, leave.leaveType)}</span>
               </div>
 
               <div className="p-2.5 rounded-xl bg-slate-900 print:bg-gray-100 border border-slate-800/80 print:border-gray-400">
                 <span className="text-[9px] text-slate-400 print:text-gray-800 block font-bold">DEFERRED DAYS DUE</span>
-                <span className="font-black text-white print:text-black text-xs">{leave.deferredLeaveDaysDue || 0} Days</span>
+                <span className="font-black text-white print:text-black text-xs">{formatLeaveDaysText(leave.deferredLeaveDaysDue || 0, leave.leaveType)}</span>
               </div>
 
               <div className="p-2.5 rounded-xl bg-slate-900 print:bg-gray-100 border border-slate-800/80 print:border-gray-400">
                 <span className="text-[9px] text-slate-400 print:text-gray-800 block font-bold">LEAVE DAYS EARNED</span>
-                <span className="font-black text-white print:text-black text-xs">{leave.leaveDaysEarned || 30} Days</span>
+                <span className="font-black text-white print:text-black text-xs">{formatLeaveDaysText(leave.leaveDaysEarned || 30, leave.leaveType)}</span>
               </div>
 
               <div className="p-2.5 rounded-xl bg-emerald-500/10 print:bg-gray-200 border border-emerald-500/20 print:border-gray-500">
                 <span className="text-[9px] text-emerald-400 print:text-black block font-bold">DAYS APPLIED FOR</span>
-                <span className="font-black text-emerald-300 print:text-black text-sm">{leave.totalDays} Days</span>
+                <span className="font-black text-emerald-300 print:text-black text-sm">{formatLeaveDaysText(leave.totalDays, leave.leaveType, { showCalendarLabel: true })}</span>
               </div>
 
               <div className="p-2.5 rounded-xl bg-slate-900 print:bg-gray-100 border border-slate-800/80 print:border-gray-400">
@@ -663,7 +803,7 @@ export const OfficialLeaveFormViewModal: React.FC<OfficialLeaveFormViewModalProp
               <div className="p-2.5 rounded-xl bg-slate-900 print:bg-gray-100 border border-slate-800 print:border-gray-400">
                 <span className="text-[9px] text-slate-400 print:text-gray-800 block font-bold">OUTSTANDING LEAVE DAYS</span>
                 <span className="font-black text-white print:text-black text-xs">
-                  {leave.outstandingLeaveDays ?? Math.max(0, (leave.leaveEntitlement || 30) - leave.totalDays)} Days
+                  {formatLeaveDaysText(leave.outstandingLeaveDays ?? Math.max(0, (leave.leaveEntitlement || 30) - leave.totalDays), leave.leaveType)}
                 </span>
               </div>
 
@@ -728,7 +868,7 @@ export const OfficialLeaveFormViewModal: React.FC<OfficialLeaveFormViewModalProp
               <div className="p-2.5 rounded-xl bg-slate-900 print:bg-gray-100 border border-slate-800 print:border-gray-400 space-y-0.5">
                 <span className="text-[9px] text-slate-400 print:text-gray-800 font-bold block">NUMBER OF LEAVE DAYS GRANTED</span>
                 <span className="font-black text-amber-300 print:text-black text-sm">
-                  {leave.daysGranted ?? leave.totalDays} Days
+                  {formatLeaveDaysText(leave.daysGranted ?? leave.totalDays, leave.leaveType, { showCalendarLabel: true })}
                 </span>
               </div>
 

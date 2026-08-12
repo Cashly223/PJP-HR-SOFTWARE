@@ -17,6 +17,8 @@ import {
   ShieldAlert,
   ArrowUpRight,
   Stethoscope,
+  Trash2,
+  BellOff,
 } from 'lucide-react';
 import { useHrms } from '../../context/HrmsContext';
 import { LeaveRequest, ShiftSwapRequest, DepartmentMonthlyRoster, ExpenseClaim } from '../../types/hrms';
@@ -45,6 +47,7 @@ export const SubordinateRequestModal: React.FC<SubordinateRequestModalProps> = (
   } = useHrms();
 
   const [activeFilter, setActiveFilter] = useState<'all' | 'leave' | 'swap' | 'roster' | 'expense'>('all');
+  const [dismissedItemIds, setDismissedItemIds] = useState<string[]>([]);
   const [commentsMap, setCommentsMap] = useState<Record<string, string>>({});
   const [processingId, setProcessingId] = useState<string | null>(null);
 
@@ -217,13 +220,32 @@ export const SubordinateRequestModal: React.FC<SubordinateRequestModalProps> = (
     });
   });
 
-  const filteredList = unifiedList.filter((item) => {
-    if (activeFilter === 'all') return true;
-    return item.type === activeFilter;
-  });
+  const filteredList = unifiedList
+    .filter((item) => !dismissedItemIds.includes(item.id))
+    .filter((item) => {
+      if (activeFilter === 'all') return true;
+      return item.type === activeFilter;
+    });
 
   const handleCommentChange = (id: string, text: string) => {
     setCommentsMap((prev) => ({ ...prev, [id]: text }));
+  };
+
+  const handleRemoveItem = (id: string, name: string) => {
+    setDismissedItemIds((prev) => [...prev, id]);
+    showToast(`Removed request notification for ${name}`);
+  };
+
+  const handleRemoveAll = () => {
+    const idsToRemove = filteredList.map((item) => item.id);
+    setDismissedItemIds((prev) => [...prev, ...idsToRemove]);
+    showToast('Removed all subordinate request notifications from view');
+  };
+
+  const handleRemovePopupWindow = () => {
+    sessionStorage.setItem('dismissed_subordinate_popup_session', 'true');
+    showToast('Subordinate request pop-up notification window removed');
+    onClose();
   };
 
   const handleApprove = (item: UnifiedRequestItem) => {
@@ -281,16 +303,19 @@ export const SubordinateRequestModal: React.FC<SubordinateRequestModalProps> = (
 
   if (!isOpen) return null;
 
+  const positionWrapperClass = 'fixed inset-0 z-50 pointer-events-none p-3 sm:p-5 flex justify-end items-start top-14 sm:top-16';
+  const positionCardClass = 'pointer-events-auto relative w-full max-w-lg sm:max-w-xl rounded-3xl bg-slate-900/95 backdrop-blur-xl border border-slate-700/80 p-5 text-slate-100 shadow-2xl max-h-[85vh] flex flex-col animate-in fade-in slide-in-from-top-4 duration-300 ring-1 ring-amber-500/30';
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-md overflow-y-auto">
-      <div className="relative w-full max-w-2xl rounded-3xl bg-slate-900 border border-slate-800 p-6 text-slate-100 shadow-2xl max-h-[90vh] flex flex-col">
+    <div className={positionWrapperClass}>
+      <div className={positionCardClass}>
         {/* Modal Header */}
-        <div className="flex items-start justify-between pb-4 border-b border-slate-800">
+        <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-slate-800">
           <div className="flex items-center gap-3">
-            <div className="relative flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-500/20 to-emerald-500/20 border border-amber-500/30 text-amber-400">
-              <BellRing className="h-6 w-6 animate-pulse" />
+            <div className="relative flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-500/20 to-emerald-500/20 border border-amber-500/30 text-amber-400 shrink-0">
+              <BellRing className="h-5 w-5 animate-pulse" />
               <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 text-[10px] font-black text-slate-950">
-                {unifiedList.length}
+                {filteredList.length}
               </span>
             </div>
             <div>
@@ -298,76 +323,102 @@ export const SubordinateRequestModal: React.FC<SubordinateRequestModalProps> = (
                 <span className="rounded-full bg-amber-500/20 px-2.5 py-0.5 text-[10px] font-extrabold text-amber-400 border border-amber-500/30">
                   Subordinate Requests Pop-Up
                 </span>
-                <span className="text-[10px] text-slate-400 font-mono">
+                <span className="text-[10px] text-slate-400 font-mono hidden sm:inline">
                   {emp?.department || 'Leadership Portal'}
                 </span>
               </div>
-              <h3 className="mt-0.5 text-lg font-black tracking-tight text-white flex items-center gap-2">
+              <h3 className="mt-0.5 text-base sm:text-lg font-black tracking-tight text-white flex items-center gap-2">
                 Action Required: Subordinate Approvals
               </h3>
             </div>
           </div>
 
-          <button
-            onClick={onClose}
-            className="rounded-xl p-2 text-slate-400 hover:bg-slate-800 hover:text-white transition"
-          >
-            <X className="h-5 w-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Remove Pop-up Button */}
+            <button
+              onClick={handleRemovePopupWindow}
+              className="flex items-center gap-1 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 px-2.5 py-1.5 text-xs font-extrabold transition shadow-sm"
+              title="Remove / Dismiss Pop-Up Notification Window"
+            >
+              <BellOff className="h-4 w-4 text-rose-400" />
+              <span className="hidden sm:inline">Remove Pop-Up</span>
+            </button>
+
+            <button
+              onClick={onClose}
+              className="rounded-xl p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white transition"
+              title="Close Pop-up"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
         </div>
 
-        {/* Filter Sub-Tabs */}
-        <div className="flex items-center gap-1.5 py-3 border-b border-slate-800/80 overflow-x-auto text-xs font-bold">
-          <button
-            onClick={() => setActiveFilter('all')}
-            className={`px-3 py-1.5 rounded-xl transition ${
-              activeFilter === 'all'
-                ? 'bg-amber-500 text-slate-950 shadow font-extrabold'
-                : 'bg-slate-800/80 text-slate-400 hover:text-white'
-            }`}
-          >
-            All Pending ({unifiedList.length})
-          </button>
-          <button
-            onClick={() => setActiveFilter('leave')}
-            className={`px-3 py-1.5 rounded-xl transition flex items-center gap-1 ${
-              activeFilter === 'leave'
-                ? 'bg-amber-500 text-slate-950 shadow font-extrabold'
-                : 'bg-slate-800/80 text-slate-400 hover:text-white'
-            }`}
-          >
-            <PlaneTakeoff className="h-3.5 w-3.5" /> Leaves ({pendingLeaves.length})
-          </button>
-          <button
-            onClick={() => setActiveFilter('swap')}
-            className={`px-3 py-1.5 rounded-xl transition flex items-center gap-1 ${
-              activeFilter === 'swap'
-                ? 'bg-amber-500 text-slate-950 shadow font-extrabold'
-                : 'bg-slate-800/80 text-slate-400 hover:text-white'
-            }`}
-          >
-            <CalendarDays className="h-3.5 w-3.5" /> Shift Swaps ({pendingSwaps.length})
-          </button>
-          <button
-            onClick={() => setActiveFilter('roster')}
-            className={`px-3 py-1.5 rounded-xl transition flex items-center gap-1 ${
-              activeFilter === 'roster'
-                ? 'bg-amber-500 text-slate-950 shadow font-extrabold'
-                : 'bg-slate-800/80 text-slate-400 hover:text-white'
-            }`}
-          >
-            <FileSpreadsheet className="h-3.5 w-3.5" /> Duty Rosters ({pendingRosters.length})
-          </button>
-          <button
-            onClick={() => setActiveFilter('expense')}
-            className={`px-3 py-1.5 rounded-xl transition flex items-center gap-1 ${
-              activeFilter === 'expense'
-                ? 'bg-amber-500 text-slate-950 shadow font-extrabold'
-                : 'bg-slate-800/80 text-slate-400 hover:text-white'
-            }`}
-          >
-            <Receipt className="h-3.5 w-3.5" /> Claims ({pendingExpenses.length})
-          </button>
+        {/* Filter Sub-Tabs and Remove All Button */}
+        <div className="flex items-center justify-between gap-2 py-3 border-b border-slate-800/80 overflow-x-auto text-xs font-bold">
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => setActiveFilter('all')}
+              className={`px-3 py-1.5 rounded-xl transition ${
+                activeFilter === 'all'
+                  ? 'bg-amber-500 text-slate-950 shadow font-extrabold'
+                  : 'bg-slate-800/80 text-slate-400 hover:text-white'
+              }`}
+            >
+              All ({filteredList.length})
+            </button>
+            <button
+              onClick={() => setActiveFilter('leave')}
+              className={`px-3 py-1.5 rounded-xl transition flex items-center gap-1 ${
+                activeFilter === 'leave'
+                  ? 'bg-amber-500 text-slate-950 shadow font-extrabold'
+                  : 'bg-slate-800/80 text-slate-400 hover:text-white'
+              }`}
+            >
+              <PlaneTakeoff className="h-3.5 w-3.5" /> Leaves ({pendingLeaves.length})
+            </button>
+            <button
+              onClick={() => setActiveFilter('swap')}
+              className={`px-3 py-1.5 rounded-xl transition flex items-center gap-1 ${
+                activeFilter === 'swap'
+                  ? 'bg-amber-500 text-slate-950 shadow font-extrabold'
+                  : 'bg-slate-800/80 text-slate-400 hover:text-white'
+              }`}
+            >
+              <CalendarDays className="h-3.5 w-3.5" /> Swaps ({pendingSwaps.length})
+            </button>
+            <button
+              onClick={() => setActiveFilter('roster')}
+              className={`px-3 py-1.5 rounded-xl transition flex items-center gap-1 ${
+                activeFilter === 'roster'
+                  ? 'bg-amber-500 text-slate-950 shadow font-extrabold'
+                  : 'bg-slate-800/80 text-slate-400 hover:text-white'
+              }`}
+            >
+              <FileSpreadsheet className="h-3.5 w-3.5" /> Rosters ({pendingRosters.length})
+            </button>
+            <button
+              onClick={() => setActiveFilter('expense')}
+              className={`px-3 py-1.5 rounded-xl transition flex items-center gap-1 ${
+                activeFilter === 'expense'
+                  ? 'bg-amber-500 text-slate-950 shadow font-extrabold'
+                  : 'bg-slate-800/80 text-slate-400 hover:text-white'
+              }`}
+            >
+              <Receipt className="h-3.5 w-3.5" /> Claims ({pendingExpenses.length})
+            </button>
+          </div>
+
+          {filteredList.length > 0 && (
+            <button
+              onClick={handleRemoveAll}
+              className="flex items-center gap-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 px-2.5 py-1 text-[11px] font-bold transition shrink-0"
+              title="Remove all current request notifications from view"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              <span>Remove All</span>
+            </button>
+          )}
         </div>
 
         {/* Request Cards Container */}
@@ -378,7 +429,7 @@ export const SubordinateRequestModal: React.FC<SubordinateRequestModalProps> = (
               <div>
                 <p className="text-sm font-bold text-slate-300">All Subordinate Requests Are Clear!</p>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  There are currently no pending requests awaiting your approval in this category.
+                  There are currently no pending requests awaiting your approval in this view.
                 </p>
               </div>
             </div>
@@ -446,15 +497,26 @@ export const SubordinateRequestModal: React.FC<SubordinateRequestModalProps> = (
                   />
                 </div>
 
-                {/* Actions */}
-                <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-                  <button
-                    onClick={() => handleNavigate(item.type)}
-                    className="text-[11px] font-bold text-slate-400 hover:text-white flex items-center gap-1 transition"
-                  >
-                    <span>View Full View</span>
-                    <ArrowUpRight className="h-3.5 w-3.5" />
-                  </button>
+                {/* Actions & Individual Removal Button */}
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-800/60 mt-2">
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => handleNavigate(item.type)}
+                      className="text-[11px] font-bold text-slate-400 hover:text-white flex items-center gap-1 transition"
+                    >
+                      <span>Full View</span>
+                      <ArrowUpRight className="h-3.5 w-3.5" />
+                    </button>
+
+                    <button
+                      onClick={() => handleRemoveItem(item.id, item.subordinateName)}
+                      className="flex items-center gap-1 rounded-lg bg-slate-800/80 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 px-2 py-1 text-[11px] font-semibold border border-slate-700/60 transition"
+                      title="Remove this specific request notification from view"
+                    >
+                      <Trash2 className="h-3 w-3 text-rose-400" />
+                      <span>Remove</span>
+                    </button>
+                  </div>
 
                   <div className="flex items-center gap-2">
                     <button
@@ -469,7 +531,7 @@ export const SubordinateRequestModal: React.FC<SubordinateRequestModalProps> = (
                       onClick={() => handleApprove(item)}
                       className="flex items-center gap-1 rounded-xl bg-emerald-600 px-4 py-1.5 text-xs font-extrabold text-white hover:bg-emerald-500 shadow-md transition disabled:opacity-50"
                     >
-                      <CheckCircle2 className="h-3.5 w-3.5" /> Approve Request
+                      <CheckCircle2 className="h-3.5 w-3.5" /> Approve
                     </button>
                   </div>
                 </div>
@@ -479,17 +541,27 @@ export const SubordinateRequestModal: React.FC<SubordinateRequestModalProps> = (
         </div>
 
         {/* Footer */}
-        <div className="pt-3 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
-          <span className="flex items-center gap-1">
-            <Sparkles className="h-3.5 w-3.5 text-amber-400" />
+        <div className="pt-3 border-t border-slate-800 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400">
+          <span className="flex items-center gap-1.5 text-[11px]">
+            <Sparkles className="h-3.5 w-3.5 text-amber-400 shrink-0" />
             <span>Pope John Paul II Medical Centre Multi-Tier Approval System</span>
           </span>
-          <button
-            onClick={onClose}
-            className="rounded-xl bg-slate-800 px-4 py-2 font-bold text-slate-200 hover:bg-slate-700 transition"
-          >
-            Dismiss Pop-up
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleRemovePopupWindow}
+              className="flex items-center gap-1.5 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 px-3 py-1.5 font-extrabold transition"
+              title="Remove / Dismiss Pop-Up Notification Window"
+            >
+              <BellOff className="h-3.5 w-3.5 text-rose-400" />
+              <span>Remove Pop-up</span>
+            </button>
+            <button
+              onClick={onClose}
+              className="rounded-xl bg-slate-800 px-4 py-1.5 font-bold text-slate-200 hover:bg-slate-700 transition"
+            >
+              Dismiss
+            </button>
+          </div>
         </div>
       </div>
     </div>

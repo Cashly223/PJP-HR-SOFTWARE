@@ -87,6 +87,7 @@ import {
   MOCK_SUGGESTIONS,
   MOCK_INFO_ARTICLES,
 } from '../data/mockHrmsData';
+import { calculateLeaveDays, updateAllLeaveApplicationsWithWorkingDays } from '../lib/leaveUtils';
 
 export interface CurrentUserSession {
   id: string;
@@ -423,7 +424,7 @@ export const HrmsProvider: React.FC<{ children: React.ReactNode }> = ({ children
   });
   const [rosters, setRosters] = useState<ShiftRoster[]>(MOCK_ROSTERS);
   const [attendance, setAttendance] = useState<AttendanceRecord[]>(MOCK_ATTENDANCE);
-  const [leaves, setLeaves] = useState<LeaveRequest[]>(MOCK_LEAVES);
+  const [leaves, setLeaves] = useState<LeaveRequest[]>(() => updateAllLeaveApplicationsWithWorkingDays(MOCK_LEAVES));
   const [payrolls, setPayrolls] = useState<PayrollRecord[]>(MOCK_PAYROLL);
   const [vacancies] = useState<JobVacancy[]>(MOCK_VACANCIES);
   const [candidates, setCandidates] = useState<Candidate[]>(MOCK_CANDIDATES);
@@ -1077,6 +1078,10 @@ export const HrmsProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const empDept = emp?.department || leaveData.department || 'Intensive Care Unit (ICU)';
     const empUnit = emp?.unit || leaveData.unit || 'ICU Ward 2B (Critical Care)';
     const currentDateStr = new Date().toISOString().split('T')[0];
+    const lType = leaveData.leaveType || 'Annual Leave';
+    const sDate = leaveData.startDate || currentDateStr;
+    const eDate = leaveData.endDate || currentDateStr;
+    const computedDays = calculateLeaveDays(sDate, eDate, lType);
 
     const newLeave: LeaveRequest = {
       id: `lv-${Date.now()}`,
@@ -1086,10 +1091,10 @@ export const HrmsProvider: React.FC<{ children: React.ReactNode }> = ({ children
       grade: leaveData.grade || emp?.jobTitle || 'Clinical Specialist',
       department: empDept,
       unit: empUnit,
-      leaveType: leaveData.leaveType || 'Annual Leave',
-      startDate: leaveData.startDate || currentDateStr,
-      endDate: leaveData.endDate || currentDateStr,
-      totalDays: leaveData.totalDays || 3,
+      leaveType: lType,
+      startDate: sDate,
+      endDate: eDate,
+      totalDays: computedDays || leaveData.totalDays || 1,
       reason: leaveData.reason || 'Medical / Personal Leave Request',
       status: 'Pending',
       currentStage: 'Unit Head',

@@ -385,6 +385,12 @@ export const StaffMemberDashboard: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Subordinate Request Pop-up Notification Window */}
+      <SubordinateRequestModal
+        isOpen={isSubordinateModalOpen}
+        onClose={handleCloseModal}
+      />
     </div>
   );
 };

@@ -26,6 +26,7 @@ import { LeaveRequest, WorkflowStage, UserRole } from '../../types/hrms';
 import { OfficialLeaveFormViewModal } from './OfficialLeaveFormViewModal';
 import { AnnualUnitLeaveRoasterManager } from './AnnualUnitLeaveRoasterManager';
 import { CalendarDays } from 'lucide-react';
+import { calculateLeaveDays, calculateEndDateFromDays, isMaternityLeave, formatLeaveDaysText } from '../../lib/leaveUtils';
 
 export const LeaveManagement: React.FC = () => {
   const {
@@ -113,28 +114,22 @@ export const LeaveManagement: React.FC = () => {
     }
   }, [selectedEmpId, employees, leaves]);
 
-  // Automatic Calculation of days between Commencement Date & Return Date
+  // Automatic Calculation of days using Working Days (except Maternity Leave which uses Calendar Days)
   useEffect(() => {
     if (startDate && endDate) {
-      const start = new Date(startDate);
-      const end = new Date(endDate);
-      if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
-        const diffMs = end.getTime() - start.getTime();
-        const computedDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-        if (computedDays > 0) {
-          setDays(computedDays);
-        }
+      const computedDays = calculateLeaveDays(startDate, endDate, leaveType);
+      if (computedDays > 0) {
+        setDays(computedDays);
       }
     }
-  }, [startDate, endDate]);
+  }, [startDate, endDate, leaveType]);
 
-  // When user updates days count directly, adjust end date automatically
+  // When user updates days count directly, adjust end date automatically based on working days or maternity calendar days
   const handleDaysChange = (newDays: number) => {
     setDays(newDays);
     if (startDate && newDays > 0) {
-      const start = new Date(startDate);
-      start.setDate(start.getDate() + newDays);
-      setEndDate(start.toISOString().split('T')[0]);
+      const computedEnd = calculateEndDateFromDays(startDate, newDays, leaveType);
+      setEndDate(computedEnd);
     }
   };
 
@@ -1016,7 +1011,7 @@ export const LeaveManagement: React.FC = () => {
                         <h3 className="font-extrabold text-slate-900 dark:text-slate-100 text-sm">
                           {leave.employeeName}
                         </h3>
-                        <span className="text-xs text-slate-500 dark:text-slate-400">• {leave.totalDays} Days</span>
+                        <span className="text-xs text-slate-500 dark:text-slate-400">• {formatLeaveDaysText(leave.totalDays, leave.leaveType)}</span>
                       </div>
                       <div className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-2 mt-0.5">
                         <span className="font-semibold text-slate-700 dark:text-slate-300">{leave.department}</span>
@@ -1320,7 +1315,25 @@ export const LeaveManagement: React.FC = () => {
                   <label className="block font-bold mb-1">TYPE OF LEAVE APPLIED FOR</label>
                   <select
                     value={leaveType}
-                    onChange={(e) => setLeaveType(e.target.value as any)}
+                    onChange={(e) => {
+                      const selectedType = e.target.value as any;
+                      setLeaveType(selectedType);
+                      if (isMaternityLeave(selectedType)) {
+                        setLeaveEntitlement(90);
+                        setDays(90);
+                        if (startDate) {
+                          const computedEnd = calculateEndDateFromDays(startDate, 90, selectedType);
+                          setEndDate(computedEnd);
+                        }
+                      } else if (isMaternityLeave(leaveType)) {
+                        setLeaveEntitlement(30);
+                        setDays(30);
+                        if (startDate) {
+                          const computedEnd = calculateEndDateFromDays(startDate, 30, selectedType);
+                          setEndDate(computedEnd);
+                        }
+                      }
+                    }}
                     className="w-full rounded-xl border border-slate-300 dark:border-slate-700 p-2.5 dark:bg-slate-800 font-bold text-emerald-600 dark:text-emerald-400"
                   >
                     <option value="Annual Leave">Annual Leave</option>
@@ -1431,9 +1444,23 @@ export const LeaveManagement: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="p-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-800 dark:text-amber-300 font-semibold flex items-center justify-between">
-                  <span>⚡ Auto-Calculated Duration: <strong>{days} Days</strong></span>
-                  <span className="text-[10px] opacity-80">{startDate} to {endDate}</span>
+                <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-800 dark:text-amber-300 font-semibold flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5">
+                    <Clock className="h-4 w-4 text-amber-500 shrink-0" />
+                    <span>
+                      Auto-Calculated Duration: <strong>{days} Day{days !== 1 ? 's' : ''}</strong>
+                      {isMaternityLeave(leaveType) ? (
+                        <span className="ml-2 text-[10px] text-purple-600 dark:text-purple-300 bg-purple-500/15 px-2 py-0.5 rounded font-extrabold border border-purple-500/30">
+                          Maternity Leave: Calendar Days (Mon–Sun)
+                        </span>
+                      ) : (
+                        <span className="ml-2 text-[10px] text-emerald-600 dark:text-emerald-300 bg-emerald-500/15 px-2 py-0.5 rounded font-extrabold border border-emerald-500/30">
+                          Working Days Only (Excl. Weekends)
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                  <span className="text-[10px] opacity-80 font-mono">{startDate} to {endDate}</span>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

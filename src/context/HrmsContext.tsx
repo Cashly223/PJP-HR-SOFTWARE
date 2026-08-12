@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { CheckCircle2, AlertCircle, Info, X } from 'lucide-react';
 import { 
   auth, 
   db, 
@@ -242,6 +243,7 @@ interface HrmsContextType {
     }
   ) => Promise<EmailDispatchResult[]>;
   sendPortalInviteEmail: (employeeId: string) => Promise<EmailDispatchResult>;
+  sendPortalInviteSms: (employeeId: string) => Promise<EmailDispatchResult>;
 
   // System & Portal Customization (Admin & HR)
   systemCustomization: SystemCustomizationSettings;
@@ -280,6 +282,7 @@ interface HrmsContextType {
   // Helpers
   formatCurrency: (amount: number) => string;
   t: (key: string) => string;
+  showToast: (typeOrMessage: string, title?: string, desc?: string) => void;
 }
 
 const HrmsContext = createContext<HrmsContextType | undefined>(undefined);
@@ -382,6 +385,39 @@ export const HrmsProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [darkMode, setDarkMode] = useState<boolean>(true);
   const [mobileViewActive, setMobileViewActive] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<string>('dashboard');
+
+  // Toast Notification System
+  const [toastState, setToastState] = useState<{
+    id: string;
+    type: 'success' | 'error' | 'info';
+    title: string;
+    desc?: string;
+  } | null>(null);
+
+  useEffect(() => {
+    if (toastState) {
+      const timer = setTimeout(() => setToastState(null), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [toastState]);
+
+  const showToast = (typeOrMessage: string, title?: string, desc?: string) => {
+    if (title !== undefined) {
+      const type = (typeOrMessage === 'error' ? 'error' : typeOrMessage === 'info' ? 'info' : 'success') as 'success' | 'error' | 'info';
+      setToastState({
+        id: Date.now().toString(),
+        type,
+        title,
+        desc,
+      });
+    } else {
+      setToastState({
+        id: Date.now().toString(),
+        type: 'info',
+        title: typeOrMessage,
+      });
+    }
+  };
 
   // Auth session state
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
@@ -2424,9 +2460,9 @@ export const HrmsProvider: React.FC<{ children: React.ReactNode }> = ({ children
     );
 
     const defaultOrgSender = {
-      senderEmail: 'hr@aurahr.health',
+      senderEmail: 'attasam223@gmail.com',
       senderName: 'AuraHR Healthcare System',
-      replyTo: 'support@aurahr.health',
+      replyTo: 'attasam223@gmail.com',
       organizationDomain: 'aurahr.health',
       smtpServer: 'mail.aurahr.health (TLS/587 - Enterprise Organization Relays)',
       dkimSignature: 'v=1; a=rsa-sha256; c=relaxed/relaxed; d=aurahr.health; s=2026-selector;',
@@ -2457,7 +2493,7 @@ export const HrmsProvider: React.FC<{ children: React.ReactNode }> = ({ children
         body: JSON.stringify({
           recipientEmail: targetEmp.email,
           recipientName: empName,
-          senderEmail: 'hr@aurahr.health',
+          senderEmail: 'attasam223@gmail.com',
           subject,
           body,
           username,
@@ -2512,6 +2548,160 @@ export const HrmsProvider: React.FC<{ children: React.ReactNode }> = ({ children
         portalUrl: 'https://aurahr.health/login',
         timestamp: new Date().toISOString(),
         dispatchId: `SMTP-SIM-${Date.now()}`,
+      };
+    }
+  };
+
+  const sendPortalInviteSms = async (employeeId: string): Promise<EmailDispatchResult> => {
+    const targetEmp = employees.find((e) => e.id === employeeId);
+    if (!targetEmp) {
+      return {
+        success: false,
+        recipientEmail: '',
+        recipientName: 'Unknown Employee',
+        senderEmail: 'attasam223@gmail.com',
+        senderName: 'AuraHR SMS Gateway',
+        replyTo: 'attasam223@gmail.com',
+        organizationDomain: 'aurahr.health',
+        subject: 'SMS Error',
+        body: '',
+        username: '',
+        tempPassword: '',
+        portalUrl: 'https://aurahr.health/login',
+        timestamp: new Date().toISOString(),
+        dispatchId: 'ERR-NO-EMP',
+        error: 'Employee record not found.',
+      };
+    }
+
+    const empName = `${targetEmp.firstName} ${targetEmp.lastName}`;
+    const username = targetEmp.portalAccess?.username || targetEmp.email || targetEmp.empCode;
+    const tempPassword = targetEmp.portalAccess?.tempPassword || targetEmp.empCode;
+    const subject = `[SMS Credentials] AuraHR Staff Portal - ${empName}`;
+    const smsMessage = `[AuraHR Staff Portal Credentials]\nDear ${empName},\nYour login credentials:\nURL: https://aurahr.health/login\nUsername: ${username}\nTemp Password: ${tempPassword}\nPlease log in & change password immediately.`;
+
+    setEmployees((prev) =>
+      prev.map((emp) => {
+        if (emp.id !== employeeId) return emp;
+        const currentAccess = emp.portalAccess || {
+          username: emp.email || emp.empCode,
+          usernameType: 'email',
+          tempPassword: emp.empCode,
+          passwordType: 'empCode',
+          accountCreated: true,
+          accountCreatedAt: new Date().toISOString(),
+          invitedAt: new Date().toISOString(),
+          inviteStatus: 'Invitation Sent',
+          authMethod: 'Password',
+          mustChangePassword: true,
+        };
+
+        return {
+          ...emp,
+          portalAccess: {
+            ...currentAccess,
+            invitedAt: new Date().toISOString(),
+            inviteStatus: 'Invitation Sent',
+          },
+        };
+      })
+    );
+
+    const defaultSmsSender = {
+      senderEmail: 'attasam223@gmail.com',
+      senderName: 'AuraHR SMS Relay',
+      replyTo: 'attasam223@gmail.com',
+      organizationDomain: 'aurahr.health',
+      smtpServer: 'AuraHR GSM Cellular Gateway',
+      dkimSignature: 'v=1; a=rsa-sha256; cellular-verified;',
+      spfStatus: 'PASS (sms.aurahr.health)',
+    };
+
+    if (!targetEmp.phone || targetEmp.phone.trim().length < 5) {
+      return {
+        success: false,
+        recipientEmail: targetEmp.email || '',
+        recipientPhone: targetEmp.phone || '',
+        recipientName: empName,
+        ...defaultSmsSender,
+        subject,
+        body: smsMessage,
+        smsMessage,
+        username,
+        tempPassword,
+        portalUrl: 'https://aurahr.health/login',
+        timestamp: new Date().toISOString(),
+        dispatchId: 'ERR-NO-PHONE',
+        error: `Cannot send SMS: ${empName} does not have a valid mobile phone number configured in their employee profile.`,
+      };
+    }
+
+    try {
+      const response = await fetch('/api/notifications/send-sms', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          recipientPhone: targetEmp.phone,
+          recipientName: empName,
+          username,
+          tempPassword,
+          portalUrl: 'https://aurahr.health/login',
+          customMessage: smsMessage,
+        }),
+      });
+
+      const data = await response.json();
+
+      addAuditLog(
+        'Dispatched Portal Credentials SMS',
+        'Employee Directory',
+        `Dispatched portal credentials SMS to ${empName} (${targetEmp.phone})`
+      );
+
+      return {
+        success: true,
+        channel: 'SMS',
+        recipientEmail: targetEmp.email || '',
+        recipientPhone: targetEmp.phone,
+        recipientName: empName,
+        senderEmail: 'attasam223@gmail.com',
+        senderName: 'AuraHR SMS Gateway',
+        replyTo: 'attasam223@gmail.com',
+        organizationDomain: 'aurahr.health',
+        smtpServer: 'AuraHR Cellular GSM Gateway',
+        dkimSignature: 'v=1; a=rsa-sha256; cellular-verified;',
+        spfStatus: 'PASS (sms.aurahr.health)',
+        subject,
+        body: smsMessage,
+        smsMessage,
+        username,
+        tempPassword,
+        portalUrl: 'https://aurahr.health/login',
+        timestamp: data.timestamp || new Date().toISOString(),
+        dispatchId: data.dispatchId || `SMS-${Date.now()}`,
+      };
+    } catch (err: any) {
+      addAuditLog(
+        'Dispatched Portal Credentials SMS (Offline Mode)',
+        'Employee Directory',
+        `Simulated credentials SMS dispatch to ${empName} (${targetEmp.phone})`
+      );
+
+      return {
+        success: true,
+        channel: 'SMS',
+        recipientEmail: targetEmp.email || '',
+        recipientPhone: targetEmp.phone,
+        recipientName: empName,
+        ...defaultSmsSender,
+        subject,
+        body: smsMessage,
+        smsMessage,
+        username,
+        tempPassword,
+        portalUrl: 'https://aurahr.health/login',
+        timestamp: new Date().toISOString(),
+        dispatchId: `SMS-SIM-${Date.now()}`,
       };
     }
   };
@@ -2904,9 +3094,37 @@ export const HrmsProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         formatCurrency,
         t,
+        showToast,
       }}
     >
       {children}
+      {toastState && (
+        <div className="fixed bottom-5 right-5 z-[100] max-w-sm rounded-2xl bg-slate-900 border border-slate-700/80 p-4 shadow-2xl text-slate-100 flex items-start gap-3 animate-in fade-in slide-in-from-bottom-5 duration-300 pointer-events-auto">
+          <div className={`p-2 rounded-xl shrink-0 ${
+            toastState.type === 'success' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' :
+            toastState.type === 'error' ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30' :
+            'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+          }`}>
+            {toastState.type === 'success' ? (
+              <CheckCircle2 className="h-5 w-5" />
+            ) : toastState.type === 'error' ? (
+              <AlertCircle className="h-5 w-5" />
+            ) : (
+              <Info className="h-5 w-5" />
+            )}
+          </div>
+          <div className="flex-1 min-w-0 pr-2">
+            <p className="font-bold text-sm text-white leading-tight">{toastState.title}</p>
+            {toastState.desc && <p className="text-xs text-slate-300 mt-1">{toastState.desc}</p>}
+          </div>
+          <button
+            onClick={() => setToastState(null)}
+            className="text-slate-400 hover:text-white rounded-lg p-1 transition"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
     </HrmsContext.Provider>
   );
 };

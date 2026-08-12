@@ -698,7 +698,9 @@ export interface DepartmentConferenceMeeting {
 
 export interface EmailDispatchResult {
   success: boolean;
+  channel?: 'Email' | 'SMS';
   recipientEmail: string;
+  recipientPhone?: string;
   recipientName: string;
   senderEmail: string;
   senderName: string;
@@ -706,6 +708,7 @@ export interface EmailDispatchResult {
   organizationDomain: string;
   subject: string;
   body: string;
+  smsMessage?: string;
   username: string;
   tempPassword: string;
   portalUrl: string;

@@ -15,11 +15,13 @@ import {
   LogOut,
   User,
   KeyRound,
+  Mail,
 } from 'lucide-react';
 import { useHrms } from '../context/HrmsContext';
 import { UserRole, LanguageCode, CurrencyCode } from '../types/hrms';
 import { PjpiimcLogo } from './common/PjpiimcLogo';
 import { SubordinateRequestModal } from './notifications/SubordinateRequestModal';
+import { EmailDispatchConsoleModal } from './notifications/EmailDispatchConsoleModal';
 
 interface HeaderProps {
   onOpenAIAssistant?: () => void;
@@ -53,6 +55,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAIAssistant, onChangePassw
 
   const [showNotifications, setShowNotifications] = useState(false);
   const [isSubordinateModalOpen, setIsSubordinateModalOpen] = useState(false);
+  const [isEmailConsoleOpen, setIsEmailConsoleOpen] = useState(false);
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
@@ -145,6 +148,24 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAIAssistant, onChangePassw
           <span className="text-emerald-500 font-black mr-1">GH₵</span>
           <span>GHS</span>
         </div>
+
+        {/* Real-time Email Dispatch Outbox Console Toggle */}
+        <button
+          onClick={() => setIsEmailConsoleOpen((prev) => !prev)}
+          className={`relative flex items-center gap-2 rounded-xl border px-3 py-1.5 text-xs font-extrabold transition-all duration-200 shadow-sm ${
+            isEmailConsoleOpen
+              ? 'bg-emerald-600 text-white border-emerald-500 ring-2 ring-emerald-500/30'
+              : 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border-emerald-500/30'
+          }`}
+          title="Toggle Realtime Email Outbox & Dispatch Console"
+        >
+          <span className="relative flex h-2 w-2">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+          </span>
+          <Mail className="h-4 w-4" />
+          <span className="hidden md:inline">{isEmailConsoleOpen ? 'Close Mailer' : 'Realtime Mail'}</span>
+        </button>
 
         {/* Dark Mode Toggle */}
         <button
@@ -264,6 +285,12 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAIAssistant, onChangePassw
       <SubordinateRequestModal
         isOpen={isSubordinateModalOpen}
         onClose={() => setIsSubordinateModalOpen(false)}
+      />
+
+      {/* Realtime Email Dispatch Outbox Console Modal */}
+      <EmailDispatchConsoleModal
+        isOpen={isEmailConsoleOpen}
+        onClose={() => setIsEmailConsoleOpen(false)}
       />
     </header>
   );

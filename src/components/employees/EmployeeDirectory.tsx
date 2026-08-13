@@ -842,12 +842,12 @@ export const EmployeeDirectory: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
           {/* Main Navigation Tabs */}
-          <div className="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800">
+          <div className="flex items-center overflow-x-auto max-w-full bg-slate-950 p-1 rounded-xl border border-slate-800 scrollbar-thin">
             <button
               onClick={() => setActiveView('directory')}
-              className={`px-3.5 py-2 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
+              className={`px-3 py-2 rounded-lg text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap ${
                 activeView === 'directory'
                   ? 'bg-emerald-600 text-white shadow'
                   : 'text-slate-400 hover:text-white'
@@ -857,7 +857,7 @@ export const EmployeeDirectory: React.FC = () => {
             </button>
             <button
               onClick={() => setActiveView('portal_accounts')}
-              className={`px-3.5 py-2 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
+              className={`px-3 py-2 rounded-lg text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap ${
                 activeView === 'portal_accounts'
                   ? 'bg-indigo-600 text-white shadow'
                   : 'text-slate-400 hover:text-white'
@@ -867,7 +867,7 @@ export const EmployeeDirectory: React.FC = () => {
             </button>
             <button
               onClick={() => setActiveView('leadership')}
-              className={`px-3.5 py-2 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
+              className={`px-3 py-2 rounded-lg text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap ${
                 activeView === 'leadership'
                   ? 'bg-amber-600 text-white shadow'
                   : 'text-slate-400 hover:text-white'
@@ -877,7 +877,7 @@ export const EmployeeDirectory: React.FC = () => {
             </button>
             <button
               onClick={() => setActiveView('hierarchy')}
-              className={`px-3.5 py-2 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
+              className={`px-3 py-2 rounded-lg text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap ${
                 activeView === 'hierarchy'
                   ? 'bg-emerald-600 text-white shadow'
                   : 'text-slate-400 hover:text-white'
@@ -889,21 +889,21 @@ export const EmployeeDirectory: React.FC = () => {
 
           <button
             onClick={() => setActiveView('leadership')}
-            className="flex items-center gap-2 rounded-xl bg-amber-600 hover:bg-amber-500 px-4 py-2.5 text-xs font-bold text-white shadow transition active:scale-95 border border-amber-400/30"
+            className="flex items-center gap-2 rounded-xl bg-amber-600 hover:bg-amber-500 px-3.5 py-2 text-xs font-bold text-white shadow transition active:scale-95 border border-amber-400/30 whitespace-nowrap"
           >
             <Building2 className="h-4 w-4" /> (ADD DEPARTMENT)
           </button>
 
           <button
             onClick={() => setIsCreateHrAccountModalOpen(true)}
-            className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 px-4 py-2.5 text-xs font-bold text-white shadow transition active:scale-95 border border-indigo-400/30"
+            className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 px-3.5 py-2 text-xs font-bold text-white shadow transition active:scale-95 border border-indigo-400/30 whitespace-nowrap"
           >
             <UserPlus className="h-4 w-4" /> Provision Staff Account (HR)
           </button>
 
           <button
             onClick={() => setIsAddModalOpen(true)}
-            className="flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-semibold text-white shadow hover:bg-emerald-500 transition active:scale-95"
+            className="flex items-center gap-2 rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-semibold text-white shadow hover:bg-emerald-500 transition active:scale-95 whitespace-nowrap"
           >
             <Plus className="h-4 w-4" /> Add Staff Profile
           </button>
@@ -1094,9 +1094,16 @@ export const EmployeeDirectory: React.FC = () => {
 
                         <td className="p-4">
                           <div className="flex items-center gap-2">
-                            <span className="font-mono text-amber-300 bg-slate-950 px-2 py-1 rounded border border-slate-800 font-bold">
-                              {showPass ? tempPassword : '••••••••'}
-                            </span>
+                            {emp.customPassword || portal?.customPassword ? (
+                              <span className="font-mono text-emerald-400 bg-emerald-950/40 px-2 py-1 rounded border border-emerald-800/60 font-bold text-xs flex items-center gap-1.5">
+                                <ShieldCheck className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+                                {showPass ? (emp.customPassword || portal?.customPassword) : '••••••••'}
+                              </span>
+                            ) : (
+                              <span className="font-mono text-amber-300 bg-slate-950 px-2 py-1 rounded border border-slate-800 font-bold text-xs">
+                                {showPass ? tempPassword : '••••••••'}
+                              </span>
+                            )}
                             <button
                               type="button"
                               onClick={() => toggleShowPassword(emp.id)}
@@ -3428,9 +3435,17 @@ export const EmployeeDirectory: React.FC = () => {
                           </p>
                         </div>
                         <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
-                          <span className="text-[10px] text-slate-400 block font-bold">INITIAL PASSWORD</span>
-                          <p className="font-mono text-amber-300 font-bold text-xs mt-0.5">
-                            {selectedEmployee.portalAccess?.tempPassword || selectedEmployee.empCode}
+                          <span className="text-[10px] text-slate-400 block font-bold">PORTAL PASSWORD</span>
+                          <p className="font-mono text-xs mt-0.5 font-bold">
+                            {selectedEmployee.customPassword || selectedEmployee.portalAccess?.customPassword ? (
+                              <span className="text-emerald-400 flex items-center gap-1">
+                                <ShieldCheck className="h-3.5 w-3.5" /> Personal Password Set (Default Overridden)
+                              </span>
+                            ) : (
+                              <span className="text-amber-300">
+                                {selectedEmployee.portalAccess?.tempPassword || selectedEmployee.empCode}
+                              </span>
+                            )}
                           </p>
                         </div>
                       </div>

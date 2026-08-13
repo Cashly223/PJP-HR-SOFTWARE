@@ -172,6 +172,7 @@ export interface Employee {
   mustChangePassword?: boolean;
   filePermissionGranted?: boolean;
   defaultPassword?: string;
+  customPassword?: string;
   dateOfBirth?: string;
   occupationalHealth?: {
     lastExamDate: string;
@@ -196,6 +197,7 @@ export interface Employee {
     authMethod?: 'Password' | 'SSO' | '2FA';
     lastLogin?: string;
     mustChangePassword?: boolean;
+    customPassword?: string;
   };
 }
 

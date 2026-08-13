@@ -25,7 +25,7 @@ import { UserRole } from '../../types/hrms';
 import { PjpiimcLogo } from '../common/PjpiimcLogo';
 
 export const LoginPage: React.FC = () => {
-  const { login, signup, systemCustomization, darkMode, setDarkMode } = useHrms();
+  const { login, loginWithGoogle, signup, systemCustomization, darkMode, setDarkMode } = useHrms();
 
   const [mode, setMode] = useState<'login' | 'signup'>('login');
 
@@ -46,31 +46,68 @@ export const LoginPage: React.FC = () => {
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
+  const handleGoogleSignIn = async () => {
+    setErrorMsg(null);
+    setSuccessMsg(null);
+    setIsLoading(true);
+    try {
+      await loginWithGoogle();
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Google Authentication failed. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // Demo accounts quick-login list
   const primaryLeadershipAccounts = [
     {
-      name: 'Rev. Fr. Mike',
+      name: 'Rev. Fr. Mike (Hospital Admin - Office)',
       email: 'rev.fr.mike@pjpiimc.org',
       role: 'facility_head' as UserRole,
-      roleLabel: 'Head of Facility / CEO',
+      roleLabel: '1. Hospital Administrator (Office)',
       avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&auto=format&fit=crop&q=80',
       badgeBg: 'bg-amber-500/10 text-amber-400 border-amber-500/30',
     },
     {
-      name: 'Miss Vero',
+      name: 'Rev. Fr. Mike (Staff - Employee Portal)',
+      email: 'rev.fr.mike.staff@pjpiimc.org',
+      role: 'doctor' as UserRole,
+      roleLabel: '2. Employee (Staff Portal)',
+      avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&auto=format&fit=crop&q=80',
+      badgeBg: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
+    },
+    {
+      name: 'Miss Vero (HR Director - Office)',
       email: 'miss.vero@pjpiimc.org',
       role: 'hr_director' as UserRole,
-      roleLabel: 'HR Director',
+      roleLabel: '1. HR Administrator (Office)',
       avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80',
       badgeBg: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/30',
     },
     {
-      name: 'Mr. Frimpong',
+      name: 'Miss Vero (Staff - Employee Portal)',
+      email: 'miss.vero.staff@pjpiimc.org',
+      role: 'nurse' as UserRole,
+      roleLabel: '2. Employee (Staff Portal)',
+      avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80',
+      badgeBg: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
+    },
+    {
+      name: 'Mr. Frimpong (HR Manager - Office)',
       email: 'mr.frimpong@pjpiimc.org',
       role: 'hr_manager' as UserRole,
-      roleLabel: 'HR Manager',
+      roleLabel: '1. HR Administrator (Office)',
       avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80',
       badgeBg: 'bg-purple-500/10 text-purple-400 border-purple-500/30',
+    },
+    {
+      name: 'Mr. Frimpong (Staff - Employee Portal)',
+      email: 'mr.frimpong.staff@pjpiimc.org',
+      role: 'nurse' as UserRole,
+      roleLabel: '2. Employee (Staff Portal)',
+      avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80',
+      badgeBg: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
     },
     {
       name: 'Miss Lumor',
@@ -78,7 +115,7 @@ export const LoginPage: React.FC = () => {
       role: 'dept_head' as UserRole,
       roleLabel: 'Nurse Manager (Nursing Directorate)',
       avatar: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150&auto=format&fit=crop&q=80',
-      badgeBg: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
+      badgeBg: 'bg-teal-500/10 text-teal-400 border-teal-500/30',
     },
     {
       name: 'Miss Emelia',
@@ -420,6 +457,52 @@ export const LoginPage: React.FC = () => {
               </div>
             </div>
 
+            {mode === 'login' && (
+              <div className="space-y-1.5 pt-1">
+                <label className="block text-xs font-bold text-slate-300">
+                  Target Portal View
+                </label>
+                <div className="grid grid-cols-3 gap-2 text-xs font-bold">
+                  <button
+                    type="button"
+                    onClick={() => setRole('nurse')}
+                    className={`p-2 rounded-xl border text-center transition flex flex-col items-center justify-center ${
+                      !['hr_director', 'hr_manager', 'facility_head', 'super_admin'].includes(role)
+                        ? 'bg-emerald-500/20 border-emerald-500/60 text-emerald-300 shadow-sm'
+                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    <User className="h-3.5 w-3.5 mb-1 text-emerald-400" />
+                    <span className="text-[10px] leading-tight">1. Staff Portal</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRole('hr_director')}
+                    className={`p-2 rounded-xl border text-center transition flex flex-col items-center justify-center ${
+                      ['hr_director', 'hr_manager'].includes(role)
+                        ? 'bg-indigo-500/20 border-indigo-500/60 text-indigo-300 shadow-sm'
+                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    <Building2 className="h-3.5 w-3.5 mb-1 text-indigo-400" />
+                    <span className="text-[10px] leading-tight">2. HR Admin</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRole('facility_head')}
+                    className={`p-2 rounded-xl border text-center transition flex flex-col items-center justify-center ${
+                      role === 'facility_head'
+                        ? 'bg-amber-500/20 border-amber-500/60 text-amber-300 shadow-sm'
+                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    <ShieldCheck className="h-3.5 w-3.5 mb-1 text-amber-400" />
+                    <span className="text-[10px] leading-tight">3. Hosp. Admin</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
             {mode === 'signup' && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
@@ -495,6 +578,14 @@ export const LoginPage: React.FC = () => {
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
+              {mode === 'login' && (
+                <div className="mt-2 p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-[11px] flex items-center gap-2">
+                  <ShieldCheck className="h-4 w-4 shrink-0 text-amber-400" />
+                  <span>
+                    <strong>New Staff Policy:</strong> Logging in with a default password or Staff ID requires mandatory password change on entry.
+                  </span>
+                </div>
+              )}
             </div>
 
             {mode === 'signup' && (
@@ -554,6 +645,42 @@ export const LoginPage: React.FC = () => {
               )}
             </button>
           </form>
+
+          <div className="relative my-3">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-slate-800"></div>
+            </div>
+            <div className="relative flex justify-center text-[10px] uppercase font-bold tracking-wider text-slate-500">
+              <span className="bg-slate-900 px-3">Or continue with</span>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleGoogleSignIn}
+            disabled={isLoading}
+            className="w-full py-2.5 px-4 rounded-2xl bg-slate-950 hover:bg-slate-800/80 border border-slate-800 text-xs font-bold text-slate-200 transition flex items-center justify-center gap-2.5 shadow-sm"
+          >
+            <svg className="h-4 w-4" viewBox="0 0 24 24">
+              <path
+                fill="#4285F4"
+                d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+              />
+              <path
+                fill="#34A853"
+                d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+              />
+              <path
+                fill="#FBBC05"
+                d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+              />
+              <path
+                fill="#EA4335"
+                d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+              />
+            </svg>
+            <span>Sign in with Google Workspace</span>
+          </button>
 
           {/* Bottom Switch Footer */}
           <div className="text-center pt-2">

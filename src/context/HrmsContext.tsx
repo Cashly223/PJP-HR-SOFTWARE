@@ -1,7 +1,11 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { CheckCircle2, AlertCircle, Info, X } from 'lucide-react';
+import { getDocFromServer } from 'firebase/firestore';
 import { 
   auth, 
+  googleProvider,
+  signInWithPopup,
+  onAuthStateChanged,
   db, 
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
@@ -15,7 +19,9 @@ import {
   deleteDoc, 
   getDocs, 
   query, 
-  where 
+  where,
+  handleFirestoreError,
+  OperationType
 } from '../lib/firebase';
 import {
   Hospital,
@@ -109,6 +115,7 @@ interface HrmsContextType {
   isAuthenticated: boolean;
   currentUser: CurrentUserSession | null;
   login: (email: string, password?: string, defaultRole?: UserRole, name?: string) => Promise<void>;
+  loginWithGoogle: () => Promise<void>;
   signup: (userData: { fullName: string; email: string; password?: string; role: UserRole; department: string }) => Promise<void>;
   logout: () => void;
   changePassword: (newPassword: string) => Promise<void>;
@@ -438,6 +445,28 @@ export const HrmsProvider: React.FC<{ children: React.ReactNode }> = ({ children
   });
 
   useEffect(() => {
+    async function testConnection() {
+      try {
+        await getDocFromServer(doc(db, 'test', 'connection'));
+      } catch (error) {
+        if (error instanceof Error && error.message.includes('the client is offline')) {
+          console.error('Please check your Firebase configuration.');
+        }
+      }
+    }
+    testConnection();
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        console.log('Firebase Auth session synced:', user.email, user.uid);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
     if (darkMode) {
       document.documentElement.classList.add('dark');
     } else {
@@ -597,9 +626,11 @@ export const HrmsProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Auth Operations with Firebase Auth & Firestore Sync
   const login = async (emailInput: string, passwordInput?: string, defaultRole?: UserRole, nameInput?: string) => {
     const cleanEmail = emailInput ? emailInput.trim().toLowerCase() : '';
+    const baseEmail = cleanEmail.replace('.staff@', '@');
     const matchedEmp = employees.find(
       (e) =>
         (e.email && e.email.trim().toLowerCase() === cleanEmail) ||
+        (e.email && e.email.trim().toLowerCase() === baseEmail) ||
         (e.empCode && e.empCode.trim().toLowerCase() === cleanEmail)
     );
 
@@ -619,14 +650,66 @@ export const HrmsProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.warn('Firebase Auth sign in notice:', firebaseErr);
     }
 
+    // Check if employee has a saved custom password that overrides the default
+    let customPasswordOnEmp = matchedEmp?.customPassword || matchedEmp?.portalAccess?.customPassword;
+    if (!customPasswordOnEmp && matchedEmp) {
+      try {
+        const storedPassMap = JSON.parse(localStorage.getItem('aurahr_custom_passwords') || '{}');
+        customPasswordOnEmp =
+          storedPassMap[matchedEmp.id] ||
+          (matchedEmp.email && storedPassMap[matchedEmp.email.toLowerCase()]) ||
+          (matchedEmp.empCode && storedPassMap[matchedEmp.empCode.toLowerCase()]);
+      } catch (e) {}
+    }
+
+    const cleanPassword = passwordInput ? passwordInput.trim() : '';
+
+    // If custom password exists, verify entered password against custom password
+    if (customPasswordOnEmp) {
+      if (cleanPassword && cleanPassword !== customPasswordOnEmp && !authUser) {
+        if (
+          cleanPassword === 'password123' ||
+          cleanPassword === 'Hospital2026!' ||
+          cleanPassword === 'Pjpiimc2026!' ||
+          cleanPassword.toLowerCase() === matchedEmp.empCode?.trim().toLowerCase() ||
+          cleanPassword === matchedEmp.defaultPassword ||
+          cleanPassword === matchedEmp.portalAccess?.tempPassword
+        ) {
+          throw new Error('Default password has been superseded! Please log in using the new personal password you created.');
+        }
+        throw new Error('Incorrect password. Please enter the new personal password you set during account activation.');
+      }
+    }
+
     let userRole = defaultRole || (matchedEmp ? matchedEmp.role : activeRole);
     let name = nameInput || (matchedEmp ? `${matchedEmp.firstName} ${matchedEmp.lastName}` : emailInput.split('@')[0]);
     let photo = matchedEmp ? matchedEmp.photo : 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80';
     let dept = matchedEmp ? matchedEmp.department : 'General Staff';
     let empCode = matchedEmp ? matchedEmp.empCode : `SJH-${Math.floor(1000 + Math.random() * 9000)}`;
 
-    // Check if password change is required or default password is active
-    let mustChangePassword = matchedEmp ? (matchedEmp.mustChangePassword ?? false) : false;
+    // Check if password change is required or default/temp password is used
+    const isDefaultPassword =
+      !customPasswordOnEmp &&
+      (cleanPassword === 'password123' ||
+        cleanPassword === 'Hospital2026!' ||
+        cleanPassword === 'Pjpiimc2026!' ||
+        (matchedEmp && cleanPassword.toLowerCase() === matchedEmp.empCode?.trim().toLowerCase()) ||
+        (matchedEmp?.portalAccess?.tempPassword && cleanPassword === matchedEmp.portalAccess.tempPassword) ||
+        (matchedEmp?.defaultPassword && cleanPassword === matchedEmp.defaultPassword));
+
+    let mustChangePassword = false;
+    if (!customPasswordOnEmp && matchedEmp) {
+      if (
+        matchedEmp.mustChangePassword === true ||
+        matchedEmp.portalAccess?.mustChangePassword === true ||
+        isDefaultPassword
+      ) {
+        mustChangePassword = true;
+      }
+    } else if (!customPasswordOnEmp && isDefaultPassword) {
+      mustChangePassword = true;
+    }
+
     let filePermissionGranted = matchedEmp ? (matchedEmp.filePermissionGranted ?? true) : true;
 
     const session: CurrentUserSession = {
@@ -759,16 +842,48 @@ export const HrmsProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.warn('Firebase Auth password update notice:', e);
     }
 
+    // Save custom password in localStorage overrides map
+    try {
+      const storedPassMap = JSON.parse(localStorage.getItem('aurahr_custom_passwords') || '{}');
+      if (currentUser.id) storedPassMap[currentUser.id] = newPassword;
+      if (currentUser.email) storedPassMap[currentUser.email.toLowerCase()] = newPassword;
+      if (currentUser.empCode) storedPassMap[currentUser.empCode.toLowerCase()] = newPassword;
+      localStorage.setItem('aurahr_custom_passwords', JSON.stringify(storedPassMap));
+    } catch (e) {}
+
     // Update in local state
     setCurrentUser((prev) => prev ? { ...prev, mustChangePassword: false } : null);
 
     // Update matching employee
+    const userEmail = currentUser.email ? currentUser.email.toLowerCase() : '';
+    const userEmpCode = currentUser.empCode ? currentUser.empCode.toLowerCase() : '';
+
     setEmployees((prev) =>
-      prev.map((emp) =>
-        emp.email && currentUser?.email && emp.email.toLowerCase() === currentUser.email.toLowerCase()
-          ? { ...emp, mustChangePassword: false }
-          : emp
-      )
+      prev.map((emp) => {
+        const matchesEmail = emp.email && userEmail && emp.email.toLowerCase() === userEmail;
+        const matchesCode = emp.empCode && userEmpCode && emp.empCode.toLowerCase() === userEmpCode;
+        const matchesId = emp.id === currentUser.id;
+
+        if (matchesEmail || matchesCode || matchesId) {
+          return {
+            ...emp,
+            customPassword: newPassword,
+            mustChangePassword: false,
+            defaultPassword: undefined,
+            portalAccess: {
+              ...(emp.portalAccess || {
+                username: emp.email || emp.empCode,
+                usernameType: emp.email ? 'email' : 'empCode',
+              }),
+              customPassword: newPassword,
+              mustChangePassword: false,
+              tempPassword: '',
+              inviteStatus: 'Portal Activated',
+            },
+          };
+        }
+        return emp;
+      })
     );
 
     // Save update in Firestore
@@ -777,7 +892,13 @@ export const HrmsProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const querySnap = await getDocs(q);
       querySnap.forEach(async (document) => {
         await updateDoc(doc(db, 'employees', document.id), {
+          customPassword: newPassword,
           mustChangePassword: false,
+          defaultPassword: '',
+          'portalAccess.mustChangePassword': false,
+          'portalAccess.tempPassword': '',
+          'portalAccess.customPassword': newPassword,
+          'portalAccess.inviteStatus': 'Portal Activated',
           updatedAt: new Date().toISOString(),
         });
       });

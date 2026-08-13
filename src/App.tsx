@@ -36,10 +36,10 @@ import { DigitalSuggestionBox } from './components/suggestions/DigitalSuggestion
 import { InformationHub } from './components/infohub/InformationHub';
 
 const AppContent: React.FC = () => {
-  const { isAuthenticated, activeTab, currentUser, activeRole, hasModuleAccess } = useHrms();
+  const { isAuthenticated, activeTab, currentUser, activeRole, hasModuleAccess, mobileViewActive, setMobileViewActive } = useHrms();
   const [isAiModalOpen, setIsAiModalOpen] = useState(false);
-  const [isMobileSimOpen, setIsMobileSimOpen] = useState(false);
   const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   if (!isAuthenticated) {
     return <LoginPage />;
@@ -56,7 +56,7 @@ const AppContent: React.FC = () => {
     switch (activeTab) {
       case 'dashboard':
         return (
-          <div className="space-y-6">
+          <div className="space-y-4 sm:space-y-6">
             <BirthdayNotificationBanner />
             {isExecRole ? <ExecutiveDashboard /> : <StaffMemberDashboard />}
           </div>
@@ -115,27 +115,28 @@ const AppContent: React.FC = () => {
   };
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
-      {/* Sidebar Navigation */}
-      <Sidebar />
+    <div className="flex h-screen w-full max-w-full overflow-hidden bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+      {/* Sidebar Navigation (Desktop Persistent + Mobile Drawer) */}
+      <Sidebar isMobileOpen={isMobileMenuOpen} onCloseMobile={() => setIsMobileMenuOpen(false)} />
 
-      {/* Main Container */}
-      <div className="flex flex-1 flex-col overflow-hidden">
-        {/* Header Bar */}
+      {/* Main Content Area Container */}
+      <div className="flex flex-1 flex-col overflow-hidden min-w-0 w-full">
+        {/* Header Bar with Hamburger Menu Toggle */}
         <Header
+          onToggleMobileMenu={() => setIsMobileMenuOpen((prev) => !prev)}
           onOpenAIAssistant={() => setIsAiModalOpen(true)}
           onChangePasswordClick={() => setIsChangePasswordOpen(true)}
         />
 
-        {/* View Content Area */}
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 bg-slate-50 dark:bg-slate-950">
-          <div className="mx-auto max-w-7xl">{renderTabContent()}</div>
+        {/* Scrollable View Content Area */}
+        <main className="flex-1 overflow-y-auto p-3 sm:p-5 md:p-6 lg:p-8 bg-slate-50 dark:bg-slate-950 min-w-0 w-full">
+          <div className="mx-auto max-w-7xl min-w-0 w-full">{renderTabContent()}</div>
         </main>
       </div>
 
       {/* Modals & Simulators */}
       <AIAssistantModal isOpen={isAiModalOpen} onClose={() => setIsAiModalOpen(false)} />
-      {isMobileSimOpen && <MobileAppSimulator onClose={() => setIsMobileSimOpen(false)} />}
+      {mobileViewActive && <MobileAppSimulator onClose={() => setMobileViewActive(false)} />}
       <ChangePasswordModal
         isOpen={isChangePasswordOpen || currentUser?.mustChangePassword === true}
         onClose={() => setIsChangePasswordOpen(false)}

@@ -50,6 +50,7 @@ import {
   Calendar,
   BadgeCheck,
   FileUp,
+  FolderArchive,
 } from 'lucide-react';
 import { useHrms } from '../../context/HrmsContext';
 import {
@@ -76,6 +77,11 @@ export const EmployeeDirectory: React.FC = () => {
     createEmployeePortalAccount,
     batchCreateAndInvitePortalAccounts,
     sendPortalInviteEmail,
+    sendPortalInviteSms,
+    staffFiles,
+    uploadStaffFile,
+    deleteStaffFile,
+    toggleStaffFilePermission,
   } = useHrms();
 
   // Active Main View: 'directory' (Cards/Profiles) | 'portal_accounts' (Logins & Portal Invites) | 'leadership' (HOD/HOU Governance) | 'hierarchy' (Interactive Org Chart)
@@ -94,6 +100,85 @@ export const EmployeeDirectory: React.FC = () => {
     'general' | 'documents' | 'education' | 'contacts' | 'employment' | 'licenses' | 'health'
   >('general');
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
+
+  // DIGITAL FILE DOSSIER MODAL STATE
+  const [digitalFileActiveTab, setDigitalFileActiveTab] = useState<'documents' | 'overview' | 'licenses'>('documents');
+  const [quickDocTitle, setQuickDocTitle] = useState('');
+  const [quickDocCategory, setQuickDocCategory] = useState<OfficialDocument['type']>('Appointment Letter');
+  const [quickDocFileName, setQuickDocFileName] = useState('');
+  const [quickDocFileUrl, setQuickDocFileUrl] = useState('');
+  const [quickDocNotes, setQuickDocNotes] = useState('');
+
+  const handleDirectDocUploadInModal = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0] && selectedEmployee) {
+      const file = e.target.files[0];
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = reader.result as string;
+        setQuickDocFileName(file.name);
+        setQuickDocFileUrl(dataUrl);
+        if (!quickDocTitle) {
+          setQuickDocTitle(file.name.replace(/\.[^/.]+$/, ''));
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleSaveDirectDocInModal = () => {
+    if (!selectedEmployee || !quickDocTitle || !quickDocFileUrl) return;
+
+    const newDoc: OfficialDocument = {
+      id: `doc-${Date.now()}`,
+      title: quickDocTitle,
+      type: quickDocCategory,
+      fileUrl: quickDocFileUrl,
+      fileName: quickDocFileName || 'Document.pdf',
+      fileSize: 1024 * 180,
+      uploadedAt: new Date().toISOString().split('T')[0],
+      uploadedBy: 'HR Officer',
+      notes: quickDocNotes,
+    };
+
+    const updatedDocs = [newDoc, ...(selectedEmployee.officialDocuments || [])];
+
+    let updatedEmp: Employee = {
+      ...selectedEmployee,
+      officialDocuments: updatedDocs,
+    };
+
+    if (quickDocCategory === 'Appointment Letter') {
+      updatedEmp.appointmentLetterUrl = quickDocFileUrl;
+      updatedEmp.appointmentLetterName = quickDocFileName;
+    } else if (quickDocCategory === 'Assumption of Duty Letter') {
+      updatedEmp.assumptionOfDutyUrl = quickDocFileUrl;
+      updatedEmp.assumptionOfDutyName = quickDocFileName;
+    } else if (quickDocCategory === 'Transfer Document') {
+      updatedEmp.transferDocumentUrl = quickDocFileUrl;
+      updatedEmp.transferDocumentName = quickDocFileName;
+    }
+
+    updateEmployee(selectedEmployee.id, updatedEmp);
+    setSelectedEmployee(updatedEmp);
+
+    setQuickDocTitle('');
+    setQuickDocFileName('');
+    setQuickDocFileUrl('');
+    setQuickDocNotes('');
+    showToast('success', 'Document Saved to Staff File', `Successfully attached ${newDoc.title} to ${selectedEmployee.firstName}'s digital file.`);
+  };
+
+  const handleDeleteOfficialDocInModal = (docId: string) => {
+    if (!selectedEmployee) return;
+    const updatedDocs = (selectedEmployee.officialDocuments || []).filter((d) => d.id !== docId);
+    const updatedEmp = {
+      ...selectedEmployee,
+      officialDocuments: updatedDocs,
+    };
+    updateEmployee(selectedEmployee.id, updatedEmp);
+    setSelectedEmployee(updatedEmp);
+    showToast('info', 'Document Removed', 'Removed document from employee digital file.');
+  };
 
   // New Education Form State
   const [newEduInst, setNewEduInst] = useState('');
@@ -157,6 +242,27 @@ export const EmployeeDirectory: React.FC = () => {
       showToast('success', 'Email Dispatched', `Credentials email sent to ${result.recipientEmail}`);
     } else {
       showToast('error', 'Email Delivery Failed', result.error || 'Failed to dispatch email.');
+    }
+  };
+
+  const handleTriggerSendSmsInvite = async (empId: string) => {
+    const target = employees.find((e) => e.id === empId);
+    if (!target) return;
+
+    if (!target.phone || target.phone.trim().length < 5) {
+      showToast('error', 'Missing Phone Number', `Staff member ${target.firstName} ${target.lastName} has no phone number configured.`);
+      return;
+    }
+
+    showToast('info', 'Dispatching Cellular SMS...', `Sending portal credentials SMS to ${target.phone}`);
+    const result = await sendPortalInviteSms(empId);
+
+    if (result.success) {
+      setEmailDispatchModal(result);
+      setEmailDispatchLog((prev) => [result, ...prev]);
+      showToast('success', 'SMS Dispatched', `Credentials sent via SMS to ${result.recipientPhone || target.phone}`);
+    } else {
+      showToast('error', 'SMS Delivery Failed', result.error || 'Failed to dispatch SMS.');
     }
   };
 
@@ -1032,7 +1138,15 @@ export const EmployeeDirectory: React.FC = () => {
                               className="px-2.5 py-1.5 rounded-lg bg-indigo-600/80 text-white font-bold text-[11px] hover:bg-indigo-500 transition flex items-center gap-1"
                               title="Resend Email Invitation with Login Credentials"
                             >
-                              <Send className="h-3 w-3" /> Invite
+                              <Send className="h-3 w-3" /> Email
+                            </button>
+
+                            <button
+                              onClick={() => handleTriggerSendSmsInvite(emp.id)}
+                              className="px-2.5 py-1.5 rounded-lg bg-emerald-600/80 text-white font-bold text-[11px] hover:bg-emerald-500 transition flex items-center gap-1"
+                              title="Send Credentials via Cellular SMS"
+                            >
+                              <Phone className="h-3 w-3" /> SMS
                             </button>
 
                             <button
@@ -2733,163 +2847,710 @@ export const EmployeeDirectory: React.FC = () => {
       )}
 
       {/* Digital Employee Profile File Modal */}
-      {selectedEmployee && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
-          <div className="relative h-[85vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100">
-            <button
-              onClick={() => setSelectedEmployee(null)}
-              className="absolute right-4 top-4 rounded-lg p-1 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
-            >
-              <X className="h-5 w-5" />
-            </button>
+      {selectedEmployee && (() => {
+        const empStaffFiles = (staffFiles || []).filter(
+          (f) =>
+            f.ownerEmail === selectedEmployee.email ||
+            f.ownerUid === selectedEmployee.id ||
+            f.ownerName.toLowerCase().includes(selectedEmployee.firstName.toLowerCase())
+        );
+        const totalDocsCount =
+          (selectedEmployee.officialDocuments || []).length +
+          empStaffFiles.length +
+          (selectedEmployee.appointmentLetterUrl ? 1 : 0) +
+          (selectedEmployee.assumptionOfDutyUrl ? 1 : 0) +
+          (selectedEmployee.transferDocumentUrl ? 1 : 0);
 
-            {/* Profile Banner */}
-            <div className="flex items-center justify-between border-b pb-4 dark:border-slate-800">
-              <div className="flex items-center gap-4">
-                <img
-                  src={selectedEmployee.photo}
-                  alt={selectedEmployee.firstName}
-                  className="h-16 w-16 rounded-2xl object-cover border-2 border-emerald-500"
-                />
-                <div>
-                  <h3 className="text-lg font-bold">
-                    {selectedEmployee.firstName} {selectedEmployee.lastName}
-                  </h3>
-                  <p className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-                    {selectedEmployee.jobTitle} • {selectedEmployee.department}
-                  </p>
-                  <p className="text-[11px] text-slate-400">
-                    Emp Code: {selectedEmployee.empCode} • Joined {selectedEmployee.joinDate}
-                  </p>
-                </div>
-              </div>
-
-              {/* Edit Employee File Button inside Profile view */}
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 p-4 backdrop-blur-md">
+            <div className="relative h-[88vh] w-full max-w-4xl overflow-y-auto rounded-3xl bg-slate-900 p-6 shadow-2xl border border-slate-800 text-slate-100 flex flex-col">
               <button
-                onClick={() => {
-                  const empToEdit = selectedEmployee;
-                  handleOpenEditModal(empToEdit);
-                }}
-                className="mr-10 px-3.5 py-2 rounded-xl bg-emerald-600 text-white font-bold text-xs hover:bg-emerald-500 transition shadow flex items-center gap-1.5"
+                onClick={() => setSelectedEmployee(null)}
+                className="absolute right-4 top-4 rounded-xl p-2 text-slate-400 hover:bg-slate-800 hover:text-white transition"
               >
-                <Pencil className="h-4 w-4" /> Edit Employee File
+                <X className="h-5 w-5" />
               </button>
-            </div>
 
-            {/* Tabs & Details */}
-            <div className="mt-6 space-y-6 text-xs">
-              {/* Portal Access Credentials Card */}
-              <div className="rounded-2xl bg-indigo-950/30 p-4 border border-indigo-500/30 space-y-3">
-                <div className="flex items-center justify-between border-b border-indigo-500/20 pb-2">
-                  <h4 className="font-bold text-sm text-indigo-300 flex items-center gap-2">
-                    <Key className="h-4 w-4 text-indigo-400" /> Portal Account Credentials & Access
-                  </h4>
-                  <span className="rounded-full bg-emerald-500/20 px-2.5 py-0.5 text-[10px] font-bold text-emerald-300 border border-emerald-500/30">
-                    {selectedEmployee.portalAccess?.inviteStatus || 'Invitation Sent'}
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-slate-300">
-                  <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800">
-                    <span className="text-[10px] text-slate-400 block font-bold">USERNAME</span>
-                    <p className="font-mono text-emerald-400 font-bold text-xs mt-0.5">
-                      {selectedEmployee.portalAccess?.username || selectedEmployee.email}
+              {/* Profile Banner */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-4 pr-10">
+                <div className="flex items-center gap-4">
+                  <img
+                    src={selectedEmployee.photo}
+                    alt={selectedEmployee.firstName}
+                    className="h-16 w-16 rounded-2xl object-cover border-2 border-emerald-500 shadow-md"
+                  />
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-xl font-bold text-white">
+                        {selectedEmployee.firstName} {selectedEmployee.lastName}
+                      </h3>
+                      <span className="font-mono text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded font-bold">
+                        {selectedEmployee.empCode}
+                      </span>
+                    </div>
+                    <p className="text-xs font-semibold text-emerald-400 mt-0.5">
+                      {selectedEmployee.jobTitle} • {selectedEmployee.department}
                     </p>
-                  </div>
-                  <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800">
-                    <span className="text-[10px] text-slate-400 block font-bold">INITIAL PASSWORD</span>
-                    <p className="font-mono text-amber-300 font-bold text-xs mt-0.5">
-                      {selectedEmployee.portalAccess?.tempPassword || selectedEmployee.empCode}
+                    <p className="text-[11px] text-slate-400">
+                      Hospital ID: {selectedEmployee.hospitalId} • Joined {selectedEmployee.joinDate}
                     </p>
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between pt-1">
-                  <span className="text-[10px] text-slate-400">
-                    Portal Auth: Staff ID or Email Password Login
-                  </span>
+                <div className="flex items-center gap-2">
                   <button
-                    onClick={() => handleTriggerSendInvite(selectedEmployee.id)}
-                    className="px-3 py-1.5 rounded-lg bg-indigo-600 text-white font-bold text-xs hover:bg-indigo-500 transition flex items-center gap-1.5"
+                    onClick={() => {
+                      const empToEdit = selectedEmployee;
+                      setSelectedEmployee(null);
+                      handleOpenEditModal(empToEdit);
+                    }}
+                    className="px-4 py-2 rounded-xl bg-emerald-600 text-white font-bold text-xs hover:bg-emerald-500 transition shadow flex items-center gap-2"
                   >
-                    <Send className="h-3.5 w-3.5" /> Resend Credentials Email
+                    <Pencil className="h-4 w-4" /> Edit Details & Files
                   </button>
                 </div>
               </div>
 
-              {/* Personal & Financial Details */}
-              <div className="grid grid-cols-2 gap-4 rounded-xl bg-slate-50 p-4 dark:bg-slate-800/50">
-                <div>
-                  <span className="text-[10px] uppercase font-bold text-slate-400">Passport / National ID</span>
-                  <p className="font-semibold">{selectedEmployee.passportNo} / {selectedEmployee.nationalId}</p>
-                </div>
-                <div>
-                  <span className="text-[10px] uppercase font-bold text-slate-400">Bank & Tax Account</span>
-                  <p className="font-semibold">{selectedEmployee.bankAccount} (Tax: {selectedEmployee.taxId})</p>
-                </div>
-                <div>
-                  <span className="text-[10px] uppercase font-bold text-slate-400">Base Salary</span>
-                  <p className="font-semibold text-emerald-600 dark:text-emerald-400">
-                    {formatCurrency(selectedEmployee.salary)} / mo
-                  </p>
-                </div>
-                <div>
-                  <span className="text-[10px] uppercase font-bold text-slate-400">Education</span>
-                  <p className="font-semibold">{selectedEmployee.education}</p>
-                </div>
+              {/* Digital File Modal Inner Tabs */}
+              <div className="flex items-center gap-2 border-b border-slate-800 my-4 text-xs font-bold overflow-x-auto pb-1">
+                <button
+                  type="button"
+                  onClick={() => setDigitalFileActiveTab('documents')}
+                  className={`px-4 py-2 rounded-xl flex items-center gap-2 transition ${
+                    digitalFileActiveTab === 'documents'
+                      ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 font-extrabold'
+                      : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                  }`}
+                >
+                  <FileText className="h-4 w-4 text-cyan-400" /> Digital File Vault & HR Documents
+                  <span className="ml-1 rounded-full bg-cyan-500/20 px-2 py-0.5 text-[10px] text-cyan-300 font-extrabold border border-cyan-500/30">
+                    {totalDocsCount}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setDigitalFileActiveTab('overview')}
+                  className={`px-4 py-2 rounded-xl flex items-center gap-2 transition ${
+                    digitalFileActiveTab === 'overview'
+                      ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 font-extrabold'
+                      : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                  }`}
+                >
+                  <Key className="h-4 w-4 text-indigo-400" /> Portal Credentials & Employment Info
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setDigitalFileActiveTab('licenses')}
+                  className={`px-4 py-2 rounded-xl flex items-center gap-2 transition ${
+                    digitalFileActiveTab === 'licenses'
+                      ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 font-extrabold'
+                      : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                  }`}
+                >
+                  <Award className="h-4 w-4 text-amber-400" /> Licenses, Certs & Health
+                  <span className="ml-1 rounded-full bg-slate-800 px-2 py-0.5 text-[10px] text-amber-300">
+                    {(selectedEmployee.medicalLicenses || []).length}
+                  </span>
+                </button>
               </div>
 
-              {/* Medical Licenses & Certifications */}
-              <div>
-                <h4 className="font-bold text-sm text-slate-900 dark:text-slate-100 mb-2 flex items-center gap-2">
-                  <Award className="h-4 w-4 text-emerald-500" /> Hospital Medical Licenses & Certs
-                </h4>
-                <div className="space-y-2">
-                  {selectedEmployee.medicalLicenses.map((lic) => (
-                    <div
-                      key={lic.id}
-                      className="flex items-center justify-between rounded-xl border border-slate-200 p-3 dark:border-slate-800"
-                    >
+              {/* TAB CONTENT */}
+              <div className="flex-1 overflow-y-auto space-y-5 text-xs pr-1">
+                {/* TAB 1: DIGITAL FILE VAULT & HR DOCUMENTS */}
+                {digitalFileActiveTab === 'documents' && (
+                  <div className="space-y-5">
+                    {/* Security & Access Vault Banner */}
+                    <div className="rounded-2xl bg-slate-950 p-4 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                       <div>
-                        <span className="font-bold text-slate-800 dark:text-slate-200">{lic.licenseType}</span>
-                        <p className="text-[10px] text-slate-400">
-                          No: {lic.licenseNumber} • Issued by {lic.issuingAuthority}
+                        <div className="flex items-center gap-2">
+                          <Lock className="h-4 w-4 text-emerald-400" />
+                          <h4 className="font-bold text-white text-sm">Staff File Vault Access Rules</h4>
+                        </div>
+                        <p className="text-[11px] text-slate-400 mt-0.5">
+                          Controls whether {selectedEmployee.firstName} can access and view their digital document vault in the mobile staff portal.
                         </p>
                       </div>
-                      <div className="text-right">
-                        <span
-                          className={`rounded px-2 py-0.5 text-[10px] font-bold ${
-                            lic.status === 'Active'
-                              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400'
-                              : 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-400'
-                          }`}
-                        >
-                          {lic.status} (Expires: {lic.expiryDate})
-                        </span>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const currentGranted = selectedEmployee.filePermissionGranted ?? true;
+                          toggleStaffFilePermission(selectedEmployee.id, !currentGranted);
+                          setSelectedEmployee({
+                            ...selectedEmployee,
+                            filePermissionGranted: !currentGranted,
+                          });
+                        }}
+                        className={`px-3.5 py-2 rounded-xl font-bold text-xs transition flex items-center gap-2 border ${
+                          (selectedEmployee.filePermissionGranted ?? true)
+                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/30'
+                            : 'bg-rose-500/20 text-rose-300 border-rose-500/40 hover:bg-rose-500/30'
+                        }`}
+                      >
+                        <ShieldCheck className="h-4 w-4" />
+                        {(selectedEmployee.filePermissionGranted ?? true) ? 'Access Granted (Click to Revoke)' : 'Access Restricted (Click to Grant)'}
+                      </button>
+                    </div>
+
+                    {/* Mandatory HR Employment Letters Grid */}
+                    <div className="space-y-2">
+                      <h4 className="font-bold text-slate-200 text-xs uppercase tracking-wider flex items-center gap-2">
+                        <FileCheck className="h-4 w-4 text-cyan-400" /> Mandatory Official Employment Records
+                      </h4>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        {/* Appointment Letter */}
+                        <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 flex flex-col justify-between space-y-3">
+                          <div>
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="font-bold text-cyan-300 text-xs">Appointment Letter</span>
+                              <span className={`px-2 py-0.5 rounded text-[9px] font-extrabold ${
+                                selectedEmployee.appointmentLetterUrl ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-300'
+                              }`}>
+                                {selectedEmployee.appointmentLetterUrl ? 'Attached' : 'Missing'}
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-slate-400">Formal facility employment terms</p>
+                            <p className="text-[10px] font-mono text-slate-300 mt-2 truncate">
+                              {selectedEmployee.appointmentLetterName || 'No document on file'}
+                            </p>
+                          </div>
+
+                          <div className="pt-2 border-t border-slate-800 flex items-center gap-2">
+                            <label className="cursor-pointer flex-1 py-1.5 px-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-[10px] text-center transition flex items-center justify-center gap-1">
+                              <Upload className="h-3 w-3" /> Upload
+                              <input
+                                type="file"
+                                accept=".pdf,.doc,.docx,image/*"
+                                onChange={(e) => {
+                                  if (e.target.files && e.target.files[0]) {
+                                    const file = e.target.files[0];
+                                    const reader = new FileReader();
+                                    reader.onload = () => {
+                                      const dataUrl = reader.result as string;
+                                      const newDoc: OfficialDocument = {
+                                        id: `doc-app-${Date.now()}`,
+                                        title: 'Appointment Letter',
+                                        type: 'Appointment Letter',
+                                        fileUrl: dataUrl,
+                                        fileName: file.name,
+                                        fileSize: file.size,
+                                        uploadedAt: new Date().toISOString().split('T')[0],
+                                        uploadedBy: 'HR Officer',
+                                      };
+                                      const updatedEmp = {
+                                        ...selectedEmployee,
+                                        appointmentLetterUrl: dataUrl,
+                                        appointmentLetterName: file.name,
+                                        officialDocuments: [newDoc, ...(selectedEmployee.officialDocuments || []).filter((d) => d.type !== 'Appointment Letter')],
+                                      };
+                                      updateEmployee(selectedEmployee.id, updatedEmp);
+                                      setSelectedEmployee(updatedEmp);
+                                      showToast('success', 'Appointment Letter Uploaded', `Saved ${file.name}`);
+                                    };
+                                    reader.readAsDataURL(file);
+                                  }
+                                }}
+                                className="hidden"
+                              />
+                            </label>
+
+                            {selectedEmployee.appointmentLetterUrl && (
+                              <a
+                                href={selectedEmployee.appointmentLetterUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="p-1.5 rounded-lg bg-slate-800 text-cyan-300 hover:bg-slate-700 transition"
+                                title="View Appointment Letter"
+                              >
+                                <Eye className="h-4 w-4" />
+                              </a>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Assumption of Duty */}
+                        <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 flex flex-col justify-between space-y-3">
+                          <div>
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="font-bold text-emerald-300 text-xs">Assumption of Duty</span>
+                              <span className={`px-2 py-0.5 rounded text-[9px] font-extrabold ${
+                                selectedEmployee.assumptionOfDutyUrl ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-300'
+                              }`}>
+                                {selectedEmployee.assumptionOfDutyUrl ? 'Attached' : 'Missing'}
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-slate-400">Commencement of duty report</p>
+                            <p className="text-[10px] font-mono text-slate-300 mt-2 truncate">
+                              {selectedEmployee.assumptionOfDutyName || 'No document on file'}
+                            </p>
+                          </div>
+
+                          <div className="pt-2 border-t border-slate-800 flex items-center gap-2">
+                            <label className="cursor-pointer flex-1 py-1.5 px-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[10px] text-center transition flex items-center justify-center gap-1">
+                              <Upload className="h-3 w-3" /> Upload
+                              <input
+                                type="file"
+                                accept=".pdf,.doc,.docx,image/*"
+                                onChange={(e) => {
+                                  if (e.target.files && e.target.files[0]) {
+                                    const file = e.target.files[0];
+                                    const reader = new FileReader();
+                                    reader.onload = () => {
+                                      const dataUrl = reader.result as string;
+                                      const newDoc: OfficialDocument = {
+                                        id: `doc-ass-${Date.now()}`,
+                                        title: 'Assumption of Duty Letter',
+                                        type: 'Assumption of Duty Letter',
+                                        fileUrl: dataUrl,
+                                        fileName: file.name,
+                                        fileSize: file.size,
+                                        uploadedAt: new Date().toISOString().split('T')[0],
+                                        uploadedBy: 'HR Officer',
+                                      };
+                                      const updatedEmp = {
+                                        ...selectedEmployee,
+                                        assumptionOfDutyUrl: dataUrl,
+                                        assumptionOfDutyName: file.name,
+                                        officialDocuments: [newDoc, ...(selectedEmployee.officialDocuments || []).filter((d) => d.type !== 'Assumption of Duty Letter')],
+                                      };
+                                      updateEmployee(selectedEmployee.id, updatedEmp);
+                                      setSelectedEmployee(updatedEmp);
+                                      showToast('success', 'Assumption of Duty Uploaded', `Saved ${file.name}`);
+                                    };
+                                    reader.readAsDataURL(file);
+                                  }
+                                }}
+                                className="hidden"
+                              />
+                            </label>
+
+                            {selectedEmployee.assumptionOfDutyUrl && (
+                              <a
+                                href={selectedEmployee.assumptionOfDutyUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="p-1.5 rounded-lg bg-slate-800 text-emerald-300 hover:bg-slate-700 transition"
+                                title="View Assumption of Duty Letter"
+                              >
+                                <Eye className="h-4 w-4" />
+                              </a>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Transfer Document */}
+                        <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 flex flex-col justify-between space-y-3">
+                          <div>
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="font-bold text-indigo-300 text-xs">Transfer / Posting</span>
+                              <span className={`px-2 py-0.5 rounded text-[9px] font-extrabold ${
+                                selectedEmployee.transferDocumentUrl ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-800 text-slate-400'
+                              }`}>
+                                {selectedEmployee.transferDocumentUrl ? 'Attached' : 'Optional'}
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-slate-400">Redeployment or transfer order</p>
+                            <p className="text-[10px] font-mono text-slate-300 mt-2 truncate">
+                              {selectedEmployee.transferDocumentName || 'No transfer doc'}
+                            </p>
+                          </div>
+
+                          <div className="pt-2 border-t border-slate-800 flex items-center gap-2">
+                            <label className="cursor-pointer flex-1 py-1.5 px-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-[10px] text-center transition flex items-center justify-center gap-1">
+                              <Upload className="h-3 w-3" /> Upload
+                              <input
+                                type="file"
+                                accept=".pdf,.doc,.docx,image/*"
+                                onChange={(e) => {
+                                  if (e.target.files && e.target.files[0]) {
+                                    const file = e.target.files[0];
+                                    const reader = new FileReader();
+                                    reader.onload = () => {
+                                      const dataUrl = reader.result as string;
+                                      const newDoc: OfficialDocument = {
+                                        id: `doc-trf-${Date.now()}`,
+                                        title: 'Transfer Document',
+                                        type: 'Transfer Document',
+                                        fileUrl: dataUrl,
+                                        fileName: file.name,
+                                        fileSize: file.size,
+                                        uploadedAt: new Date().toISOString().split('T')[0],
+                                        uploadedBy: 'HR Officer',
+                                      };
+                                      const updatedEmp = {
+                                        ...selectedEmployee,
+                                        transferDocumentUrl: dataUrl,
+                                        transferDocumentName: file.name,
+                                        officialDocuments: [newDoc, ...(selectedEmployee.officialDocuments || []).filter((d) => d.type !== 'Transfer Document')],
+                                      };
+                                      updateEmployee(selectedEmployee.id, updatedEmp);
+                                      setSelectedEmployee(updatedEmp);
+                                      showToast('success', 'Transfer Document Uploaded', `Saved ${file.name}`);
+                                    };
+                                    reader.readAsDataURL(file);
+                                  }
+                                }}
+                                className="hidden"
+                              />
+                            </label>
+
+                            {selectedEmployee.transferDocumentUrl && (
+                              <a
+                                href={selectedEmployee.transferDocumentUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="p-1.5 rounded-lg bg-slate-800 text-indigo-300 hover:bg-slate-700 transition"
+                                title="View Transfer Document"
+                              >
+                                <Eye className="h-4 w-4" />
+                              </a>
+                            )}
+                          </div>
+                        </div>
                       </div>
                     </div>
-                  ))}
-                </div>
-              </div>
 
-              {/* Occupational Health & Vaccines */}
-              <div>
-                <h4 className="font-bold text-sm text-slate-900 dark:text-slate-100 mb-2">
-                  Vaccinations & Fitness for Duty
-                </h4>
-                <div className="grid grid-cols-2 gap-2">
-                  {selectedEmployee.vaccinations.map((v) => (
-                    <div key={v.id} className="rounded-lg bg-slate-100 p-2.5 dark:bg-slate-800/60">
-                      <span className="font-semibold text-slate-800 dark:text-slate-200">{v.vaccineName}</span>
-                      <p className="text-[10px] text-emerald-600 font-medium">✓ {v.status} ({v.doseDate})</p>
+                    {/* Quick File Upload Form */}
+                    <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-3">
+                      <h4 className="font-bold text-white text-xs flex items-center gap-2">
+                        <Plus className="h-4 w-4 text-emerald-400" /> Upload New Digital Document to Staff File
+                      </h4>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div>
+                          <label className="block text-slate-300 font-semibold text-[10px] mb-1">
+                            Document Title *
+                          </label>
+                          <input
+                            type="text"
+                            value={quickDocTitle}
+                            onChange={(e) => setQuickDocTitle(e.target.value)}
+                            placeholder="e.g. Promotion Letter 2026"
+                            className="w-full rounded-xl bg-slate-900 border border-slate-800 p-2 text-slate-200 focus:border-emerald-500 focus:outline-none"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-slate-300 font-semibold text-[10px] mb-1">
+                            Document Category
+                          </label>
+                          <select
+                            value={quickDocCategory}
+                            onChange={(e) => setQuickDocCategory(e.target.value as any)}
+                            className="w-full rounded-xl bg-slate-900 border border-slate-800 p-2 text-slate-200 focus:border-emerald-500 focus:outline-none"
+                          >
+                            <option value="Appointment Letter">Appointment Letter</option>
+                            <option value="Assumption of Duty Letter">Assumption of Duty Letter</option>
+                            <option value="Transfer Document">Transfer Document</option>
+                            <option value="Promotion Letter">Promotion Letter</option>
+                            <option value="Demotion / Disciplinary Letter">Demotion / Disciplinary</option>
+                            <option value="Leave Document">Leave Document</option>
+                            <option value="Other">Other Document</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-slate-300 font-semibold text-[10px] mb-1">
+                            Choose File *
+                          </label>
+                          <label className="cursor-pointer flex items-center justify-between rounded-xl bg-slate-900 border border-slate-800 p-2 text-slate-300 hover:border-emerald-500 transition">
+                            <span className="truncate text-[10px]">
+                              {quickDocFileName || 'Select PDF / Doc / Image'}
+                            </span>
+                            <Paperclip className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                            <input
+                              type="file"
+                              accept=".pdf,.doc,.docx,image/*"
+                              onChange={handleDirectDocUploadInModal}
+                              className="hidden"
+                            />
+                          </label>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
+                        <input
+                          type="text"
+                          value={quickDocNotes}
+                          onChange={(e) => setQuickDocNotes(e.target.value)}
+                          placeholder="Optional notes or tracking code..."
+                          className="flex-1 rounded-xl bg-slate-900 border border-slate-800 p-2 text-slate-200 focus:border-emerald-500 focus:outline-none text-[11px]"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleSaveDirectDocInModal}
+                          disabled={!quickDocTitle || !quickDocFileUrl}
+                          className="px-4 py-2 rounded-xl bg-emerald-600 text-white font-bold text-xs hover:bg-emerald-500 transition disabled:opacity-50 disabled:cursor-not-allowed shrink-0 flex items-center gap-1.5 justify-center"
+                        >
+                          <Upload className="h-3.5 w-3.5" /> Attach to Digital File
+                        </button>
+                      </div>
                     </div>
-                  ))}
-                </div>
+
+                    {/* Official Uploaded Documents List */}
+                    <div className="space-y-3">
+                      <h4 className="font-bold text-slate-200 text-xs uppercase tracking-wider flex items-center gap-2">
+                        <FolderArchive className="h-4 w-4 text-emerald-400" />
+                        Registered Staff Official Files ({ (selectedEmployee.officialDocuments || []).length })
+                      </h4>
+
+                      {(!selectedEmployee.officialDocuments || selectedEmployee.officialDocuments.length === 0) ? (
+                        <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 text-center text-slate-500 text-xs italic">
+                          No official custom documents registered for this employee yet. Use the uploader above to add files.
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 gap-2">
+                          {selectedEmployee.officialDocuments.map((doc) => (
+                            <div
+                              key={doc.id}
+                              className="p-3 rounded-2xl bg-slate-950 border border-slate-800 flex items-center justify-between gap-3 hover:border-slate-700 transition"
+                            >
+                              <div className="flex items-center gap-3">
+                                <div className="p-2.5 rounded-xl bg-slate-900 text-cyan-400 border border-slate-800">
+                                  <FileText className="h-4 w-4" />
+                                </div>
+                                <div>
+                                  <span className="font-bold text-white text-xs block">{doc.title}</span>
+                                  <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-0.5">
+                                    <span className="bg-slate-800 text-cyan-300 px-2 py-0.5 rounded font-mono">
+                                      {doc.type}
+                                    </span>
+                                    <span>• Uploaded {doc.uploadedAt}</span>
+                                    {doc.notes && <span>• {doc.notes}</span>}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-2">
+                                <a
+                                  href={doc.fileUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="px-3 py-1.5 rounded-xl bg-cyan-600/20 text-cyan-300 border border-cyan-500/30 hover:bg-cyan-600/30 font-bold text-xs flex items-center gap-1.5 transition"
+                                >
+                                  <Eye className="h-3.5 w-3.5" /> View
+                                </a>
+
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteOfficialDocInModal(doc.id)}
+                                  className="p-1.5 rounded-xl text-slate-500 hover:text-rose-400 hover:bg-slate-800 transition"
+                                  title="Delete Document"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* HR Staff File Vault Storage Items */}
+                    {empStaffFiles.length > 0 && (
+                      <div className="space-y-3 pt-2 border-t border-slate-800">
+                        <h4 className="font-bold text-slate-200 text-xs uppercase tracking-wider flex items-center gap-2">
+                          <Paperclip className="h-4 w-4 text-indigo-400" />
+                          Vault Cloud Files ({empStaffFiles.length})
+                        </h4>
+
+                        <div className="grid grid-cols-1 gap-2">
+                          {empStaffFiles.map((sf) => (
+                            <div
+                              key={sf.id}
+                              className="p-3 rounded-2xl bg-slate-950 border border-slate-800 flex items-center justify-between gap-3"
+                            >
+                              <div className="flex items-center gap-3">
+                                <div className="p-2.5 rounded-xl bg-indigo-950/40 text-indigo-300 border border-indigo-500/30">
+                                  <FileText className="h-4 w-4" />
+                                </div>
+                                <div>
+                                  <span className="font-bold text-white text-xs block">{sf.fileName}</span>
+                                  <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-0.5">
+                                    <span className="bg-indigo-950 text-indigo-300 px-2 py-0.5 rounded font-mono">
+                                      {sf.category}
+                                    </span>
+                                    <span>• Uploaded {sf.uploadedAt}</span>
+                                    {sf.description && <span>• {sf.description}</span>}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-2">
+                                <a
+                                  href={sf.fileData}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="px-3 py-1.5 rounded-xl bg-indigo-600/20 text-indigo-300 border border-indigo-500/30 hover:bg-indigo-600/30 font-bold text-xs flex items-center gap-1.5 transition"
+                                >
+                                  <Download className="h-3.5 w-3.5" /> Download
+                                </a>
+
+                                <button
+                                  type="button"
+                                  onClick={() => deleteStaffFile(sf.id)}
+                                  className="p-1.5 rounded-xl text-slate-500 hover:text-rose-400 hover:bg-slate-800 transition"
+                                  title="Delete Vault File"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* TAB 2: OVERVIEW & CREDENTIALS */}
+                {digitalFileActiveTab === 'overview' && (
+                  <div className="space-y-5">
+                    {/* Portal Access Credentials Card */}
+                    <div className="rounded-2xl bg-indigo-950/30 p-4 border border-indigo-500/30 space-y-3">
+                      <div className="flex items-center justify-between border-b border-indigo-500/20 pb-2">
+                        <h4 className="font-bold text-sm text-indigo-300 flex items-center gap-2">
+                          <Key className="h-4 w-4 text-indigo-400" /> Mobile Staff Portal Login Account
+                        </h4>
+                        <span className="rounded-full bg-emerald-500/20 px-2.5 py-0.5 text-[10px] font-bold text-emerald-300 border border-emerald-500/30">
+                          {selectedEmployee.portalAccess?.inviteStatus || 'Invitation Sent'}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-slate-300">
+                        <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
+                          <span className="text-[10px] text-slate-400 block font-bold">PORTAL USERNAME</span>
+                          <p className="font-mono text-emerald-400 font-bold text-xs mt-0.5">
+                            {selectedEmployee.portalAccess?.username || selectedEmployee.email}
+                          </p>
+                        </div>
+                        <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
+                          <span className="text-[10px] text-slate-400 block font-bold">INITIAL PASSWORD</span>
+                          <p className="font-mono text-amber-300 font-bold text-xs mt-0.5">
+                            {selectedEmployee.portalAccess?.tempPassword || selectedEmployee.empCode}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                        <span className="text-[10px] text-slate-400">
+                          Supports Auth: SMS OTP / Staff ID / Work Email
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleTriggerSendSmsInvite(selectedEmployee.id)}
+                            className="px-3.5 py-2 rounded-xl bg-emerald-600 text-white font-bold text-xs hover:bg-emerald-500 transition flex items-center gap-1.5"
+                          >
+                            <Phone className="h-3.5 w-3.5" /> Send Credentials via SMS
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleTriggerSendInvite(selectedEmployee.id)}
+                            className="px-3.5 py-2 rounded-xl bg-indigo-600 text-white font-bold text-xs hover:bg-indigo-500 transition flex items-center gap-1.5"
+                          >
+                            <Send className="h-3.5 w-3.5" /> Resend Email
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Personal & Financial Details */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 rounded-2xl bg-slate-950 p-4 border border-slate-800 text-slate-300">
+                      <div>
+                        <span className="text-[10px] uppercase font-bold text-slate-400">National ID / Passport</span>
+                        <p className="font-semibold text-white mt-0.5">{selectedEmployee.passportNo || '—'} / {selectedEmployee.nationalId || '—'}</p>
+                      </div>
+                      <div>
+                        <span className="text-[10px] uppercase font-bold text-slate-400">Bank & Tax Identification</span>
+                        <p className="font-semibold text-white mt-0.5">{selectedEmployee.bankAccount || '—'} (TIN: {selectedEmployee.taxId || '—'})</p>
+                      </div>
+                      <div>
+                        <span className="text-[10px] uppercase font-bold text-slate-400">Monthly Base Salary</span>
+                        <p className="font-semibold text-emerald-400 mt-0.5">
+                          {formatCurrency(selectedEmployee.salary)} / mo
+                        </p>
+                      </div>
+                      <div>
+                        <span className="text-[10px] uppercase font-bold text-slate-400">Highest Qualification</span>
+                        <p className="font-semibold text-white mt-0.5">{selectedEmployee.education || 'Degree / Diploma'}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* TAB 3: LICENSES, CERTS & HEALTH */}
+                {digitalFileActiveTab === 'licenses' && (
+                  <div className="space-y-5">
+                    {/* Medical Licenses & Certifications */}
+                    <div>
+                      <h4 className="font-bold text-xs uppercase text-slate-300 mb-2 flex items-center gap-2">
+                        <Award className="h-4 w-4 text-emerald-400" /> Hospital Medical Licenses & Certifications
+                      </h4>
+                      <div className="space-y-2">
+                        {(selectedEmployee.medicalLicenses || []).length === 0 ? (
+                          <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-slate-500 text-xs italic text-center">
+                            No medical license records registered.
+                          </div>
+                        ) : (
+                          (selectedEmployee.medicalLicenses || []).map((lic) => (
+                            <div
+                              key={lic.id}
+                              className="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-950 p-3.5"
+                            >
+                              <div>
+                                <span className="font-bold text-white block">{lic.licenseType}</span>
+                                <p className="text-[10px] text-slate-400 mt-0.5">
+                                  License No: {lic.licenseNumber} • Issuing Board: {lic.issuingAuthority}
+                                </p>
+                              </div>
+                              <div className="text-right">
+                                <span
+                                  className={`rounded-lg px-2.5 py-1 text-[10px] font-extrabold ${
+                                    lic.status === 'Active'
+                                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                                      : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                                  }`}
+                                >
+                                  {lic.status} (Expires: {lic.expiryDate})
+                                </span>
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Vaccinations & Fitness for Duty */}
+                    <div>
+                      <h4 className="font-bold text-xs uppercase text-slate-300 mb-2">
+                        Occupational Health & Vaccinations
+                      </h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {(selectedEmployee.vaccinations || []).length === 0 ? (
+                          <div className="col-span-2 p-3 rounded-xl bg-slate-950 border border-slate-800 text-slate-500 text-xs italic text-center">
+                            No vaccination entries recorded.
+                          </div>
+                        ) : (
+                          (selectedEmployee.vaccinations || []).map((v) => (
+                            <div key={v.id} className="rounded-xl bg-slate-950 p-3 border border-slate-800">
+                              <span className="font-bold text-white block">{v.vaccineName}</span>
+                              <p className="text-[10px] text-emerald-400 font-semibold mt-0.5">✓ {v.status} ({v.doseDate})</p>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Add Employee Modal */}
       {isAddModalOpen && (
@@ -3086,8 +3747,12 @@ export const EmployeeDirectory: React.FC = () => {
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                      <CheckCircle2 className="h-3 w-3" /> SMTP Email Dispatched
+                    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+                      emailDispatchModal.channel === 'SMS'
+                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                        : 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30'
+                    }`}>
+                      <CheckCircle2 className="h-3 w-3" /> {emailDispatchModal.channel === 'SMS' ? 'Cellular SMS Dispatched' : 'SMTP Email Dispatched'}
                     </span>
                     <span className="text-[10px] text-slate-400 font-mono">
                       ID: {emailDispatchModal.dispatchId}
@@ -3196,6 +3861,25 @@ export const EmployeeDirectory: React.FC = () => {
               </button>
 
               <div className="flex items-center gap-2">
+                <button
+                  onClick={async () => {
+                    showToast('info', 'Dispatching SMS...', `Sending credentials via SMS to staff member`);
+                    const empObj = employees.find((e) => e.email === emailDispatchModal.recipientEmail || e.portalAccess?.username === emailDispatchModal.username);
+                    if (empObj) {
+                      const res = await sendPortalInviteSms(empObj.id);
+                      if (res.success) {
+                        setEmailDispatchModal(res);
+                        showToast('success', 'Dispatched SMS', 'Credentials sent via cellular SMS!');
+                      }
+                    } else {
+                      showToast('error', 'Employee Not Found', 'Could not locate employee record for SMS dispatch.');
+                    }
+                  }}
+                  className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition flex items-center gap-1.5"
+                >
+                  <Phone className="h-4 w-4" /> Send via SMS
+                </button>
+
                 <button
                   onClick={async () => {
                     showToast('info', 'Re-dispatching...', `Re-sending email to ${emailDispatchModal.recipientEmail}`);

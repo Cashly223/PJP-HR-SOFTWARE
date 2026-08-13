@@ -283,11 +283,11 @@ export const PerformanceManagement: React.FC = () => {
                     <span className="flex items-center gap-1.5">
                       <BarChart3 className="h-3.5 w-3.5 text-emerald-400" /> Key Clinical Competencies
                     </span>
-                    <span className="text-[10px] text-slate-500">{rev.clinicalCompetencies.length} Evaluated</span>
+                    <span className="text-[10px] text-slate-500">{(rev.clinicalCompetencies || []).length} Evaluated</span>
                   </div>
 
                   <div className="space-y-1.5 text-xs">
-                    {rev.clinicalCompetencies.slice(0, 3).map((cc) => (
+                    {(rev.clinicalCompetencies || []).slice(0, 3).map((cc) => (
                       <div key={cc.id} className="rounded-lg bg-slate-950 p-2 border border-slate-800/60 flex items-center justify-between">
                         <span className="text-slate-300 font-medium truncate max-w-[220px]">{cc.name}</span>
                         <div className="flex items-center gap-1 font-bold text-emerald-400">
@@ -305,7 +305,7 @@ export const PerformanceManagement: React.FC = () => {
                       <Target className="h-3 w-3 text-sky-400" /> SMART Goals
                     </div>
                     <div className="mt-1 font-semibold text-slate-200">
-                      {rev.goals.filter((g) => g.status === 'Completed').length} / {rev.goals.length} Completed
+                      {(rev.goals || []).filter((g) => g.status === 'Completed').length} / {(rev.goals || []).length} Completed
                     </div>
                   </div>
 
@@ -314,7 +314,7 @@ export const PerformanceManagement: React.FC = () => {
                       <MessageSquare className="h-3 w-3 text-purple-400" /> 360° Peer Feedback
                     </div>
                     <div className="mt-1 font-semibold text-slate-200">
-                      {rev.feedback360.length} Peer Submissions
+                      {(rev.feedback360 || []).length} Peer Submissions
                     </div>
                   </div>
                 </div>
@@ -480,7 +480,7 @@ export const PerformanceManagement: React.FC = () => {
               </h4>
 
               <div className="space-y-2">
-                {selectedReview.clinicalCompetencies.map((cc) => (
+                {(selectedReview.clinicalCompetencies || []).map((cc) => (
                   <div key={cc.id} className="rounded-xl bg-slate-950 p-3 border border-slate-800 space-y-1">
                     <div className="flex items-center justify-between text-xs font-bold text-slate-200">
                       <span>{cc.name}</span>
@@ -499,7 +499,7 @@ export const PerformanceManagement: React.FC = () => {
               </h4>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {selectedReview.kpis.map((kpi, idx) => (
+                {(selectedReview.kpis || []).map((kpi, idx) => (
                   <div key={idx} className="rounded-xl bg-slate-950 p-3 border border-slate-800 text-xs">
                     <span className="text-slate-400 font-medium block truncate">{kpi.metric}</span>
                     <div className="mt-1 flex items-baseline justify-between font-bold">
@@ -518,7 +518,7 @@ export const PerformanceManagement: React.FC = () => {
               </h4>
 
               <div className="space-y-2">
-                {selectedReview.goals.map((g) => (
+                {(selectedReview.goals || []).map((g) => (
                   <div key={g.id} className="rounded-xl bg-slate-950 p-3 border border-slate-800 text-xs space-y-1.5">
                     <div className="flex items-center justify-between font-bold text-slate-200">
                       <span>{g.title}</span>
@@ -540,14 +540,14 @@ export const PerformanceManagement: React.FC = () => {
             </div>
 
             {/* 360 Peer Feedback */}
-            {selectedReview.feedback360.length > 0 && (
+            {(selectedReview.feedback360 || []).length > 0 && (
               <div className="space-y-3">
                 <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
                   <MessageSquare className="h-4 w-4 text-amber-400" /> 360° Peer Feedback Submissions
                 </h4>
 
                 <div className="space-y-2">
-                  {selectedReview.feedback360.map((fb) => (
+                  {(selectedReview.feedback360 || []).map((fb) => (
                     <div key={fb.id} className="rounded-xl bg-slate-950 p-3 border border-slate-800 text-xs space-y-1">
                       <div className="flex items-center justify-between font-bold text-slate-200">
                         <span>{fb.reviewerName} ({fb.relationship})</span>

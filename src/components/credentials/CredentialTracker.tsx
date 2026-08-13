@@ -6,8 +6,8 @@ export const CredentialTracker: React.FC = () => {
   const { employees, dispatchNotification } = useHrms();
   const [dispatchStatus, setDispatchStatus] = useState<Record<string, string>>({});
 
-  const allLicenses = employees.flatMap((emp) =>
-    emp.medicalLicenses.map((lic) => ({
+  const allLicenses = (employees || []).flatMap((emp) =>
+    (emp.medicalLicenses || []).map((lic) => ({
       ...lic,
       employeeId: emp.id,
       employeeName: `${emp.firstName} ${emp.lastName}`,

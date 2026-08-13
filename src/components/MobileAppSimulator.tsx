@@ -117,7 +117,7 @@ export const MobileAppSimulator: React.FC<MobileAppSimulatorProps> = ({ onClose 
             {activeScreen === 'roster' && (
               <div className="space-y-2">
                 <h4 className="text-xs font-bold text-emerald-400 mb-2">My Shift Roster</h4>
-                {empRoster.map((r) => (
+                {(empRoster || []).map((r) => (
                   <div key={r.id} className="rounded-xl bg-slate-900 p-3 border border-slate-800 text-xs">
                     <div className="flex justify-between font-bold text-slate-200">
                       <span>{r.shiftType}</span>

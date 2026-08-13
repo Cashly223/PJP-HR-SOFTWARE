@@ -3073,6 +3073,7 @@ export const HrmsProvider: React.FC<{ children: React.ReactNode }> = ({ children
         createEmployeePortalAccount,
         batchCreateAndInvitePortalAccounts,
         sendPortalInviteEmail,
+        sendPortalInviteSms,
 
         systemCustomization,
         updateSystemCustomization,

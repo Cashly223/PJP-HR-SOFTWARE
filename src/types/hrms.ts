@@ -133,6 +133,22 @@ export interface StaffFile {
   permissionGrantedByHr: boolean;
 }
 
+export interface PromotionRecord {
+  id: string;
+  employeeId: string;
+  previousGrade: string;
+  newGrade: string;
+  previousSalary?: number;
+  newSalary?: number;
+  promotionDate: string;
+  effectiveDate: string;
+  approvedBy: string;
+  letterUrl?: string;
+  letterFileName?: string;
+  remarks?: string;
+  status: 'Approved' | 'Pending Gazette / Board Approval' | 'Under Review';
+}
+
 export interface Employee {
   id: string;
   hospitalId: string;
@@ -147,6 +163,11 @@ export interface Employee {
   jobTitle: string;
   department: string;
   unit: string;
+  grade?: string; // Standard Civil/Healthcare Grade (e.g. Senior Nursing Officer, Principal Medical Officer)
+  firstAppointmentDate?: string; // Initial appointment / induction date (defaults to joinDate)
+  lastPromotionDate?: string; // Date of most recent promotion
+  lastPromotionGrade?: string;
+  promotionHistory?: PromotionRecord[];
   managerId?: string;
   employmentType: 'Full-Time' | 'Part-Time' | 'Contract' | 'Locum / On-Call';
   joinDate: string;

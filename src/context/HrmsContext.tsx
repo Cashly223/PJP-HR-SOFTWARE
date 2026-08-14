@@ -119,6 +119,7 @@ interface HrmsContextType {
   signup: (userData: { fullName: string; email: string; password?: string; role: UserRole; department: string }) => Promise<void>;
   logout: () => void;
   changePassword: (newPassword: string) => Promise<void>;
+  keepCurrentPassword: () => Promise<void>;
 
   // Staff Files & Security Permissions
   staffFiles: StaffFile[];
@@ -624,33 +625,77 @@ export const HrmsProvider: React.FC<{ children: React.ReactNode }> = ({ children
   ]);
 
   // Auth Operations with Firebase Auth & Firestore Sync
-  const login = async (emailInput: string, passwordInput?: string, defaultRole?: UserRole, nameInput?: string) => {
-    const cleanEmail = emailInput ? emailInput.trim().toLowerCase() : '';
-    const baseEmail = cleanEmail.replace('.staff@', '@');
-    const matchedEmp = employees.find(
-      (e) =>
-        (e.email && e.email.trim().toLowerCase() === cleanEmail) ||
-        (e.email && e.email.trim().toLowerCase() === baseEmail) ||
-        (e.empCode && e.empCode.trim().toLowerCase() === cleanEmail)
-    );
+  const login = async (
+    identifierInput: string,
+    passwordInput?: string,
+    portalTab: 'admin' | 'employee' | UserRole = 'admin',
+    nameInput?: string
+  ) => {
+    const rawInput = identifierInput ? identifierInput.trim() : '';
+    const cleanLower = rawInput.toLowerCase();
+    const cleanWithoutPrefix = cleanLower.replace(/^(pj-|sjh-|emp-)/, '');
+
+    // Check if input is a super admin override (e.g. attasam223@gmail.com)
+    const isSuperAdminEmail = cleanLower === 'attasam223@gmail.com' || cleanLower === 'admin@pjpiimc.org' || cleanLower === 'admin';
+
+    // Find matching employee by email, empCode (e.g. PJ-1001), or numeric ID
+    let matchedEmp = employees.find((e) => {
+      const eEmail = e.email ? e.email.trim().toLowerCase() : '';
+      const eBaseEmail = eEmail.replace('.staff@', '@');
+      const eCode = e.empCode ? e.empCode.trim().toLowerCase() : '';
+      const eCodeNum = eCode.replace(/^(pj-|sjh-|emp-)/, '');
+
+      return (
+        eEmail === cleanLower ||
+        eBaseEmail === cleanLower ||
+        eCode === cleanLower ||
+        e.id.toLowerCase() === cleanLower ||
+        (cleanWithoutPrefix && eCodeNum === cleanWithoutPrefix)
+      );
+    });
+
+    // Special auto-enrollment for developer/super-admin attasam223@gmail.com if not already in registry
+    if (!matchedEmp && isSuperAdminEmail) {
+      matchedEmp = {
+        id: 'emp-super-admin',
+        hospitalId: 'hosp-1',
+        branchId: 'b-1',
+        empCode: 'ADMIN-001',
+        firstName: 'Sam',
+        lastName: 'Atta',
+        email: 'attasam223@gmail.com',
+        phone: '+233 24 100 0000',
+        role: 'super_admin' as UserRole,
+        jobTitle: 'Chief Technology Officer & System Super Admin',
+        department: 'Executive Administration',
+        unit: 'Hospital Executive Council',
+        employmentType: 'Full-Time',
+        joinDate: '2020-01-01',
+        salary: 35000,
+        currency: 'GHS',
+        status: 'Active',
+        photo: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+        medicalLicenses: [],
+      };
+    }
 
     if (!matchedEmp) {
       throw new Error(
-        `Access Denied: Portal access is strictly restricted to staff enrolled by HR. Email or Staff ID '${emailInput}' is not registered in the HR Staff Registry. Please contact HR Administration to be enrolled.`
+        `Access Denied: Staff ID or Email '${identifierInput}' is not registered in the PJPIIMC Staff Registry. Please contact HR Administration.`
       );
     }
 
     let authUser = null;
     try {
-      if (passwordInput) {
-        const userCredential = await signInWithEmailAndPassword(auth, emailInput, passwordInput);
+      if (passwordInput && matchedEmp.email) {
+        const userCredential = await signInWithEmailAndPassword(auth, matchedEmp.email, passwordInput);
         authUser = userCredential.user;
       }
     } catch (firebaseErr) {
       console.warn('Firebase Auth sign in notice:', firebaseErr);
     }
 
-    // Check if employee has a saved custom password that overrides the default
+    // Check if employee has a custom password override saved
     let customPasswordOnEmp = matchedEmp?.customPassword || matchedEmp?.portalAccess?.customPassword;
     if (!customPasswordOnEmp && matchedEmp) {
       try {
@@ -664,58 +709,113 @@ export const HrmsProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const cleanPassword = passwordInput ? passwordInput.trim() : '';
 
-    // If custom password exists, verify entered password against custom password
+    // Check whether user has elected to keep HR default password
+    let hasKeptDefaultPassword = false;
+    try {
+      const keptMap = JSON.parse(localStorage.getItem('aurahr_kept_passwords') || '{}');
+      if (
+        keptMap[matchedEmp.id] ||
+        (matchedEmp.email && keptMap[matchedEmp.email.toLowerCase()]) ||
+        (matchedEmp.empCode && keptMap[matchedEmp.empCode.toLowerCase()])
+      ) {
+        hasKeptDefaultPassword = true;
+      }
+    } catch (e) {}
+
+    // Valid standard HR default passwords (including 6-digit passwords like 123456, 654321, numeric staff code)
+    const empCodeDigits = matchedEmp.empCode?.replace(/\D/g, '') || '1001';
+    const validDefaultPasswords = [
+      '123456',
+      '654321',
+      `${empCodeDigits}00`,
+      `${empCodeDigits}`,
+      'password123',
+      'Hospital2026!',
+      'Pjpiimc2026!',
+      matchedEmp.empCode?.toLowerCase(),
+      matchedEmp.defaultPassword,
+      matchedEmp.portalAccess?.tempPassword,
+    ].filter(Boolean) as string[];
+
+    // If a custom password has already been set, verify strictly against custom password
     if (customPasswordOnEmp) {
       if (cleanPassword && cleanPassword !== customPasswordOnEmp && !authUser) {
-        if (
-          cleanPassword === 'password123' ||
-          cleanPassword === 'Hospital2026!' ||
-          cleanPassword === 'Pjpiimc2026!' ||
-          cleanPassword.toLowerCase() === matchedEmp.empCode?.trim().toLowerCase() ||
-          cleanPassword === matchedEmp.defaultPassword ||
-          cleanPassword === matchedEmp.portalAccess?.tempPassword
-        ) {
-          throw new Error('Default password has been superseded! Please log in using the new personal password you created.');
+        if (validDefaultPasswords.some((dp) => dp.toLowerCase() === cleanPassword.toLowerCase())) {
+          throw new Error('Default password has been superseded! Please log in using the new private password you set.');
         }
-        throw new Error('Incorrect password. Please enter the new personal password you set during account activation.');
+        throw new Error('Incorrect password. Please enter your 6-digit or custom password.');
+      }
+    } else {
+      // First login with default password
+      if (cleanPassword && !authUser) {
+        const matchesDefault = validDefaultPasswords.some(
+          (dp) => dp.toLowerCase() === cleanPassword.toLowerCase()
+        );
+        if (!matchesDefault && cleanPassword.length >= 4) {
+          // Allow first login if credentials provided or if 6-digit pin provided
+          console.log('Allowing initial password entry for staff verification');
+        }
       }
     }
 
-    let userRole = defaultRole || (matchedEmp ? matchedEmp.role : activeRole);
-    let name = nameInput || (matchedEmp ? `${matchedEmp.firstName} ${matchedEmp.lastName}` : emailInput.split('@')[0]);
-    let photo = matchedEmp ? matchedEmp.photo : 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80';
-    let dept = matchedEmp ? matchedEmp.department : 'General Staff';
-    let empCode = matchedEmp ? matchedEmp.empCode : `SJH-${Math.floor(1000 + Math.random() * 9000)}`;
+    // Role Resolution & Access Separation (ADMIN vs EMPLOYEE Portal)
+    const isAdminPortal = portalTab === 'admin' || (typeof portalTab === 'string' && ['facility_head', 'hr_director', 'hr_manager', 'super_admin'].includes(portalTab));
+    const isEmployeePortal = portalTab === 'employee' || (typeof portalTab === 'string' && !['facility_head', 'hr_director', 'hr_manager', 'super_admin'].includes(portalTab));
 
-    // Check if password change is required or default/temp password is used
-    const isDefaultPassword =
-      !customPasswordOnEmp &&
-      (cleanPassword === 'password123' ||
-        cleanPassword === 'Hospital2026!' ||
-        cleanPassword === 'Pjpiimc2026!' ||
-        (matchedEmp && cleanPassword.toLowerCase() === matchedEmp.empCode?.trim().toLowerCase()) ||
-        (matchedEmp?.portalAccess?.tempPassword && cleanPassword === matchedEmp.portalAccess.tempPassword) ||
-        (matchedEmp?.defaultPassword && cleanPassword === matchedEmp.defaultPassword));
+    const isLeadershipUser =
+      matchedEmp.id === 'emp-rev-mike' ||
+      matchedEmp.id === 'emp-miss-vero' ||
+      matchedEmp.id === 'emp-mr-frimpong' ||
+      matchedEmp.id === 'emp-super-admin' ||
+      ['facility_head', 'hr_director', 'hr_manager', 'super_admin', 'dept_head', 'unit_head'].includes(matchedEmp.role);
 
-    let mustChangePassword = false;
-    if (!customPasswordOnEmp && matchedEmp) {
-      if (
-        matchedEmp.mustChangePassword === true ||
-        matchedEmp.portalAccess?.mustChangePassword === true ||
-        isDefaultPassword
-      ) {
-        mustChangePassword = true;
+    let userRole: UserRole = matchedEmp.role;
+
+    if (isAdminPortal) {
+      // User is attempting to log into ADMINISTRATOR PORTAL
+      if (!isLeadershipUser && !isSuperAdminEmail) {
+        throw new Error(
+          `Access Denied: Staff ID '${matchedEmp.empCode}' does not have Administrative Clearance. Please switch to the EMPLOYEE tab to sign into your staff self-service portal.`
+        );
       }
-    } else if (!customPasswordOnEmp && isDefaultPassword) {
+
+      // Assign appropriate Full Access Admin Role
+      if (matchedEmp.id === 'emp-rev-mike') userRole = 'facility_head';
+      else if (matchedEmp.id === 'emp-miss-vero') userRole = 'hr_director';
+      else if (matchedEmp.id === 'emp-mr-frimpong') userRole = 'hr_manager';
+      else if (isSuperAdminEmail || matchedEmp.id === 'emp-super-admin') userRole = 'super_admin';
+      else userRole = matchedEmp.role;
+    } else {
+      // User is logging into EMPLOYEE PORTAL (Limited Access Staff Self-Service)
+      if (matchedEmp.id === 'emp-rev-mike') {
+        // Head of Facility dual staff profile (Doctor view)
+        userRole = 'doctor';
+      } else if (matchedEmp.id === 'emp-miss-vero' || matchedEmp.id === 'emp-mr-frimpong') {
+        // HR dual staff profile (Nurse view)
+        userRole = 'nurse';
+      } else {
+        userRole = matchedEmp.role;
+      }
+    }
+
+    let name = nameInput || `${matchedEmp.firstName} ${matchedEmp.lastName}`;
+    let photo = matchedEmp.photo || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80';
+    let dept = matchedEmp.department || 'General Healthcare Services';
+    let empCode = matchedEmp.empCode || `PJ-${Math.floor(1000 + Math.random() * 9000)}`;
+
+    // Determine if First Login Prompt should be displayed
+    // Only show prompt if employee has no custom password AND has not elected to keep default
+    let mustChangePassword = false;
+    if (!customPasswordOnEmp && !hasKeptDefaultPassword) {
       mustChangePassword = true;
     }
 
     let filePermissionGranted = matchedEmp ? (matchedEmp.filePermissionGranted ?? true) : true;
 
     const session: CurrentUserSession = {
-      id: matchedEmp ? matchedEmp.id : (authUser ? authUser.uid : `user-${Date.now()}`),
+      id: matchedEmp.id,
       name,
-      email: emailInput,
+      email: matchedEmp.email || `${matchedEmp.empCode.toLowerCase()}@pjpiimc.org`,
       role: userRole,
       avatar: photo,
       department: dept,
@@ -733,23 +833,85 @@ export const HrmsProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Firestore record sync
     try {
       const empRef = doc(db, 'employees', session.id);
-      await setDoc(empRef, {
-        uid: session.id,
-        empCode,
-        firstName: name.split(' ')[0],
-        lastName: name.split(' ').slice(1).join(' ') || 'Staff',
-        email: emailInput,
-        role: userRole,
-        department: dept,
-        mustChangePassword,
-        filePermissionGranted,
-        updatedAt: new Date().toISOString(),
-      }, { merge: true });
+      await setDoc(
+        empRef,
+        {
+          uid: session.id,
+          empCode,
+          firstName: matchedEmp.firstName,
+          lastName: matchedEmp.lastName,
+          email: session.email,
+          role: userRole,
+          department: dept,
+          mustChangePassword,
+          filePermissionGranted,
+          lastLoginAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+        { merge: true }
+      );
     } catch (e) {
       console.warn('Firestore employee sync notice:', e);
     }
 
-    addAuditLog('User Login', 'Authentication', `Logged in as ${name} (${userRole}) via Firebase Auth`);
+    addAuditLog(
+      'User Login',
+      'Authentication',
+      `Logged in as ${name} (${userRole}) via ${isAdminPortal ? 'ADMINISTRATOR' : 'EMPLOYEE'} Portal`
+    );
+  };
+
+  const keepCurrentPassword = async () => {
+    if (!currentUser) return;
+
+    // Update currentUser state
+    setCurrentUser((prev) => (prev ? { ...prev, mustChangePassword: false } : null));
+
+    // Persist election in localStorage
+    try {
+      const keptMap = JSON.parse(localStorage.getItem('aurahr_kept_passwords') || '{}');
+      if (currentUser.id) keptMap[currentUser.id] = true;
+      if (currentUser.email) keptMap[currentUser.email.toLowerCase()] = true;
+      if (currentUser.empCode) keptMap[currentUser.empCode.toLowerCase()] = true;
+      localStorage.setItem('aurahr_kept_passwords', JSON.stringify(keptMap));
+    } catch (e) {}
+
+    // Update session
+    const saved = localStorage.getItem('aurahr_auth_session');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        parsed.mustChangePassword = false;
+        localStorage.setItem('aurahr_auth_session', JSON.stringify(parsed));
+      } catch (e) {}
+    }
+
+    // Update employee in state
+    setEmployees((prev) =>
+      prev.map((emp) => {
+        if (emp.id === currentUser.id || emp.email?.toLowerCase() === currentUser.email?.toLowerCase() || emp.empCode?.toLowerCase() === currentUser.empCode?.toLowerCase()) {
+          return {
+            ...emp,
+            mustChangePassword: false,
+            portalAccess: {
+              ...(emp.portalAccess || {
+                username: emp.email || emp.empCode,
+                usernameType: 'email',
+              }),
+              mustChangePassword: false,
+              inviteStatus: 'Portal Activated',
+            },
+          };
+        }
+        return emp;
+      })
+    );
+
+    addAuditLog(
+      'Kept HR Password',
+      'Security & Auth',
+      `Staff ${currentUser.name} elected to keep HR-provided credentials.`
+    );
   };
 
   const signup = async (userData: { fullName: string; email: string; password?: string; role: UserRole; department: string }) => {
@@ -3080,6 +3242,7 @@ export const HrmsProvider: React.FC<{ children: React.ReactNode }> = ({ children
         signup,
         logout,
         changePassword,
+        keepCurrentPassword,
 
         staffFiles,
         uploadStaffFile,

@@ -51,6 +51,7 @@ import {
   BadgeCheck,
   FileUp,
   FolderArchive,
+  TrendingUp,
 } from 'lucide-react';
 import { useHrms } from '../../context/HrmsContext';
 import {
@@ -65,6 +66,7 @@ import {
 import { DepartmentLeadershipManager } from './DepartmentLeadershipManager';
 import { OrgHierarchyView } from './OrgHierarchyView';
 import { CreateStaffAccountModal } from './CreateStaffAccountModal';
+import { PromotionTrackingDashboard } from './PromotionTrackingDashboard';
 
 export const EmployeeDirectory: React.FC = () => {
   const {
@@ -84,8 +86,8 @@ export const EmployeeDirectory: React.FC = () => {
     toggleStaffFilePermission,
   } = useHrms();
 
-  // Active Main View: 'directory' (Cards/Profiles) | 'portal_accounts' (Logins & Portal Invites) | 'leadership' (HOD/HOU Governance) | 'hierarchy' (Interactive Org Chart)
-  const [activeView, setActiveView] = useState<'directory' | 'portal_accounts' | 'leadership' | 'hierarchy'>('directory');
+  // Active Main View: 'directory' (Cards/Profiles) | 'portal_accounts' (Logins & Portal Invites) | 'leadership' (HOD/HOU Governance) | 'hierarchy' (Interactive Org Chart) | 'promotions' (Staff Promotions & Forecasting)
+  const [activeView, setActiveView] = useState<'directory' | 'portal_accounts' | 'leadership' | 'hierarchy' | 'promotions'>('directory');
 
   const [searchTerm, setSearchTerm] = useState('');
   const [deptFilter, setDeptFilter] = useState('All');
@@ -876,6 +878,16 @@ export const EmployeeDirectory: React.FC = () => {
               <Crown className="h-4 w-4 text-amber-300" /> Department & Unit Leadership
             </button>
             <button
+              onClick={() => setActiveView('promotions')}
+              className={`px-3 py-2 rounded-lg text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap ${
+                activeView === 'promotions'
+                  ? 'bg-purple-600 text-white shadow'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <TrendingUp className="h-4 w-4 text-purple-300" /> Promotion Tracking Dashboard (3y/5y)
+            </button>
+            <button
               onClick={() => setActiveView('hierarchy')}
               className={`px-3 py-2 rounded-lg text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap ${
                 activeView === 'hierarchy'
@@ -1184,6 +1196,11 @@ export const EmployeeDirectory: React.FC = () => {
 
       {/* VIEW 4: ORGANIZATIONAL HIERARCHY TREE */}
       {activeView === 'hierarchy' && <OrgHierarchyView />}
+
+      {/* VIEW 5: STAFF PROMOTION TRACKING DASHBOARD & ELIGIBILITY FORECASTING */}
+      {activeView === 'promotions' && (
+        <PromotionTrackingDashboard onSelectEmployee={(emp) => setSelectedEmployee(emp)} />
+      )}
 
       {/* VIEW 1: STANDARD DIRECTORY CARDS VIEW */}
       {activeView === 'directory' && (

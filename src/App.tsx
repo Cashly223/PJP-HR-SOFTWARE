@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { HrmsProvider, useHrms } from './context/HrmsContext';
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
@@ -27,6 +27,8 @@ import { StaffFileManager } from './components/files/StaffFileManager';
 import { StaffMemberDashboard } from './components/dashboard/StaffMemberDashboard';
 import { AccessRestricted } from './components/access/AccessRestricted';
 import { ChangePasswordModal } from './components/auth/ChangePasswordModal';
+import { FirstLoginChoiceModal } from './components/auth/FirstLoginChoiceModal';
+import { MobileInstallPromptModal } from './components/mobile/MobileInstallPromptModal';
 import { AIAssistantModal } from './components/AIAssistantModal';
 import { MobileAppSimulator } from './components/MobileAppSimulator';
 import { HospitalNoticeBoard } from './components/noticeboard/HospitalNoticeBoard';
@@ -40,6 +42,25 @@ const AppContent: React.FC = () => {
   const [isAiModalOpen, setIsAiModalOpen] = useState(false);
   const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [showMobileInstallPrompt, setShowMobileInstallPrompt] = useState(false);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      const isMobile =
+        window.innerWidth < 768 ||
+        /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      const isDismissed = localStorage.getItem('aurahr_dismiss_mobile_install') === 'true';
+      const isPromptedThisSession = sessionStorage.getItem('aurahr_mobile_prompted_this_session') === 'true';
+
+      if (isMobile && !isDismissed && !isPromptedThisSession) {
+        sessionStorage.setItem('aurahr_mobile_prompted_this_session', 'true');
+        const timer = setTimeout(() => {
+          setShowMobileInstallPrompt(true);
+        }, 900);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [isAuthenticated]);
 
   if (!isAuthenticated) {
     return <LoginPage />;
@@ -137,10 +158,24 @@ const AppContent: React.FC = () => {
       {/* Modals & Simulators */}
       <AIAssistantModal isOpen={isAiModalOpen} onClose={() => setIsAiModalOpen(false)} />
       {mobileViewActive && <MobileAppSimulator onClose={() => setMobileViewActive(false)} />}
+      
+      {/* First Time Login Choice Modal */}
+      <FirstLoginChoiceModal
+        isOpen={currentUser?.mustChangePassword === true}
+        onClose={() => {}}
+      />
+
+      {/* Manual Change Password Modal */}
       <ChangePasswordModal
-        isOpen={isChangePasswordOpen || currentUser?.mustChangePassword === true}
+        isOpen={isChangePasswordOpen && currentUser?.mustChangePassword !== true}
         onClose={() => setIsChangePasswordOpen(false)}
-        isMandatory={currentUser?.mustChangePassword === true}
+        isMandatory={false}
+      />
+
+      {/* Mobile Web App Install Prompt Modal */}
+      <MobileInstallPromptModal
+        isOpen={showMobileInstallPrompt}
+        onClose={() => setShowMobileInstallPrompt(false)}
       />
     </div>
   );

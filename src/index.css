@@ -43,41 +43,37 @@
   box-shadow: 0 0 25px -5px rgba(16, 185, 129, 0.15);
 }
 
-/* Printable PDF, Roster, Schedules & Official Form Styles */
+/* Printable PDF & Official Form Styles */
 @media print {
   @page {
-    size: auto;
-    margin: 8mm 10mm;
+    size: A4 portrait;
+    margin: 10mm 12mm;
   }
 
-  /* Reset body and container backgrounds for crisp printing */
-  html, body, #root, #root > div {
+  /* Hide everything on main page except printable modal overlay */
+  body > #root > div > *:not(.printable-modal-overlay),
+  nav, header, sidebar, aside {
+    display: none !important;
+  }
+
+  body {
     background-color: #ffffff !important;
-    background: #ffffff !important;
     color: #000000 !important;
-    height: auto !important;
-    min-height: 100% !important;
-    overflow: visible !important;
     font-size: 10pt !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
 
-  /* Hide navigation, header, sidebar, FAB, mobile prompts and simulation tools */
-  nav, header, sidebar, aside,
-  #global-quick-actions-fab,
+  /* Hide backdrop overlays and non-printable elements */
   .print\:hidden {
     display: none !important;
   }
 
-  /* When an isolated printable modal is open, only show that modal overlay */
-  body:has(.printable-modal-overlay) > #root > div > *:not(:has(.printable-modal-overlay)),
-  body:has(.printable-modal-overlay) main {
-    display: none !important;
-  }
-
+  /* Reset fixed position overlay containers in print mode */
   .printable-modal-overlay {
-    position: static !important;
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
     width: 100% !important;
     height: auto !important;
     background: #ffffff !important;
@@ -85,7 +81,7 @@
     padding: 0 !important;
     margin: 0 !important;
     display: block !important;
-    z-index: auto !important;
+    z-index: 99999 !important;
   }
 
   .printable-document-card {
@@ -99,34 +95,10 @@
     background: #ffffff !important;
     color: #000000 !important;
     overflow: visible !important;
-    padding: 0 !important;
   }
 
-  /* Main content container reset for page-level printing (Rosters, Schedules, Attendance, Payroll) */
-  main {
-    padding: 0 !important;
-    margin: 0 !important;
-    background: #ffffff !important;
-    color: #000000 !important;
-    overflow: visible !important;
-    width: 100% !important;
-    max-width: 100% !important;
-  }
-
-  /* High contrast table borders and clean text */
-  table {
-    border-collapse: collapse !important;
-    width: 100% !important;
-    color: #0f172a !important;
-  }
-
-  th, td {
-    border-color: #94a3b8 !important;
-    color: #0f172a !important;
-  }
-
-  /* Prevent awkward page breaks inside form parts and table rows */
-  .print-avoid-break, tr, .avoid-break {
+  /* Prevent awkward page breaks inside form parts */
+  .print-avoid-break {
     page-break-inside: avoid !important;
     break-inside: avoid !important;
   }

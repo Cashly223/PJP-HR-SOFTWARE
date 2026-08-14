@@ -1,4 +1,5 @@
 import React from 'react';
+import { motion } from 'motion/react';
 import {
   LayoutDashboard,
   Users,
@@ -107,9 +108,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, onCloseMobile })
           const Icon = item.icon;
           const isActive = activeTab === item.id;
           return (
-            <button
+            <motion.button
               key={item.id}
               onClick={() => handleSelectTab(item.id)}
+              whileHover={{ x: 4, transition: { duration: 0.15, ease: 'easeOut' } }}
+              whileTap={{ scale: 0.98 }}
               className={`group flex w-full items-center justify-between rounded-xl px-3 py-2.5 transition text-left ${
                 isActive
                   ? 'bg-emerald-600 text-white font-semibold shadow-sm'
@@ -117,7 +120,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, onCloseMobile })
               }`}
             >
               <div className="flex items-center gap-2.5 min-w-0">
-                <Icon className={`h-4 w-4 shrink-0 ${isActive ? 'text-white' : 'text-slate-400 group-hover:text-white'}`} />
+                <Icon className={`h-4 w-4 shrink-0 transition-transform duration-200 group-hover:scale-110 ${isActive ? 'text-white' : 'text-slate-400 group-hover:text-white'}`} />
                 <span className="truncate">{item.label}</span>
               </div>
               <div className="flex items-center gap-1 shrink-0">
@@ -140,7 +143,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, onCloseMobile })
                 ) : null}
                 {isActive && <ChevronRight className="h-3.5 w-3.5 text-emerald-200" />}
               </div>
-            </button>
+            </motion.button>
           );
         })}
       </nav>

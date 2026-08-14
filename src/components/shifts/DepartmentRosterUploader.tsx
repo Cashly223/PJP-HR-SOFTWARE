@@ -21,6 +21,7 @@ import {
   MessageSquare,
   Sparkles,
   Check,
+  Printer,
 } from 'lucide-react';
 import { useHrms } from '../../context/HrmsContext';
 import { DepartmentMonthlyRoster } from '../../types/hrms';
@@ -186,13 +187,13 @@ export const DepartmentRosterUploader: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Top Banner & Upload Trigger */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 rounded-2xl bg-gradient-to-r from-slate-900 via-slate-900 to-teal-950 p-6 border border-slate-800 shadow-xl text-white">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 rounded-2xl bg-slate-900/95 p-6 border border-slate-800 shadow-xl text-white">
         <div className="flex items-start gap-4">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-teal-500/10 text-teal-400 border border-teal-500/30">
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-teal-500/10 text-teal-400 border border-teal-500/30 shrink-0">
             <UploadCloud className="h-6 w-6" />
           </div>
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-xl font-bold tracking-tight text-white">
                 Department & Unit Monthly Duty Roster Submissions
               </h2>
@@ -200,18 +201,27 @@ export const DepartmentRosterUploader: React.FC = () => {
                 HR Approval Portal
               </span>
             </div>
-            <p className="mt-1 text-xs text-slate-400 max-w-2xl">
+            <p className="mt-1 text-xs text-slate-300 max-w-2xl">
               Every hospital department and clinical unit uploads their monthly duty roster for HR compliance review, shift hour validation, and administrative sign-off for {selectedHospital.name}.
             </p>
           </div>
         </div>
 
-        <button
-          onClick={() => setIsUploadModalOpen(true)}
-          className="flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 py-3 text-xs font-bold text-white shadow-lg shadow-emerald-950/40 hover:bg-emerald-500 transition active:scale-95"
-        >
-          <UploadCloud className="h-4 w-4" /> Upload Monthly Duty Roster
-        </button>
+        <div className="flex flex-wrap items-center gap-2 print:hidden">
+          <button
+            onClick={() => window.print()}
+            className="flex items-center justify-center gap-2 rounded-xl bg-slate-800 px-4 py-3 text-xs font-bold text-slate-200 border border-slate-700 hover:bg-slate-700 hover:text-white transition shadow-sm"
+            title="Print Submissions Audit List"
+          >
+            <Printer className="h-4 w-4 text-sky-400" /> Print Submissions
+          </button>
+          <button
+            onClick={() => setIsUploadModalOpen(true)}
+            className="flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 py-3 text-xs font-bold text-white shadow-lg shadow-emerald-950/40 hover:bg-emerald-500 transition active:scale-95"
+          >
+            <UploadCloud className="h-4 w-4" /> Upload Monthly Duty Roster
+          </button>
+        </div>
       </div>
 
       {/* Overview Stat KPI Cards */}
@@ -747,8 +757,8 @@ export const DepartmentRosterUploader: React.FC = () => {
               </div>
             </div>
 
-            {/* File Info */}
-            <div className="flex items-center justify-between bg-slate-950 p-3 rounded-xl border border-slate-800 text-xs">
+            {/* File Info & Export/Print Actions */}
+            <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-950 p-3 rounded-xl border border-slate-800 text-xs">
               <div className="flex items-center gap-3">
                 <FileSpreadsheet className="h-6 w-6 text-emerald-400" />
                 <div>
@@ -757,12 +767,21 @@ export const DepartmentRosterUploader: React.FC = () => {
                 </div>
               </div>
 
-              <button
-                onClick={() => handleDownloadRosterCSV(selectedRosterForReview)}
-                className="flex items-center gap-1.5 rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-bold text-slate-200 hover:bg-slate-700 transition"
-              >
-                <Download className="h-4 w-4 text-emerald-400" /> Export CSV
-              </button>
+              <div className="flex items-center gap-2 print:hidden">
+                <button
+                  onClick={() => window.print()}
+                  className="flex items-center gap-1.5 rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-bold text-slate-200 hover:bg-slate-700 border border-slate-700 transition"
+                  title="Print this Department Duty Roster"
+                >
+                  <Printer className="h-4 w-4 text-sky-400" /> Print Roster
+                </button>
+                <button
+                  onClick={() => handleDownloadRosterCSV(selectedRosterForReview)}
+                  className="flex items-center gap-1.5 rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-bold text-slate-200 hover:bg-slate-700 border border-slate-700 transition"
+                >
+                  <Download className="h-4 w-4 text-emerald-400" /> Export CSV
+                </button>
+              </div>
             </div>
 
             {/* Roster Grid Preview */}

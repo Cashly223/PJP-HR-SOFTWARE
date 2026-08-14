@@ -36,6 +36,7 @@ import { StaffChatRoom } from './components/chat/StaffChatRoom';
 import { BirthdayNotificationBanner } from './components/birthday/BirthdayNotificationBanner';
 import { DigitalSuggestionBox } from './components/suggestions/DigitalSuggestionBox';
 import { InformationHub } from './components/infohub/InformationHub';
+import { QuickActionsFAB } from './components/quickactions/QuickActionsFAB';
 
 const AppContent: React.FC = () => {
   const { isAuthenticated, activeTab, currentUser, activeRole, hasModuleAccess, mobileViewActive, setMobileViewActive } = useHrms();
@@ -177,6 +178,9 @@ const AppContent: React.FC = () => {
         isOpen={showMobileInstallPrompt}
         onClose={() => setShowMobileInstallPrompt(false)}
       />
+
+      {/* Floating Action Button (FAB) for Quick Hospital HR Actions */}
+      <QuickActionsFAB />
     </div>
   );
 };

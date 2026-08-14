@@ -398,10 +398,10 @@ export const MonthlyDutyRoasterGrid: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Top Controls Banner */}
-      <div className="rounded-2xl bg-gradient-to-r from-slate-900 via-slate-900 to-indigo-950 p-6 border border-slate-800 text-white shadow-xl space-y-4">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-800 pb-4">
+      <div className="rounded-2xl bg-slate-900/95 p-6 border border-slate-800 text-white shadow-xl space-y-4">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-800/80 pb-4">
           <div className="flex items-start gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/30 shrink-0">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 shrink-0">
               <Grid className="h-6 w-6" />
             </div>
             <div>
@@ -453,12 +453,12 @@ export const MonthlyDutyRoasterGrid: React.FC = () => {
         )}
 
         {/* HR Approval & Compliance Audit Banner */}
-        <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 text-xs">
+        <div className="p-4 rounded-2xl bg-slate-800/80 border border-slate-700/80 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 text-xs">
           <div className="flex items-center gap-3">
             <ShieldCheck className={`h-6 w-6 shrink-0 ${currentHrStatus.status === 'Approved' ? 'text-emerald-400' : currentHrStatus.status === 'Returned for Revision' ? 'text-rose-400' : 'text-amber-400'}`} />
             <div>
               <div className="flex items-center gap-2">
-                <span className="font-bold text-slate-300">HR Roaster Audit Status for {department}:</span>
+                <span className="font-bold text-slate-200">HR Roaster Audit Status for {department}:</span>
                 <span
                   className={`px-2.5 py-0.5 rounded-full font-black text-[10px] uppercase border ${
                     currentHrStatus.status === 'Approved'
@@ -472,7 +472,7 @@ export const MonthlyDutyRoasterGrid: React.FC = () => {
                 </span>
               </div>
               {currentHrStatus.status === 'Approved' && (
-                <p className="text-[11px] text-slate-400 mt-0.5">
+                <p className="text-[11px] text-slate-300 mt-0.5">
                   Approved by <strong className="text-emerald-400">{currentHrStatus.approvedBy}</strong> on {currentHrStatus.approvedAt}. Cleared for payroll and daily attendance tracking.
                 </p>
               )}
@@ -513,14 +513,14 @@ export const MonthlyDutyRoasterGrid: React.FC = () => {
         </div>
 
         {/* Configuration Bar */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 bg-slate-950/80 p-3.5 rounded-2xl border border-slate-800 text-xs">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 bg-slate-800/60 p-3.5 rounded-2xl border border-slate-750 text-xs">
           <div>
             <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Select Month</label>
             <input
               type="text"
               value={month}
               onChange={(e) => setMonth(e.target.value.toUpperCase())}
-              className="w-full rounded-xl bg-slate-900 border border-slate-800 px-3 py-2 text-white font-black text-xs uppercase"
+              className="w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-white font-black text-xs uppercase focus:border-emerald-500 focus:outline-none"
               placeholder="e.g. APRIL"
             />
           </div>
@@ -531,7 +531,7 @@ export const MonthlyDutyRoasterGrid: React.FC = () => {
               type="number"
               value={year}
               onChange={(e) => setYear(Number(e.target.value))}
-              className="w-full rounded-xl bg-slate-900 border border-slate-800 px-3 py-2 text-white font-black text-xs"
+              className="w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-white font-black text-xs focus:border-emerald-500 focus:outline-none"
             />
           </div>
 
@@ -540,7 +540,7 @@ export const MonthlyDutyRoasterGrid: React.FC = () => {
             <select
               value={department}
               onChange={(e) => setDepartment(e.target.value)}
-              className="w-full rounded-xl bg-slate-900 border border-slate-800 px-3 py-2 text-white font-bold text-xs"
+              className="w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-white font-bold text-xs focus:border-emerald-500 focus:outline-none"
             >
               <option value="CARDIOLOGY & ICU">CARDIOLOGY & ICU</option>
               <option value="EMERGENCY & TRAUMA">EMERGENCY & TRAUMA</option>
@@ -557,7 +557,7 @@ export const MonthlyDutyRoasterGrid: React.FC = () => {
               type="text"
               value={preparedBy}
               onChange={(e) => setPreparedBy(e.target.value)}
-              className="w-full rounded-xl bg-slate-900 border border-slate-800 px-3 py-2 text-white font-bold text-xs"
+              className="w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-white font-bold text-xs focus:border-emerald-500 focus:outline-none"
             />
           </div>
         </div>
@@ -587,17 +587,17 @@ export const MonthlyDutyRoasterGrid: React.FC = () => {
       </div>
 
       {/* Main Grid Matrix Table (Matches Template exactly) */}
-      <div className="rounded-2xl border border-slate-800 bg-slate-950 shadow-2xl overflow-hidden">
+      <div className="rounded-2xl border border-slate-700/80 bg-slate-900 shadow-xl overflow-hidden">
         {/* Table Header Banner */}
-        <div className="p-4 bg-slate-900 border-b border-slate-800 text-center space-y-1">
+        <div className="p-4 bg-slate-800/90 border-b border-slate-700/80 text-center space-y-1">
           <h1 className="text-lg font-black tracking-wider text-white uppercase">
             POPE JOHN PAUL II MEDICAL CENTRE - JAMASI
           </h1>
           <h2 className="text-sm font-extrabold text-emerald-400 uppercase tracking-widest">
             STAFF DUTY ROASTER — {month} {year}
           </h2>
-          <p className="text-[11px] text-slate-400 font-mono">
-            Department: <strong>{department}</strong> | Vertically 30 Staff Assignments
+          <p className="text-[11px] text-slate-300 font-mono">
+            Department: <strong className="text-white">{department}</strong> | Vertically 30 Staff Assignments
           </p>
         </div>
 
@@ -606,33 +606,33 @@ export const MonthlyDutyRoasterGrid: React.FC = () => {
           <table className="w-full text-center text-xs border-collapse font-mono select-none">
             <thead>
               {/* Row 1: DATE Header & Day Numbers 1..30 */}
-              <tr className="bg-slate-900 text-slate-300 border-b border-slate-800 font-bold">
-                <th className="px-3 py-2 text-left w-56 border-r border-slate-800 text-[11px] font-black uppercase tracking-wider text-white">
+              <tr className="bg-slate-800 text-slate-200 border-b border-slate-700 font-bold">
+                <th className="px-3 py-2 text-left w-56 border-r border-slate-700 text-[11px] font-black uppercase tracking-wider text-white bg-slate-800">
                   DATE
                 </th>
-                <th className="px-2 py-2 w-20 border-r border-slate-800 text-[10px] font-bold text-slate-400 uppercase">
+                <th className="px-2 py-2 w-20 border-r border-slate-700 text-[10px] font-bold text-slate-300 uppercase bg-slate-800">
                   RANK
                 </th>
                 {daysArray.map((d) => (
-                  <th key={d} className="px-1 py-1.5 min-w-[28px] border-r border-slate-800 text-[11px] font-bold text-emerald-400">
+                  <th key={d} className="px-1 py-1.5 min-w-[28px] border-r border-slate-700 text-[11px] font-bold text-emerald-400 bg-slate-800">
                     {d}
                   </th>
                 ))}
               </tr>
 
               {/* Row 2: NAMES Header & Day Initials W, Th, F, S... */}
-              <tr className="bg-slate-900/90 text-slate-400 border-b-2 border-slate-700 font-bold text-[10px]">
-                <th className="px-3 py-2 text-left border-r border-slate-800 font-extrabold text-white uppercase tracking-wider">
+              <tr className="bg-slate-800/80 text-slate-300 border-b-2 border-slate-600 font-bold text-[10px]">
+                <th className="px-3 py-2 text-left border-r border-slate-700 font-extrabold text-white uppercase tracking-wider bg-slate-800/80">
                   NAMES
                 </th>
-                <th className="px-2 py-2 border-r border-slate-800 font-bold text-slate-400">
+                <th className="px-2 py-2 border-r border-slate-700 font-bold text-slate-300 bg-slate-800/80">
                   RANK
                 </th>
                 {dayInitials.map((dayInit, idx) => (
                   <th
                     key={idx}
-                    className={`px-1 py-1 min-w-[28px] border-r border-slate-800 ${
-                      dayInit === 'S' ? 'text-amber-400 font-black bg-amber-950/20' : 'text-slate-300'
+                    className={`px-1 py-1 min-w-[28px] border-r border-slate-700 ${
+                      dayInit === 'S' ? 'text-amber-300 font-black bg-amber-950/40' : 'text-slate-300 bg-slate-800/80'
                     }`}
                   >
                     {dayInit}
@@ -642,13 +642,13 @@ export const MonthlyDutyRoasterGrid: React.FC = () => {
             </thead>
 
             {/* 30 Vertical Staff Rows */}
-            <tbody className="divide-y divide-slate-800/80 bg-slate-950 text-slate-200">
+            <tbody className="divide-y divide-slate-750 bg-slate-900 text-slate-200">
               {staffList.map((staff, staffIdx) => (
-                <tr key={staff.id} className="hover:bg-slate-900/80 transition group">
+                <tr key={staff.id} className="hover:bg-slate-800/70 transition group">
                   {/* Staff Name & Phone Cell */}
-                  <td className="px-2.5 py-1.5 text-left border-r border-slate-800 bg-slate-950 group-hover:bg-slate-900">
+                  <td className="px-2.5 py-1.5 text-left border-r border-slate-700 bg-slate-900 group-hover:bg-slate-800/80">
                     <div className="flex items-center gap-1.5">
-                      <span className="text-[10px] font-bold text-slate-500 w-4 shrink-0 text-right">
+                      <span className="text-[10px] font-bold text-slate-400 w-4 shrink-0 text-right">
                         {staffIdx + 1}.
                       </span>
                       <input
@@ -660,34 +660,34 @@ export const MonthlyDutyRoasterGrid: React.FC = () => {
                           handleUpdateStaffDetail(staffIdx, 'name', parts[0] || val);
                           if (parts[1]) handleUpdateStaffDetail(staffIdx, 'phone', parts[1]);
                         }}
-                        className="w-full bg-transparent font-bold text-white text-[11px] focus:bg-slate-900 focus:outline-none focus:ring-1 focus:ring-emerald-500 px-1 py-0.5 rounded uppercase"
+                        className="w-full bg-transparent font-bold text-white text-[11px] focus:bg-slate-800 focus:outline-none focus:ring-1 focus:ring-emerald-500 px-1 py-0.5 rounded uppercase"
                       />
                     </div>
                   </td>
 
                   {/* Staff Rank Cell */}
-                  <td className="px-1.5 py-1.5 border-r border-slate-800 text-[10px] font-bold text-slate-400">
+                  <td className="px-1.5 py-1.5 border-r border-slate-700 text-[10px] font-bold text-slate-300 bg-slate-900/90 group-hover:bg-slate-800/80">
                     <input
                       type="text"
                       value={staff.rank}
                       onChange={(e) => handleUpdateStaffDetail(staffIdx, 'rank', e.target.value.toUpperCase())}
-                      className="w-full bg-transparent font-bold text-slate-300 text-center text-[10px] focus:bg-slate-900 focus:outline-none px-1 py-0.5 rounded uppercase"
+                      className="w-full bg-transparent font-bold text-slate-200 text-center text-[10px] focus:bg-slate-800 focus:outline-none px-1 py-0.5 rounded uppercase"
                     />
                   </td>
 
                   {/* 30 Shift Code Cells for this staff */}
                   {staff.shifts.map((shiftCode, dayIdx) => {
-                    let styleClass = 'text-slate-500 hover:bg-slate-800';
-                    if (shiftCode === 'M') styleClass = 'text-emerald-400 bg-emerald-950/40 font-black border-emerald-500/20';
-                    else if (shiftCode === 'A') styleClass = 'text-amber-400 bg-amber-950/40 font-black border-amber-500/20';
-                    else if (shiftCode === 'N') styleClass = 'text-sky-300 bg-sky-950/40 font-black border-sky-500/20';
-                    else if (shiftCode === 'O') styleClass = 'text-rose-400/80 bg-rose-950/20 font-bold border-rose-500/10';
+                    let styleClass = 'text-slate-400 hover:bg-slate-800/90 bg-slate-900/60';
+                    if (shiftCode === 'M') styleClass = 'text-emerald-300 bg-emerald-950/60 font-black border-emerald-500/30';
+                    else if (shiftCode === 'A') styleClass = 'text-amber-300 bg-amber-950/60 font-black border-amber-500/30';
+                    else if (shiftCode === 'N') styleClass = 'text-sky-300 bg-sky-950/60 font-black border-sky-500/30';
+                    else if (shiftCode === 'O') styleClass = 'text-rose-300/90 bg-rose-950/40 font-bold border-rose-500/20';
 
                     return (
                       <td
                         key={dayIdx}
                         onClick={() => handleCellClick(staffIdx, dayIdx)}
-                        className={`px-1 py-1 border-r border-slate-800 text-[11px] font-bold cursor-pointer transition select-none ${styleClass}`}
+                        className={`px-1 py-1 border-r border-slate-700 text-[11px] font-bold cursor-pointer transition select-none ${styleClass}`}
                         title={`Click to change shift for Day ${dayIdx + 1}`}
                       >
                         {shiftCode}
@@ -699,32 +699,32 @@ export const MonthlyDutyRoasterGrid: React.FC = () => {
             </tbody>
 
             {/* Bottom Summary Rows (Matching template: MORNING, AFTERNOON, NIGHT sums) */}
-            <tfoot className="bg-slate-900 text-white font-extrabold border-t-2 border-slate-700">
+            <tfoot className="bg-slate-800 text-white font-extrabold border-t-2 border-slate-600">
               {/* MORNING COUNT ROW */}
-              <tr className="border-b border-slate-800 text-emerald-400">
-                <td className="px-3 py-2 text-left border-r border-slate-800 text-[11px] font-black uppercase">
+              <tr className="border-b border-slate-700 text-emerald-400">
+                <td className="px-3 py-2 text-left border-r border-slate-700 text-[11px] font-black uppercase bg-slate-800">
                   MORNING
                 </td>
-                <td className="px-2 py-2 border-r border-slate-800 text-[10px] text-slate-400">
+                <td className="px-2 py-2 border-r border-slate-700 text-[10px] text-slate-300 bg-slate-800">
                   TOTAL
                 </td>
                 {daysArray.map((_, dayIdx) => (
-                  <td key={dayIdx} className="px-1 py-1.5 border-r border-slate-800 text-[11px] font-black bg-emerald-950/30">
+                  <td key={dayIdx} className="px-1 py-1.5 border-r border-slate-700 text-[11px] font-black bg-emerald-950/50">
                     {getDailyCount(dayIdx, 'M')}
                   </td>
                 ))}
               </tr>
 
               {/* AFTERNOON COUNT ROW */}
-              <tr className="border-b border-slate-800 text-amber-400">
-                <td className="px-3 py-2 text-left border-r border-slate-800 text-[11px] font-black uppercase">
+              <tr className="border-b border-slate-700 text-amber-400">
+                <td className="px-3 py-2 text-left border-r border-slate-700 text-[11px] font-black uppercase bg-slate-800">
                   AFTERNOON
                 </td>
-                <td className="px-2 py-2 border-r border-slate-800 text-[10px] text-slate-400">
+                <td className="px-2 py-2 border-r border-slate-700 text-[10px] text-slate-300 bg-slate-800">
                   TOTAL
                 </td>
                 {daysArray.map((_, dayIdx) => (
-                  <td key={dayIdx} className="px-1 py-1.5 border-r border-slate-800 text-[11px] font-black bg-amber-950/30">
+                  <td key={dayIdx} className="px-1 py-1.5 border-r border-slate-700 text-[11px] font-black bg-amber-950/50">
                     {getDailyCount(dayIdx, 'A')}
                   </td>
                 ))}
@@ -732,14 +732,14 @@ export const MonthlyDutyRoasterGrid: React.FC = () => {
 
               {/* NIGHT COUNT ROW */}
               <tr className="text-sky-300">
-                <td className="px-3 py-2 text-left border-r border-slate-800 text-[11px] font-black uppercase">
+                <td className="px-3 py-2 text-left border-r border-slate-700 text-[11px] font-black uppercase bg-slate-800">
                   NIGHT
                 </td>
-                <td className="px-2 py-2 border-r border-slate-800 text-[10px] text-slate-400">
+                <td className="px-2 py-2 border-r border-slate-700 text-[10px] text-slate-300 bg-slate-800">
                   TOTAL
                 </td>
                 {daysArray.map((_, dayIdx) => (
-                  <td key={dayIdx} className="px-1 py-1.5 border-r border-slate-800 text-[11px] font-black bg-sky-950/30">
+                  <td key={dayIdx} className="px-1 py-1.5 border-r border-slate-700 text-[11px] font-black bg-sky-950/50">
                     {getDailyCount(dayIdx, 'N')}
                   </td>
                 ))}

@@ -2061,6 +2061,12 @@ Directorate of Human Resources, PJPIIMC`;
           </div>
         </div>
       )}
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* GLOBAL HR ACTION MODALS (ACCESSIBLE FROM ALL TABS)        */}
+      {/* ========================================================= */}
 
       {/* MODAL 1: HR STAFF VOICE OUTREACH & TELECOM CONSOLE */}
       {activeCallStaff && (
@@ -2774,8 +2780,6 @@ Directorate of Human Resources, PJPIIMC`;
               </button>
             </div>
           </div>
-        </div>
-      )}
         </div>
       )}
     </div>

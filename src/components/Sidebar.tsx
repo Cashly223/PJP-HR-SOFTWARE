@@ -79,8 +79,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, onCloseMobile })
   );
 
   // Check if current user has custom granted modules by HR
-  const userPerm = staffPermissions.find(
-    (p) => p.employeeId === currentUser?.id || (currentUser?.email && p.email && p.email.toLowerCase() === currentUser.email.toLowerCase())
+  const userPerm = (staffPermissions || []).find(
+    (p) => p && (p.employeeId === currentUser?.id || (currentUser?.email && p.email && p.email.toLowerCase() === currentUser.email.toLowerCase()))
   );
   const grantedModules = userPerm?.grantedModules || [];
 

@@ -15,8 +15,14 @@ import {
   Award,
   FolderPlus,
   Trash2,
+  PenTool,
+  Upload,
+  FileCheck,
+  Lock,
 } from 'lucide-react';
 import { useHrms } from '../../context/HrmsContext';
+import { Employee } from '../../types/hrms';
+import { HRSignatureVaultModal } from '../leave/HRSignatureVaultModal';
 
 export const DepartmentLeadershipManager: React.FC = () => {
   const {
@@ -27,12 +33,18 @@ export const DepartmentLeadershipManager: React.FC = () => {
     addUnitToDepartment,
     addDepartment,
     setFacilityHead,
+    uploadEmployeeDigitalSignature,
     activeRole,
+    currentUser,
   } = useHrms();
 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedDeptFilter, setSelectedDeptFilter] = useState('All');
   
+  // Vault modal state
+  const [isVaultModalOpen, setIsVaultModalOpen] = useState(false);
+  const [vaultTargetEmp, setVaultTargetEmp] = useState<Employee | null>(null);
+
   // Modal state for Add Department
   const [isAddDeptModalOpen, setIsAddDeptModalOpen] = useState(false);
   const [newDeptForm, setNewDeptForm] = useState<{
@@ -83,6 +95,8 @@ export const DepartmentLeadershipManager: React.FC = () => {
   });
 
   const [selectedEmpId, setSelectedEmpId] = useState('');
+  const [assignSigPreview, setAssignSigPreview] = useState<string>('');
+  const [assignSigMode, setAssignSigMode] = useState<'existing' | 'upload' | 'generate'>('existing');
   const [newUnitModal, setNewUnitModal] = useState({ open: false, departmentName: '', unitName: '', headId: '' });
   const [successToast, setSuccessToast] = useState<string | null>(null);
 
@@ -93,12 +107,46 @@ export const DepartmentLeadershipManager: React.FC = () => {
     setTimeout(() => setSuccessToast(null), 4000);
   };
 
+  // Helper to generate stylized SVG script signature for newly appointed head
+  const generateScriptSignature = (fullName: string, code: string): string => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 450;
+    canvas.height = 140;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return '';
+
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, 450, 140);
+
+    ctx.strokeStyle = '#e2e8f0';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(20, 100);
+    ctx.lineTo(430, 100);
+    ctx.stroke();
+
+    ctx.fillStyle = '#1e3a8a';
+    ctx.font = 'italic bold 30px "Brush Script MT", "Segoe Script", "Great Vibes", cursive, sans-serif';
+    ctx.fillText(fullName, 30, 75);
+
+    ctx.fillStyle = '#059669';
+    ctx.font = 'bold 9px "Segoe UI", sans-serif';
+    ctx.fillText(`✓ CHST HR VERIFIED DIGITAL SIGNATURE • ${new Date().toLocaleDateString()}`, 30, 118);
+
+    ctx.fillStyle = '#64748b';
+    ctx.font = '8px "Segoe UI", sans-serif';
+    ctx.fillText(`AUTH: HR DIRECTORATE • ID: ${code || 'PJ-AUTH'}`, 30, 130);
+
+    return canvas.toDataURL('image/png');
+  };
+
   const handleOpenAssignModal = (
     type: 'dept_head' | 'unit_head' | 'facility_head',
     departmentName: string,
     unitName?: string,
     currentHeadId?: string
   ) => {
+    const initialId = currentHeadId || employees[0]?.id || '';
     setAssignModal({
       open: true,
       type,
@@ -106,25 +154,76 @@ export const DepartmentLeadershipManager: React.FC = () => {
       unitName,
       currentHeadId,
     });
-    setSelectedEmpId(currentHeadId || employees[0]?.id || '');
+    setSelectedEmpId(initialId);
+
+    const emp = employees.find((e) => e.id === initialId);
+    if (emp?.digitalSignatureUrl) {
+      setAssignSigPreview(emp.digitalSignatureUrl);
+      setAssignSigMode('existing');
+    } else if (emp) {
+      const generated = generateScriptSignature(`${emp.firstName} ${emp.lastName}`, emp.empCode || 'PJ-AUTH');
+      setAssignSigPreview(generated);
+      setAssignSigMode('generate');
+    } else {
+      setAssignSigPreview('');
+      setAssignSigMode('upload');
+    }
   };
 
-  const handleConfirmAssignment = (e: React.FormEvent) => {
+  const handleSelectEmpInAssignModal = (empId: string) => {
+    setSelectedEmpId(empId);
+    const emp = employees.find((e) => e.id === empId);
+    if (emp?.digitalSignatureUrl) {
+      setAssignSigPreview(emp.digitalSignatureUrl);
+      setAssignSigMode('existing');
+    } else if (emp) {
+      const generated = generateScriptSignature(`${emp.firstName} ${emp.lastName}`, emp.empCode || 'PJ-AUTH');
+      setAssignSigPreview(generated);
+      setAssignSigMode('generate');
+    } else {
+      setAssignSigPreview('');
+    }
+  };
+
+  const handleFileUploadInAssignModal = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      if (event.target?.result) {
+        setAssignSigPreview(event.target.result as string);
+        setAssignSigMode('upload');
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleConfirmAssignment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedEmpId) return;
 
     const emp = employees.find((e) => e.id === selectedEmpId);
     const empName = emp ? `${emp.firstName} ${emp.lastName}` : 'Selected Staff';
 
+    // If signature provided, save to employee profile so it's active for leave signoffs
+    if (assignSigPreview && (!emp?.digitalSignatureUrl || assignSigMode !== 'existing')) {
+      await uploadEmployeeDigitalSignature(
+        selectedEmpId,
+        assignSigPreview,
+        `${currentUser?.name || 'Miss Vero'} (HR Directorate)`
+      );
+    }
+
     if (assignModal.type === 'dept_head') {
       assignDepartmentHead(assignModal.departmentName, selectedEmpId);
-      showToast(`Assigned ${empName} as Department Head (HOD) for ${assignModal.departmentName}`);
+      showToast(`Assigned ${empName} as Department Head (HOD) with verified digital signature`);
     } else if (assignModal.type === 'unit_head' && assignModal.unitName) {
       assignUnitHead(assignModal.departmentName, assignModal.unitName, selectedEmpId);
-      showToast(`Assigned ${empName} as Unit Head (HOU) for ${assignModal.unitName}`);
+      showToast(`Assigned ${empName} as Unit Head (HOU) with verified digital signature`);
     } else if (assignModal.type === 'facility_head') {
       setFacilityHead(selectedEmpId);
-      showToast(`Assigned ${empName} as Head of Facility (CMO / CEO)`);
+      showToast(`Assigned ${empName} as Head of Facility (CMO / CEO) with verified digital signature`);
     }
 
     setAssignModal({ open: false, type: 'dept_head', departmentName: '' });
@@ -171,23 +270,25 @@ export const DepartmentLeadershipManager: React.FC = () => {
   };
 
   // Facility Head reference (shared across hospital)
-  const currentFacilityHead = departmentLeadership[0]?.facilityHeadName
+  const currentFacilityHead = (departmentLeadership || [])[0]?.facilityHeadName
     ? {
-        id: departmentLeadership[0].facilityHeadId,
-        name: departmentLeadership[0].facilityHeadName,
-        email: departmentLeadership[0].facilityHeadEmail,
+        id: (departmentLeadership || [])[0].facilityHeadId,
+        name: (departmentLeadership || [])[0].facilityHeadName,
+        email: (departmentLeadership || [])[0].facilityHeadEmail,
       }
     : null;
 
-  const filteredLeaderships = departmentLeadership.filter((dl) => {
+  const filteredLeaderships = (departmentLeadership || []).filter((dl) => {
+    if (!dl) return false;
     const matchesDept = selectedDeptFilter === 'All' || dl.departmentName === selectedDeptFilter;
     const matchesSearch =
-      dl.departmentName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (dl.departmentName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
       (dl.departmentHeadName && dl.departmentHeadName.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      dl.units.some(
+      (dl.units || []).some(
         (u) =>
-          u.unitName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          (u.unitHeadName && u.unitHeadName.toLowerCase().includes(searchTerm.toLowerCase()))
+          u &&
+          ((u.unitName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+          (u.unitHeadName && u.unitHeadName.toLowerCase().includes(searchTerm.toLowerCase())))
       );
     return matchesDept && matchesSearch;
   });
@@ -319,6 +420,16 @@ export const DepartmentLeadershipManager: React.FC = () => {
           </select>
 
           <button
+            onClick={() => {
+              setVaultTargetEmp(null);
+              setIsVaultModalOpen(true);
+            }}
+            className="flex items-center gap-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-emerald-500/30 px-3.5 py-2 text-xs font-bold shadow transition active:scale-95 whitespace-nowrap"
+          >
+            <PenTool className="h-4 w-4 text-emerald-400" /> Approvers Signature Vault
+          </button>
+
+          <button
             onClick={() => setIsAddDeptModalOpen(true)}
             className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 px-4 py-2 text-xs font-bold text-white shadow transition active:scale-95 border border-emerald-400/30 whitespace-nowrap"
           >
@@ -335,6 +446,7 @@ export const DepartmentLeadershipManager: React.FC = () => {
       <div className="grid grid-cols-1 gap-6">
         {filteredLeaderships.map((dept) => {
           const deptHeadEmp = employees.find((e) => e.id === dept.departmentHeadId);
+          const hasHODSignature = !!deptHeadEmp?.digitalSignatureUrl;
 
           return (
             <div
@@ -377,8 +489,21 @@ export const DepartmentLeadershipManager: React.FC = () => {
                   </div>
 
                   <div>
-                    <div className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider flex items-center gap-1">
-                      <Award className="h-3 w-3" /> Head of Department (HOD - Tier 2)
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider flex items-center gap-1">
+                        <Award className="h-3 w-3" /> Head of Department (HOD - Tier 2)
+                      </span>
+                      {deptHeadEmp && (
+                        hasHODSignature ? (
+                          <span className="px-1.5 py-0.2 rounded text-[8px] font-black uppercase bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 flex items-center gap-0.5">
+                            <FileCheck className="h-2.5 w-2.5" /> Sig Verified
+                          </span>
+                        ) : (
+                          <span className="px-1.5 py-0.2 rounded text-[8px] font-black uppercase bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                            Sig Missing
+                          </span>
+                        )
+                      )}
                     </div>
                     <div className="text-xs font-bold text-slate-900 dark:text-slate-100">
                       {dept.departmentHeadName || 'Unassigned (Select HOD)'}
@@ -389,12 +514,26 @@ export const DepartmentLeadershipManager: React.FC = () => {
                   </div>
 
                   {isHR && (
-                    <button
-                      onClick={() => handleOpenAssignModal('dept_head', dept.departmentName, undefined, dept.departmentHeadId)}
-                      className="ml-2 rounded-lg bg-indigo-600 px-3 py-1.5 text-[11px] font-bold text-white shadow hover:bg-indigo-500 transition"
-                    >
-                      {dept.departmentHeadId ? 'Change HOD' : 'Assign HOD'}
-                    </button>
+                    <div className="flex items-center gap-1.5 ml-2">
+                      {deptHeadEmp && !hasHODSignature && (
+                        <button
+                          onClick={() => {
+                            setVaultTargetEmp(deptHeadEmp);
+                            setIsVaultModalOpen(true);
+                          }}
+                          className="rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30 p-1.5 text-[11px] font-bold hover:bg-amber-500/20"
+                          title="Upload official signature for HOD"
+                        >
+                          <PenTool className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleOpenAssignModal('dept_head', dept.departmentName, undefined, dept.departmentHeadId)}
+                        className="rounded-lg bg-indigo-600 px-3 py-1.5 text-[11px] font-bold text-white shadow hover:bg-indigo-500 transition"
+                      >
+                        {dept.departmentHeadId ? 'Change HOD' : 'Assign HOD'}
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>
@@ -422,6 +561,7 @@ export const DepartmentLeadershipManager: React.FC = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {dept.units.map((unit) => {
                     const unitHeadEmp = employees.find((e) => e.id === unit.unitHeadId);
+                    const hasHOUSignature = !!unitHeadEmp?.digitalSignatureUrl;
 
                     return (
                       <div
@@ -438,8 +578,21 @@ export const DepartmentLeadershipManager: React.FC = () => {
                             className="h-10 w-10 rounded-full object-cover ring-2 ring-cyan-500"
                           />
                           <div>
-                            <div className="text-xs font-extrabold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
-                              {unit.unitName}
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-extrabold text-slate-900 dark:text-slate-100">
+                                {unit.unitName}
+                              </span>
+                              {unitHeadEmp && (
+                                hasHOUSignature ? (
+                                  <span className="px-1.5 py-0.2 rounded text-[8px] font-black uppercase bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+                                    ✓ Sig On File
+                                  </span>
+                                ) : (
+                                  <span className="px-1.5 py-0.2 rounded text-[8px] font-black uppercase bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                                    Sig Missing
+                                  </span>
+                                )
+                              )}
                             </div>
                             <div className="text-[11px] font-semibold text-cyan-600 dark:text-cyan-400 flex items-center gap-1 mt-0.5">
                               <ShieldCheck className="h-3 w-3" />
@@ -452,14 +605,28 @@ export const DepartmentLeadershipManager: React.FC = () => {
                         </div>
 
                         {isHR && (
-                          <button
-                            onClick={() =>
-                              handleOpenAssignModal('unit_head', dept.departmentName, unit.unitName, unit.unitHeadId)
-                            }
-                            className="rounded-lg bg-cyan-600/10 text-cyan-600 dark:text-cyan-400 border border-cyan-500/20 px-3 py-1.5 text-[11px] font-bold hover:bg-cyan-600 hover:text-white transition"
-                          >
-                            {unit.unitHeadId ? 'Change HOU' : 'Assign HOU'}
-                          </button>
+                          <div className="flex items-center gap-1.5">
+                            {unitHeadEmp && !hasHOUSignature && (
+                              <button
+                                onClick={() => {
+                                  setVaultTargetEmp(unitHeadEmp);
+                                  setIsVaultModalOpen(true);
+                                }}
+                                className="rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30 p-1.5 text-[11px] font-bold hover:bg-amber-500/20"
+                                title="Upload official signature for Unit Head"
+                              >
+                                <PenTool className="h-3.5 w-3.5" />
+                              </button>
+                            )}
+                            <button
+                              onClick={() =>
+                                handleOpenAssignModal('unit_head', dept.departmentName, unit.unitName, unit.unitHeadId)
+                              }
+                              className="rounded-lg bg-cyan-600/10 text-cyan-600 dark:text-cyan-400 border border-cyan-500/20 px-3 py-1.5 text-[11px] font-bold hover:bg-cyan-600 hover:text-white transition"
+                            >
+                              {unit.unitHeadId ? 'Change HOU' : 'Assign HOU'}
+                            </button>
+                          </div>
                         )}
                       </div>
                     );
@@ -481,52 +648,131 @@ export const DepartmentLeadershipManager: React.FC = () => {
         })}
       </div>
 
-      {/* Modal 1: Assign Head (HOD, HOU, Facility Head) */}
-      {assignModal.open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100">
-            <div className="flex items-center justify-between mb-4 border-b border-slate-100 dark:border-slate-800 pb-3">
-              <h3 className="font-extrabold text-base flex items-center gap-2">
-                <Crown className="h-5 w-5 text-amber-500" />
-                HR Assignment: {assignModal.type === 'dept_head' ? 'Department Head (HOD)' : assignModal.type === 'unit_head' ? 'Unit Head (HOU)' : 'Head of Facility'}
-              </h3>
-              <button
-                onClick={() => setAssignModal({ open: false, type: 'dept_head', departmentName: '' })}
-                className="text-slate-400 hover:text-slate-600 text-sm font-bold"
-              >
-                ✕
-              </button>
-            </div>
+      {/* Modal 1: Assign Head (HOD, HOU, Facility Head) with Integrated Digital Signature Upload */}
+      {assignModal.open && (() => {
+        const selectedAssignEmp = employees.find((e) => e.id === selectedEmpId) || employees[0];
 
-            <div className="rounded-xl bg-slate-50 dark:bg-slate-800/60 p-3 mb-4 text-xs space-y-1">
-              <div>
-                <span className="text-slate-400 font-semibold">Department:</span>{' '}
-                <strong className="text-slate-800 dark:text-slate-200">{assignModal.departmentName}</strong>
-              </div>
-              {assignModal.unitName && (
-                <div>
-                  <span className="text-slate-400 font-semibold">Unit:</span>{' '}
-                  <strong className="text-cyan-600 dark:text-cyan-400">{assignModal.unitName}</strong>
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm overflow-y-auto">
+            <div className="w-full max-w-xl rounded-3xl bg-white p-6 sm:p-7 shadow-2xl dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 max-h-[92vh] overflow-y-auto">
+              <div className="flex items-center justify-between mb-4 border-b border-slate-100 dark:border-slate-800 pb-3">
+                <div className="flex items-center gap-2">
+                  <Crown className="h-5 w-5 text-amber-500" />
+                  <h3 className="font-black text-base">
+                    HR Leadership Appointment & Signature Authorization
+                  </h3>
                 </div>
-              )}
-            </div>
-
-            <form onSubmit={handleConfirmAssignment} className="space-y-4 text-xs">
-              <div>
-                <label className="block font-bold mb-1.5 text-slate-700 dark:text-slate-300">
-                  Select Staff Member for Leadership Appointment
-                </label>
-                <select
-                  value={selectedEmpId}
-                  onChange={(e) => setSelectedEmpId(e.target.value)}
-                  className="w-full rounded-xl border border-slate-300 dark:border-slate-700 p-2.5 dark:bg-slate-800 font-medium"
+                <button
+                  onClick={() => setAssignModal({ open: false, type: 'dept_head', departmentName: '' })}
+                  className="text-slate-400 hover:text-slate-600 text-sm font-bold p-1 rounded-lg"
                 >
-                  {employees.map((emp) => (
-                    <option key={emp.id} value={emp.id}>
-                      {emp.firstName} {emp.lastName} — {emp.jobTitle} ({emp.department})
-                    </option>
-                  ))}
-                </select>
+                  ✕
+                </button>
+              </div>
+
+              <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/60 p-3 mb-4 text-xs space-y-1 border border-slate-200 dark:border-slate-700/60">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="text-slate-400 font-semibold">Leadership Role:</span>{' '}
+                    <strong className="text-emerald-600 dark:text-emerald-400">
+                      {assignModal.type === 'dept_head'
+                        ? `Head of Department (Tier 2: ${assignModal.departmentName})`
+                        : assignModal.type === 'unit_head'
+                        ? `Head of Unit (Tier 1: ${assignModal.unitName} - ${assignModal.departmentName})`
+                        : 'Head of Facility (Tier 4: CMO / CEO)'}
+                    </strong>
+                  </div>
+                </div>
+              </div>
+
+              <form onSubmit={handleConfirmAssignment} className="space-y-4 text-xs">
+                <div>
+                  <label className="block font-bold mb-1.5 text-slate-700 dark:text-slate-300">
+                    1. Select Staff Member for Leadership Appointment
+                  </label>
+                  <select
+                    value={selectedEmpId}
+                    onChange={(e) => handleSelectEmpInAssignModal(e.target.value)}
+                    className="w-full rounded-xl border border-slate-300 dark:border-slate-700 p-2.5 dark:bg-slate-800 font-medium"
+                  >
+                    {employees.map((emp) => (
+                      <option key={emp.id} value={emp.id}>
+                        {emp.firstName} {emp.lastName} — {emp.jobTitle} ({emp.department})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+              {/* Digital Signature Management Section */}
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="block font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                    <PenTool className="h-4 w-4 text-emerald-600" />
+                    2. Official Digital Signature (Uploaded by HR)
+                  </label>
+                  <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+                    {selectedAssignEmp?.digitalSignatureUrl ? '✓ Active on Record' : '⚠️ Missing - Attach Below'}
+                  </span>
+                </div>
+
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Hospital policy requires HR to upload and verify the official digital signature of all appointed Four-Tier Approvers (HOU, HOD, HR, CMO).
+                </p>
+
+                {/* Signature Preview & Actions */}
+                <div className="space-y-2">
+                  {assignSigPreview ? (
+                    <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 text-center space-y-1.5">
+                      <div className="text-[10px] font-bold text-slate-400">SIGNATURE PREVIEW / READY FOR SIGN-OFF</div>
+                      <div className="flex items-center justify-center p-2 bg-slate-50 dark:bg-slate-950 rounded-lg min-h-[60px]">
+                        {assignSigPreview.startsWith('data:image') || assignSigPreview.startsWith('http') ? (
+                          <img
+                            src={assignSigPreview}
+                            alt="Signature Preview"
+                            className="max-h-16 max-w-full object-contain"
+                          />
+                        ) : (
+                          <div className="font-serif italic font-extrabold text-base text-indigo-700 dark:text-indigo-300">
+                            {assignSigPreview.replace('style:', '')}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-3 rounded-xl border border-dashed border-amber-300 bg-amber-50/50 text-amber-800 text-[11px] text-center">
+                      No digital signature attached yet. Choose an option below.
+                    </div>
+                  )}
+
+                  <div className="flex flex-wrap items-center gap-2 pt-1">
+                    <label className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] cursor-pointer shadow transition">
+                      <Upload className="h-3.5 w-3.5" /> Upload File (PNG/JPG)
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleFileUploadInAssignModal}
+                        className="hidden"
+                      />
+                    </label>
+
+                    {selectedAssignEmp && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const generated = generateScriptSignature(
+                            `${selectedAssignEmp.firstName} ${selectedAssignEmp.lastName}`,
+                            selectedAssignEmp.empCode || 'PJ-AUTH'
+                          );
+                          setAssignSigPreview(generated);
+                          setAssignSigMode('generate');
+                        }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 border border-indigo-200 dark:border-indigo-800 font-bold text-[11px] transition"
+                      >
+                        <Sparkles className="h-3.5 w-3.5 text-indigo-500" /> Auto-Generate Stylized Script
+                      </button>
+                    )}
+                  </div>
+                </div>
               </div>
 
               <div className="rounded-xl bg-emerald-50 dark:bg-emerald-950/40 p-3 border border-emerald-200 dark:border-emerald-800 text-[11px] text-emerald-800 dark:text-emerald-300">
@@ -545,13 +791,24 @@ export const DepartmentLeadershipManager: React.FC = () => {
                   type="submit"
                   className="rounded-xl bg-emerald-600 px-5 py-2 font-bold text-white shadow hover:bg-emerald-500"
                 >
-                  Confirm Appointment
+                  Confirm Appointment & Signatures
                 </button>
               </div>
             </form>
           </div>
         </div>
-      )}
+        );
+      })()}
+
+      {/* Vault Modal */}
+      <HRSignatureVaultModal
+        isOpen={isVaultModalOpen}
+        onClose={() => {
+          setIsVaultModalOpen(false);
+          setVaultTargetEmp(null);
+        }}
+        targetEmployee={vaultTargetEmp}
+      />
 
       {/* Modal 2: Create New Unit */}
       {/* Modal for Adding New Department */}

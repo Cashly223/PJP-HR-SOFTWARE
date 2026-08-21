@@ -1,6 +1,6 @@
 {
   "name": "AuraHR - Healthcare HRMS",
   "description": "Enterprise Multi-Hospital HRMS with AI Shift Roster, Credential Management, Payroll, Recruitment, LMS & Employee Portal",
-  "requestFramePermissions": [],
+  "requestFramePermissions": ["camera", "geolocation"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

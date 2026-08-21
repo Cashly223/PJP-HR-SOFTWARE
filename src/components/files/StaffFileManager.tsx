@@ -75,7 +75,8 @@ export const StaffFileManager: React.FC = () => {
   const hasUploadPermission = isHR || targetEmp.filePermissionGranted !== false;
 
   // Filtered files list
-  const userFiles = staffFiles.filter((f) => {
+  const userFiles = (staffFiles || []).filter((f) => {
+    if (!f) return false;
     const matchesUser = isHR
       ? selectedEmpId === 'ALL_STAFF' || f.ownerUid === selectedEmpId || f.ownerEmail === targetEmp.email
       : (f.ownerEmail && currentUser?.email && f.ownerEmail.toLowerCase() === currentUser.email.toLowerCase()) || f.ownerUid === currentUser?.id;

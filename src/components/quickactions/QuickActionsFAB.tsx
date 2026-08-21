@@ -31,8 +31,10 @@ import {
   FileText,
   AlertCircle,
   HelpCircle,
+  Camera,
 } from 'lucide-react';
 import { useHrms } from '../../context/HrmsContext';
+import { MobileGeofenceFacialClockIn } from '../attendance/MobileGeofenceFacialClockIn';
 import {
   Employee,
   LeaveRequest,
@@ -40,11 +42,10 @@ import {
   UserRole,
   AttendanceRecord,
 } from '../../types/hrms';
-import { calculateLeaveDays } from '../../lib/leaveUtils';
+import { calculateLeaveDays, calculateResumptionDate } from '../../lib/leaveUtils';
 
 type QuickModalType =
   | null
-  | 'add_employee'
   | 'request_leave'
   | 'raise_grievance'
   | 'clock_in'
@@ -55,7 +56,6 @@ export const QuickActionsFAB: React.FC = () => {
     employees,
     currentUser,
     activeRole,
-    addEmployee,
     addLeaveRequest,
     addGrievance,
     addClockIn,
@@ -104,93 +104,7 @@ export const QuickActionsFAB: React.FC = () => {
   };
 
   /* -------------------------------------------------------------
-   * FORM STATE 1: ADD NEW EMPLOYEE
-   * ------------------------------------------------------------- */
-  const [empFirstName, setEmpFirstName] = useState('');
-  const [empLastName, setEmpLastName] = useState('');
-  const [empEmail, setEmpEmail] = useState('');
-  const [empPhone, setEmpPhone] = useState('+233 24 555 0199');
-  const [empRole, setEmpRole] = useState<UserRole>('nurse');
-  const [empDepartment, setEmpDepartment] = useState('General Nursing & Wards');
-  const [empUnit, setEmpUnit] = useState('Ward 2A (Female Medical)');
-  const [empJobTitle, setEmpJobTitle] = useState('Senior Staff Nurse');
-  const [empType, setEmpType] = useState<Employee['employmentType']>('Full-Time');
-  const [empSalary, setEmpSalary] = useState<number>(6800);
-  const [empJoinDate, setEmpJoinDate] = useState<string>(
-    () => new Date().toISOString().split('T')[0]
-  );
-  const [empProvisionPortal, setEmpProvisionPortal] = useState(true);
-  const [isSubmittingEmp, setIsSubmittingEmp] = useState(false);
-
-  const handleAddEmployeeSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!empFirstName.trim() || !empLastName.trim() || !empEmail.trim()) {
-      triggerToast('Missing Details', 'First name, last name, and hospital email are required.', 'error');
-      return;
-    }
-
-    setIsSubmittingEmp(true);
-    try {
-      const generatedEmpCode = `PJ-STF-${Math.floor(1000 + Math.random() * 9000)}`;
-      const newEmp: Partial<Employee> = {
-        empCode: generatedEmpCode,
-        firstName: empFirstName.trim(),
-        lastName: empLastName.trim(),
-        email: empEmail.trim(),
-        phone: empPhone.trim(),
-        role: empRole,
-        department: empDepartment,
-        unit: empUnit,
-        jobTitle: empJobTitle,
-        employmentType: empType,
-        salary: Number(empSalary) || 6800,
-        joinDate: empJoinDate,
-        firstAppointmentDate: empJoinDate,
-        lastPromotionDate: empJoinDate,
-        grade: empJobTitle,
-        status: 'Active',
-        leaveEntitlement: 30,
-        deferredLeaveDays: 0,
-        photo:
-          empRole === 'doctor'
-            ? 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=150&auto=format&fit=crop&q=80'
-            : 'https://images.unsplash.com/photo-1594824813511-39655f46a782?w=150&auto=format&fit=crop&q=80',
-        portalAccess: empProvisionPortal
-          ? {
-              username: empEmail.trim(),
-              usernameType: 'email',
-              tempPassword: generatedEmpCode,
-              passwordType: 'empCode',
-              accountCreated: true,
-              accountCreatedAt: new Date().toISOString(),
-              inviteStatus: 'Invitation Sent',
-              mustChangePassword: true,
-            }
-          : undefined,
-      };
-
-      const created = addEmployee(newEmp);
-
-      triggerToast(
-        'Staff Member Registered!',
-        `Created record for ${created.firstName} ${created.lastName} (ID: ${created.empCode}). Added to ${created.department}.`,
-        'success'
-      );
-
-      // Reset Form & Close
-      setEmpFirstName('');
-      setEmpLastName('');
-      setEmpEmail('');
-      setActiveModal(null);
-    } catch (err: any) {
-      triggerToast('Error Registering Staff', err.message || 'Failed to create employee.', 'error');
-    } finally {
-      setIsSubmittingEmp(false);
-    }
-  };
-
-  /* -------------------------------------------------------------
-   * FORM STATE 2: REQUEST LEAVE
+   * FORM STATE 1: REQUEST LEAVE
    * ------------------------------------------------------------- */
   const defaultApplicantEmp = useMemo(() => {
     if (currentUser?.id) {
@@ -256,6 +170,7 @@ export const QuickActionsFAB: React.FC = () => {
         leaveType,
         startDate: leaveStartDate,
         endDate: leaveEndDate,
+        dateOfResumption: calculateResumptionDate(leaveEndDate),
         totalDays: computedLeaveDays || 1,
         reason: `${leaveReason} (Handover to: ${leaveRelievingOfficer})`,
         phoneOnLeave: leaveEmergencyPhone || selectedLeaveEmp.phone || '+233 20 000 0000',
@@ -333,8 +248,9 @@ export const QuickActionsFAB: React.FC = () => {
   };
 
   /* -------------------------------------------------------------
-   * FORM STATE 4: QUICK BIOMETRIC CLOCK-IN
+   * FORM STATE 4: QUICK BIOMETRIC CLOCK-IN & OPTION B GEOFENCE FACE
    * ------------------------------------------------------------- */
+  const [clockModalTab, setClockModalTab] = useState<'geofence_face' | 'quick_sensor'>('geofence_face');
   const [clockMethod, setClockMethod] = useState<AttendanceRecord['method']>('Biometric_Fingerprint');
   const [isClocking, setIsClocking] = useState(false);
   const [clockSuccess, setClockSuccess] = useState(false);
@@ -344,14 +260,16 @@ export const QuickActionsFAB: React.FC = () => {
     const emp = defaultApplicantEmp || employees[0];
     if (!emp) return;
 
+    const deptTerminal = `${emp.department || 'Intensive Care Unit (ICU)'} Biometric Terminal`;
+
     setIsClocking(true);
     setTimeout(() => {
-      addClockIn(emp.id, clockMethod);
+      addClockIn(emp.id, clockMethod, deptTerminal);
       setIsClocking(false);
       setClockSuccess(true);
       triggerToast(
         'Attendance Clock-In Logged!',
-        `Recorded ${emp.firstName} ${emp.lastName} (${clockMethod.replace('_', ' ')}) at ${new Date().toLocaleTimeString()} • Status: On-Time.`,
+        `Recorded ${emp.firstName} ${emp.lastName} (${clockMethod.replace('_', ' ')}) at ${deptTerminal} • Status: On-Time.`,
         'success'
       );
       setTimeout(() => {
@@ -451,32 +369,7 @@ export const QuickActionsFAB: React.FC = () => {
               transition={{ duration: 0.18, ease: 'easeOut' }}
               className="pointer-events-auto mb-3 flex flex-col items-end gap-2.5"
             >
-              {/* Action 1: Add New Employee */}
-              <motion.div
-                whileHover={{ x: -4, transition: { duration: 0.12 } }}
-                className="flex items-center gap-2 group cursor-pointer"
-                onClick={() => openActionModal('add_employee')}
-              >
-                <span className="rounded-xl bg-slate-900/95 px-3 py-1.5 text-xs font-bold text-slate-100 shadow-xl border border-slate-700/80 backdrop-blur-md transition group-hover:bg-slate-800 group-hover:border-indigo-500/50 group-hover:text-white">
-                  Add New Employee
-                </span>
-                <motion.button
-                  type="button"
-                  id="fab-add-employee-btn"
-                  whileHover={{ scale: 1.12 }}
-                  whileTap={{ scale: 0.92 }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    openActionModal('add_employee');
-                  }}
-                  className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-tr from-indigo-600 to-blue-500 text-white shadow-xl shadow-indigo-600/30 transition border border-indigo-400/40"
-                  title="Register New Staff Member"
-                >
-                  <UserPlus className="h-5 w-5" />
-                </motion.button>
-              </motion.div>
-
-              {/* Action 2: Request Leave */}
+              {/* Action 1: Request Leave */}
               <motion.div
                 whileHover={{ x: -4, transition: { duration: 0.12 } }}
                 className="flex items-center gap-2 group cursor-pointer"
@@ -616,248 +509,7 @@ export const QuickActionsFAB: React.FC = () => {
       </div>
 
       {/* =========================================================
-          MODAL 1: ADD NEW EMPLOYEE
-          ========================================================= */}
-      {activeModal === 'add_employee' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 backdrop-blur-md p-4 animate-in fade-in duration-200">
-          <div className="w-full max-w-2xl rounded-3xl bg-slate-900 border border-indigo-500/30 p-6 shadow-2xl text-slate-100 max-h-[92vh] overflow-y-auto space-y-5">
-            {/* Header */}
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3.5">
-              <div className="flex items-center gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-tr from-indigo-600 to-blue-500 text-white shadow-lg">
-                  <UserPlus className="h-6 w-6" />
-                </div>
-                <div>
-                  <h3 className="text-base font-black text-white flex items-center gap-2">
-                    Quick Action: Register New Employee
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/40">
-                      Fast HR Entry
-                    </span>
-                  </h3>
-                  <p className="text-xs text-slate-400">
-                    Instantly create an employee record and provision staff portal credentials.
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setActiveModal(null)}
-                className="rounded-xl p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white transition"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            {/* Form */}
-            <form onSubmit={handleAddEmployeeSubmit} className="space-y-4">
-              {/* Names */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">
-                    First Name *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. Samuel"
-                    value={empFirstName}
-                    onChange={(e) => setEmpFirstName(e.target.value)}
-                    className="w-full rounded-xl bg-slate-950 border border-slate-800 px-3.5 py-2.5 text-xs text-white font-medium focus:border-indigo-500 focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">
-                    Last Name *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. Atta"
-                    value={empLastName}
-                    onChange={(e) => setEmpLastName(e.target.value)}
-                    className="w-full rounded-xl bg-slate-950 border border-slate-800 px-3.5 py-2.5 text-xs text-white font-medium focus:border-indigo-500 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              {/* Contact Info */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">
-                    Hospital Email Address *
-                  </label>
-                  <div className="relative">
-                    <Mail className="absolute left-3 top-2.5 h-4 w-4 text-slate-500" />
-                    <input
-                      type="email"
-                      required
-                      placeholder="s.atta@pjpiimc.health"
-                      value={empEmail}
-                      onChange={(e) => setEmpEmail(e.target.value)}
-                      className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white font-medium focus:border-indigo-500 focus:outline-none"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">
-                    Mobile Phone Number
-                  </label>
-                  <div className="relative">
-                    <Phone className="absolute left-3 top-2.5 h-4 w-4 text-slate-500" />
-                    <input
-                      type="text"
-                      placeholder="+233 24 000 0000"
-                      value={empPhone}
-                      onChange={(e) => setEmpPhone(e.target.value)}
-                      className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white font-medium focus:border-indigo-500 focus:outline-none"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Department, Unit & Role */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">
-                    Department
-                  </label>
-                  <select
-                    value={empDepartment}
-                    onChange={(e) => setEmpDepartment(e.target.value)}
-                    className="w-full rounded-xl bg-slate-950 border border-slate-800 px-3 py-2.5 text-xs text-white font-bold focus:border-indigo-500 focus:outline-none"
-                  >
-                    <option value="General Nursing & Wards">General Nursing & Wards</option>
-                    <option value="Intensive Care Unit (ICU)">Intensive Care Unit (ICU)</option>
-                    <option value="Cardiology & Chest Clinic">Cardiology & Chest Clinic</option>
-                    <option value="Emergency & Trauma Services">Emergency & Trauma</option>
-                    <option value="Obstetrics & Gynaecology (Maternity)">Obstetrics & Gynaecology</option>
-                    <option value="Pharmacy & Pharmacology">Pharmacy & Pharmacology</option>
-                    <option value="Pathology & Laboratory Medicine">Pathology & Laboratory</option>
-                    <option value="Surgery & Operating Theatres">Surgery & Theatres</option>
-                    <option value="Pediatrics & Child Health">Pediatrics & Child Health</option>
-                    <option value="Administration & Human Resources">Administration & HR</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">
-                    Unit / Ward
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. ICU Ward 2B"
-                    value={empUnit}
-                    onChange={(e) => setEmpUnit(e.target.value)}
-                    className="w-full rounded-xl bg-slate-950 border border-slate-800 px-3 py-2.5 text-xs text-white font-medium focus:border-indigo-500 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">
-                    System User Role
-                  </label>
-                  <select
-                    value={empRole}
-                    onChange={(e) => setEmpRole(e.target.value as any)}
-                    className="w-full rounded-xl bg-slate-950 border border-slate-800 px-3 py-2.5 text-xs text-white font-bold focus:border-indigo-500 focus:outline-none"
-                  >
-                    <option value="nurse">Nurse</option>
-                    <option value="doctor">Medical Doctor</option>
-                    <option value="dept_head">Department Head</option>
-                    <option value="unit_head">Unit Head</option>
-                    <option value="hr_manager">HR Manager</option>
-                    <option value="facility_head">Head of Facility</option>
-                    <option value="auditor">Internal Auditor</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Job Title / Grade, Employment Type, Salary & Joining Date */}
-              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-                <div className="sm:col-span-2">
-                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">
-                    Job Title / Grade
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Senior Nursing Officer"
-                    value={empJobTitle}
-                    onChange={(e) => setEmpJobTitle(e.target.value)}
-                    className="w-full rounded-xl bg-slate-950 border border-slate-800 px-3 py-2.5 text-xs text-white font-medium focus:border-indigo-500 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">
-                    Join / Appt Date
-                  </label>
-                  <input
-                    type="date"
-                    value={empJoinDate}
-                    onChange={(e) => setEmpJoinDate(e.target.value)}
-                    className="w-full rounded-xl bg-slate-950 border border-slate-800 px-3 py-2.5 text-xs text-white font-medium focus:border-indigo-500 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">
-                    Monthly Salary ({currency})
-                  </label>
-                  <input
-                    type="number"
-                    value={empSalary}
-                    onChange={(e) => setEmpSalary(Number(e.target.value))}
-                    className="w-full rounded-xl bg-slate-950 border border-slate-800 px-3 py-2.5 text-xs text-white font-mono font-bold focus:border-indigo-500 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              {/* Provision Portal Toggle */}
-              <div className="p-3.5 rounded-2xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                  <Shield className="h-5 w-5 text-indigo-400 shrink-0" />
-                  <div>
-                    <span className="text-xs font-bold text-indigo-200 block">
-                      Auto-Provision Staff Portal Account
-                    </span>
-                    <span className="text-[11px] text-slate-400">
-                      Creates login using email and assigns temporary password with mandatory reset on 1st login.
-                    </span>
-                  </div>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={empProvisionPortal}
-                  onChange={(e) => setEmpProvisionPortal(e.target.checked)}
-                  className="h-4 w-4 rounded text-indigo-600 focus:ring-indigo-500"
-                />
-              </div>
-
-              {/* Action Buttons */}
-              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => setActiveModal(null)}
-                  className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs transition"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmittingEmp}
-                  className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs transition flex items-center gap-2 shadow-lg shadow-indigo-600/30"
-                >
-                  <UserPlus className="h-4 w-4" />
-                  {isSubmittingEmp ? 'Registering...' : 'Register Employee'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* =========================================================
-          MODAL 2: REQUEST LEAVE APPLICATION
+          MODAL 1: REQUEST LEAVE APPLICATION
           ========================================================= */}
       {activeModal === 'request_leave' && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 backdrop-blur-md p-4 animate-in fade-in duration-200">
@@ -978,6 +630,11 @@ export const QuickActionsFAB: React.FC = () => {
                   <span className="text-lg font-black text-emerald-400 font-mono">
                     {computedLeaveDays} {computedLeaveDays === 1 ? 'Day' : 'Days'}
                   </span>
+                  {leaveEndDate && (
+                    <span className="text-[10px] text-emerald-400 font-bold mt-0.5">
+                      Resumes: {calculateResumptionDate(leaveEndDate)} (+1d)
+                    </span>
+                  )}
                 </div>
               </div>
 
@@ -1224,19 +881,29 @@ export const QuickActionsFAB: React.FC = () => {
       )}
 
       {/* =========================================================
-          MODAL 4: QUICK BIOMETRIC CLOCK-IN
+          MODAL 4: QUICK BIOMETRIC CLOCK-IN & OPTION B GEOFENCE FACE
           ========================================================= */}
       {activeModal === 'clock_in' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 backdrop-blur-md p-4 animate-in fade-in duration-200">
-          <div className="w-full max-w-md rounded-3xl bg-slate-900 border border-amber-500/30 p-6 shadow-2xl text-slate-100 space-y-5">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 backdrop-blur-md p-4 animate-in fade-in duration-200 overflow-y-auto">
+          <div className="w-full max-w-4xl rounded-3xl bg-slate-900 border border-emerald-500/30 p-6 shadow-2xl text-slate-100 space-y-4 max-h-[90vh] overflow-y-auto custom-scrollbar">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/30">
-                  <Fingerprint className="h-5 w-5" />
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                  <Camera className="h-5 w-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-black text-white">Biometric Clock-In</h3>
-                  <p className="text-xs text-slate-400">Hospital Geofenced Attendance</p>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-black text-white">Staff Attendance Clock-In</h3>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                      Option B Recommended
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <span className="text-[11px] text-slate-400">Department:</span>
+                    <span className="text-[11px] font-bold text-slate-200">
+                      {defaultApplicantEmp?.department || 'Department Duty Station'}
+                    </span>
+                  </div>
                 </div>
               </div>
               <button
@@ -1248,82 +915,127 @@ export const QuickActionsFAB: React.FC = () => {
               </button>
             </div>
 
-            <div className="text-center py-4 space-y-3">
-              <div className="relative inline-flex items-center justify-center">
-                <div className="absolute inset-0 rounded-full bg-amber-500/20 blur-xl animate-pulse" />
-                <button
-                  type="button"
-                  onClick={handleClockInSubmit}
-                  disabled={isClocking || clockSuccess}
-                  className={`relative flex h-24 w-24 items-center justify-center rounded-full border-2 transition-all ${
-                    clockSuccess
-                      ? 'bg-emerald-600 border-emerald-400 text-white'
-                      : isClocking
-                      ? 'bg-amber-600 border-amber-400 text-white animate-spin'
-                      : 'bg-amber-500/20 border-amber-400 text-amber-300 hover:scale-105 active:scale-95'
-                  }`}
-                >
-                  {clockSuccess ? (
-                    <CheckCircle2 className="h-10 w-10" />
-                  ) : (
-                    <Fingerprint className="h-10 w-10" />
-                  )}
-                </button>
-              </div>
-
-              <div>
-                <h4 className="text-sm font-bold text-white">
-                  {clockSuccess
-                    ? 'Verified & Clocked In!'
-                    : isClocking
-                    ? 'Authenticating Biometrics...'
-                    : 'Tap Fingerprint Sensor to Log Attendance'}
-                </h4>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  {new Date().toLocaleDateString('en-GB', {
-                    weekday: 'long',
-                    day: 'numeric',
-                    month: 'short',
-                    year: 'numeric',
-                  })}
-                </p>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <label className="block text-[10px] font-bold uppercase text-slate-400">
-                Verification Channel
-              </label>
-              <select
-                value={clockMethod}
-                onChange={(e) => setClockMethod(e.target.value as any)}
-                className="w-full rounded-xl bg-slate-950 border border-slate-800 px-3 py-2 text-xs text-white font-bold"
-              >
-                <option value="Biometric_Fingerprint">Biometric Optical Fingerprint</option>
-                <option value="Facial_Recognition">AI Facial Recognition</option>
-                <option value="RFID_Badge">NFC / RFID Hospital Smart Badge</option>
-                <option value="QR_Mobile">Mobile QR Terminal Scan</option>
-                <option value="GPS_Geofence">GPS Verified Hospital Geofence</option>
-              </select>
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+            {/* Mode Switcher */}
+            <div className="flex items-center gap-2 p-1 bg-slate-950 rounded-2xl border border-slate-800">
               <button
                 type="button"
-                onClick={() => setActiveModal(null)}
-                className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-bold"
+                onClick={() => setClockModalTab('geofence_face')}
+                className={`flex-1 py-2 px-3 rounded-xl font-bold text-xs transition flex items-center justify-center gap-2 ${
+                  clockModalTab === 'geofence_face'
+                    ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
               >
-                Close
+                <Camera className="h-3.5 w-3.5" />
+                <span>Option B: Mobile Geofence & Face Clock-In</span>
               </button>
+
               <button
                 type="button"
-                onClick={handleClockInSubmit}
-                disabled={isClocking || clockSuccess}
-                className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-black transition shadow"
+                onClick={() => setClockModalTab('quick_sensor')}
+                className={`flex-1 py-2 px-3 rounded-xl font-bold text-xs transition flex items-center justify-center gap-2 ${
+                  clockModalTab === 'quick_sensor'
+                    ? 'bg-amber-600 text-white shadow-md shadow-amber-600/30'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
               >
-                {isClocking ? 'Verifying...' : 'Clock In Now'}
+                <Fingerprint className="h-3.5 w-3.5" />
+                <span>Station Sensor Simulator</span>
               </button>
             </div>
+
+            {clockModalTab === 'geofence_face' ? (
+              <MobileGeofenceFacialClockIn
+                embeddedMode={true}
+                onSuccess={() => {
+                  triggerToast(
+                    'Facial Attendance Verified & Synced!',
+                    `Logged attendance for ${defaultApplicantEmp?.firstName || 'Staff'} via Option B GPS radar & facial biometric selfie.`,
+                    'success'
+                  );
+                  setTimeout(() => setActiveModal(null), 2200);
+                }}
+              />
+            ) : (
+              <div className="space-y-4 max-w-md mx-auto py-2">
+                <div className="text-center py-4 space-y-3">
+                  <div className="relative inline-flex items-center justify-center">
+                    <div className="absolute inset-0 rounded-full bg-amber-500/20 blur-xl animate-pulse" />
+                    <button
+                      type="button"
+                      onClick={handleClockInSubmit}
+                      disabled={isClocking || clockSuccess}
+                      className={`relative flex h-24 w-24 items-center justify-center rounded-full border-2 transition-all ${
+                        clockSuccess
+                          ? 'bg-emerald-600 border-emerald-400 text-white'
+                          : isClocking
+                          ? 'bg-amber-600 border-amber-400 text-white animate-spin'
+                          : 'bg-amber-500/20 border-amber-400 text-amber-300 hover:scale-105 active:scale-95'
+                      }`}
+                    >
+                      {clockSuccess ? (
+                        <CheckCircle2 className="h-10 w-10" />
+                      ) : (
+                        <Fingerprint className="h-10 w-10" />
+                      )}
+                    </button>
+                  </div>
+
+                  <div>
+                    <h4 className="text-sm font-bold text-white">
+                      {clockSuccess
+                        ? 'Verified & Clocked In!'
+                        : isClocking
+                        ? 'Authenticating Biometrics...'
+                        : 'Tap Fingerprint Sensor to Log Attendance'}
+                    </h4>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      {new Date().toLocaleDateString('en-GB', {
+                        weekday: 'long',
+                        day: 'numeric',
+                        month: 'short',
+                        year: 'numeric',
+                      })}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="block text-[10px] font-bold uppercase text-slate-400">
+                    Verification Channel
+                  </label>
+                  <select
+                    value={clockMethod}
+                    onChange={(e) => setClockMethod(e.target.value as any)}
+                    className="w-full rounded-xl bg-slate-950 border border-slate-800 px-3 py-2 text-xs text-white font-bold"
+                  >
+                    <option value="Biometric_Fingerprint">Biometric Optical Fingerprint</option>
+                    <option value="Facial_Recognition">AI Facial Recognition</option>
+                    <option value="RFID_Badge">NFC / RFID Hospital Smart Badge</option>
+                    <option value="QR_Mobile">Mobile QR Terminal Scan</option>
+                    <option value="GPS_Geofence">GPS Verified Hospital Geofence</option>
+                  </select>
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => setActiveModal(null)}
+                    className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-bold"
+                  >
+                    Close
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleClockInSubmit}
+                    disabled={isClocking || clockSuccess}
+                    className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-black transition shadow"
+                  >
+                    {isClocking ? 'Verifying...' : 'Clock In Now'}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

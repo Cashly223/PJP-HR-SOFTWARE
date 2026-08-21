@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { LeaveRequest } from '../../types/hrms';
 import { PjpiimcLogo } from '../common/PjpiimcLogo';
-import { formatLeaveDaysText } from '../../lib/leaveUtils';
+import { formatLeaveDaysText, calculateResumptionDate } from '../../lib/leaveUtils';
 
 interface OfficialLeaveFormViewModalProps {
   isOpen: boolean;
@@ -32,6 +32,7 @@ export const OfficialLeaveFormViewModal: React.FC<OfficialLeaveFormViewModalProp
   leave,
   hospitalName = 'POPE JOHN PAUL II MEDICAL CENTRE',
 }) => {
+  const resolvedHospitalName = typeof hospitalName === 'object' ? (hospitalName as any)?.name || 'POPE JOHN PAUL II MEDICAL CENTRE' : hospitalName || 'POPE JOHN PAUL II MEDICAL CENTRE';
   if (!isOpen || !leave) return null;
 
   const isPartBApproved =
@@ -264,8 +265,11 @@ export const OfficialLeaveFormViewModal: React.FC<OfficialLeaveFormViewModalProp
       </svg>
     </div>
     <div style="flex: 1; text-align: center;">
-      <div class="subtitle">DEPARTMENT OF HUMAN RESOURCE MANAGEMENT • OFFICIAL HEALTHCARE RECORDS</div>
-      <h1>${hospitalName}</h1>
+      <div style="font-size: 13px; font-weight: 900; color: #1e3a8a; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 3px;">
+        CATHOLIC HEALTH SERVICE TRUST (CHST)
+      </div>
+      <div class="subtitle">NATIONAL CATHOLIC HEALTH SERVICE • DEPARTMENT OF HUMAN RESOURCE MANAGEMENT</div>
+      <h1>${resolvedHospitalName}</h1>
       <h2>OFFICIAL LEAVE APPLICATION FORM</h2>
       <p>Form Ref: HR-LAF/2026/REV-04 • Pope John Paul II Personnel Code • Document ID: ${leave.id}</p>
     </div>
@@ -375,7 +379,13 @@ export const OfficialLeaveFormViewModal: React.FC<OfficialLeaveFormViewModalProp
       <div style="font-weight: 600;">${leave.reason}</div>
     </div>
     <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 4px; border-top: 1px solid #cbd5e1;">
-      <div><span style="font-weight: bold; font-size: 10px;">APPLICANT SIGNATURE:</span> <span class="sig-line">${leave.employeeName}</span></div>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span style="font-weight: bold; font-size: 10px;">APPLICANT SIGNED BY:</span>
+        ${leave.applicantSignatureUrl?.startsWith('data:image') || leave.applicantSignatureUrl?.startsWith('http')
+          ? `<img src="${leave.applicantSignatureUrl}" alt="Signature" style="height: 26px; max-width: 120px; object-fit: contain; vertical-align: middle;" />`
+          : `<span class="sig-line" style="font-family: monospace; font-weight: bold;">${leave.applicantSignedBy || leave.applicantSignatureUrl?.replace('style:', '') || leave.employeeName}</span>`
+        }
+      </div>
       <div><span style="font-weight: bold; font-size: 10px;">DATE:</span> <span style="font-family: monospace; font-weight: bold;">${leave.applicantSignedDate || leave.appliedOn}</span></div>
     </div>
   </div>
@@ -399,11 +409,27 @@ export const OfficialLeaveFormViewModal: React.FC<OfficialLeaveFormViewModalProp
     <div class="grid-2" style="padding-top: 4px; border-top: 1px solid #cbd5e1;">
       <div class="box">
         <span class="box-label">HEAD OF UNIT SIGNATURE</span>
-        <div>${(leave.workflow?.unitHeadStep?.status === 'Approved' || leave.unitHeadSignedBy) ? `<span class="sig-line">✓ ${leave.unitHeadSignedBy || leave.workflow?.unitHeadStep?.approverName || 'Unit Head Signed'}</span> <br/><span style="font-size: 8px; font-family: monospace;">Date: ${leave.unitHeadSignedDate || leave.workflow?.unitHeadStep?.approvedAt?.slice(0, 10) || leave.appliedOn}</span>` : `<span style="color: #94a3b8; font-style: italic;">Pending HOU Signature</span>`}</div>
+        <div>${(leave.workflow?.unitHeadStep?.status === 'Approved' || leave.unitHeadSignedBy) ? `
+          <div style="display: flex; align-items: center; gap: 6px;">
+            ${leave.workflow?.unitHeadStep?.signatureUrl?.startsWith('data:image') || leave.workflow?.unitHeadStep?.signatureUrl?.startsWith('http')
+              ? `<img src="${leave.workflow?.unitHeadStep?.signatureUrl}" alt="Sig" style="height: 24px; max-width: 110px; object-fit: contain;" />`
+              : `<span class="sig-line">✓ ${leave.unitHeadSignedBy || leave.workflow?.unitHeadStep?.approverName || 'Unit Head Signed'}</span>`
+            }
+            <span style="font-size: 8px; color: #047857; font-weight: bold;">[CHST VERIFIED]</span>
+          </div>
+          <span style="font-size: 8px; font-family: monospace;">Date: ${leave.unitHeadSignedDate || leave.workflow?.unitHeadStep?.approvedAt?.slice(0, 10) || leave.appliedOn}</span>` : `<span style="color: #94a3b8; font-style: italic;">Pending HOU Signature</span>`}</div>
       </div>
       <div class="box">
         <span class="box-label">HEAD OF DEPARTMENT SIGNATURE</span>
-        <div>${(leave.workflow?.departmentHeadStep?.status === 'Approved' || leave.deptHeadSignedBy) ? `<span class="sig-line">✓ ${leave.deptHeadSignedBy || leave.workflow?.departmentHeadStep?.approverName || 'Department Head Signed'}</span> <br/><span style="font-size: 8px; font-family: monospace;">Date: ${leave.deptHeadSignedDate || leave.workflow?.departmentHeadStep?.approvedAt?.slice(0, 10) || leave.appliedOn}</span>` : `<span style="color: #94a3b8; font-style: italic;">Pending HOD Signature</span>`}</div>
+        <div>${(leave.workflow?.departmentHeadStep?.status === 'Approved' || leave.deptHeadSignedBy) ? `
+          <div style="display: flex; align-items: center; gap: 6px;">
+            ${leave.workflow?.departmentHeadStep?.signatureUrl?.startsWith('data:image') || leave.workflow?.departmentHeadStep?.signatureUrl?.startsWith('http')
+              ? `<img src="${leave.workflow?.departmentHeadStep?.signatureUrl}" alt="Sig" style="height: 24px; max-width: 110px; object-fit: contain;" />`
+              : `<span class="sig-line">✓ ${leave.deptHeadSignedBy || leave.workflow?.departmentHeadStep?.approverName || 'Department Head Signed'}</span>`
+            }
+            <span style="font-size: 8px; color: #047857; font-weight: bold;">[CHST VERIFIED]</span>
+          </div>
+          <span style="font-size: 8px; font-family: monospace;">Date: ${leave.deptHeadSignedDate || leave.workflow?.departmentHeadStep?.approvedAt?.slice(0, 10) || leave.appliedOn}</span>` : `<span style="color: #94a3b8; font-style: italic;">Pending HOD Signature</span>`}</div>
       </div>
     </div>
   </div>
@@ -418,7 +444,7 @@ export const OfficialLeaveFormViewModal: React.FC<OfficialLeaveFormViewModalProp
       <div class="box"><span class="box-label">OUTSTANDING DAYS</span><span class="box-val">${formatLeaveDaysText(leave.outstandingLeaveDays ?? Math.max(0, (leave.leaveEntitlement || 30) - leave.totalDays), leave.leaveType)}</span></div>
       <div class="box"><span class="box-label">START DATE</span><span class="box-val">${leave.validatedStartDate || leave.startDate}</span></div>
       <div class="box"><span class="box-label">END DATE</span><span class="box-val">${leave.validatedEndDate || leave.endDate}</span></div>
-      <div class="box" style="background-color: #ecfdf5;"><span class="box-label" style="color: #047857;">RESUMPTION DATE</span><span class="box-val" style="color: #047857;">${leave.dateOfResumption || 'Day Following End Date'}</span></div>
+      <div class="box" style="background-color: #ecfdf5;"><span class="box-label" style="color: #047857;">RESUMPTION DATE</span><span class="box-val" style="color: #047857;">${leave.dateOfResumption || calculateResumptionDate(leave.validatedEndDate || leave.endDate)}</span></div>
     </div>
     <div class="box" style="margin-bottom: 6px;">
       <span class="box-label">REMARKS (HR DEPARTMENT)</span>
@@ -426,7 +452,15 @@ export const OfficialLeaveFormViewModal: React.FC<OfficialLeaveFormViewModalProp
     </div>
     <div style="text-align: right; padding-top: 4px; border-top: 1px solid #cbd5e1;">
       <span class="box-label">HUMAN RESOURCE MANAGER SIGNATURE</span>
-      <div>${isPartCApproved ? `<span class="sig-line">✓ ${leave.hrSignedBy || leave.workflow?.hrStep?.approverName || 'HR Manager Signed'}</span> <span style="font-size: 8px; font-family: monospace; margin-left: 6px;">Date: ${leave.hrSignedDate || leave.workflow?.hrStep?.approvedAt?.slice(0, 10) || leave.appliedOn}</span>` : `<span style="color: #94a3b8; font-style: italic;">Pending HR Signature</span>`}</div>
+      <div>${isPartCApproved ? `
+        <div style="display: inline-flex; align-items: center; gap: 6px;">
+          ${leave.workflow?.hrStep?.signatureUrl?.startsWith('data:image') || leave.workflow?.hrStep?.signatureUrl?.startsWith('http')
+            ? `<img src="${leave.workflow?.hrStep?.signatureUrl}" alt="HR Sig" style="height: 26px; max-width: 120px; object-fit: contain;" />`
+            : `<span class="sig-line">✓ ${leave.hrSignedBy || leave.workflow?.hrStep?.approverName || 'HR Manager Signed'}</span>`
+          }
+          <span style="font-size: 8px; color: #047857; font-weight: bold;">[CHST HR VERIFIED]</span>
+          <span style="font-size: 8px; font-family: monospace; margin-left: 6px;">Date: ${leave.hrSignedDate || leave.workflow?.hrStep?.approvedAt?.slice(0, 10) || leave.appliedOn}</span>
+        </div>` : `<span style="color: #94a3b8; font-style: italic;">Pending HR Signature</span>`}</div>
     </div>
   </div>
 
@@ -452,7 +486,15 @@ export const OfficialLeaveFormViewModal: React.FC<OfficialLeaveFormViewModalProp
     </div>
     <div style="text-align: right; padding-top: 4px; border-top: 1px solid #cbd5e1;">
       <span class="box-label">APPROVED BY FACILITY IN-CHARGE</span>
-      <div>${isPartDApproved ? `<span class="sig-line" style="font-size: 13px; color: #b45309;">✓ ${leave.facilityInChargeSignedBy || leave.workflow?.facilityHeadStep?.approverName || 'Facility In-Charge Signed'}</span> <br/><span style="font-size: 8px; font-family: monospace;">Date: ${leave.facilityInChargeSignedDate || leave.workflow?.facilityHeadStep?.approvedAt?.slice(0, 10) || leave.appliedOn}</span>` : `<span style="color: #94a3b8; font-style: italic;">Pending CEO / CMO Signature</span>`}</div>
+      <div>${isPartDApproved ? `
+        <div style="display: inline-flex; align-items: center; gap: 6px;">
+          ${leave.workflow?.facilityHeadStep?.signatureUrl?.startsWith('data:image') || leave.workflow?.facilityHeadStep?.signatureUrl?.startsWith('http')
+            ? `<img src="${leave.workflow?.facilityHeadStep?.signatureUrl}" alt="Executive Sig" style="height: 28px; max-width: 130px; object-fit: contain;" />`
+            : `<span class="sig-line" style="font-size: 13px; color: #b45309;">✓ ${leave.facilityInChargeSignedBy || leave.workflow?.facilityHeadStep?.approverName || 'Facility In-Charge Signed'}</span>`
+          }
+          <span style="font-size: 8px; color: #b45309; font-weight: bold;">[CHST EXECUTIVE SEAL]</span>
+          <br/><span style="font-size: 8px; font-family: monospace;">Date: ${leave.facilityInChargeSignedDate || leave.workflow?.facilityHeadStep?.approvedAt?.slice(0, 10) || leave.appliedOn}</span>
+        </div>` : `<span style="color: #94a3b8; font-style: italic;">Pending CEO / CMO Signature</span>`}</div>
     </div>
   </div>
 
@@ -596,11 +638,14 @@ export const OfficialLeaveFormViewModal: React.FC<OfficialLeaveFormViewModalProp
               <PjpiimcLogo size="xl" />
             </div>
             <div className="text-center space-y-1 flex-1">
+              <div className="text-xs sm:text-sm uppercase font-black text-amber-500 dark:text-amber-400 print:text-black tracking-widest">
+                CATHOLIC HEALTH SERVICE TRUST (CHST)
+              </div>
               <div className="text-[9px] uppercase font-extrabold text-emerald-400 print:text-black tracking-widest">
-                DEPARTMENT OF HUMAN RESOURCE MANAGEMENT • OFFICIAL HEALTHCARE RECORDS
+                NATIONAL CATHOLIC HEALTH SERVICE • DEPARTMENT OF HUMAN RESOURCE MANAGEMENT
               </div>
               <h1 className="text-lg sm:text-xl font-black uppercase tracking-wider text-white print:text-black">
-                {hospitalName}
+                {resolvedHospitalName}
               </h1>
               <h2 className="text-xs sm:text-sm font-extrabold text-amber-400 print:text-black tracking-widest uppercase">
                 OFFICIAL LEAVE APPLICATION FORM
@@ -705,10 +750,18 @@ export const OfficialLeaveFormViewModal: React.FC<OfficialLeaveFormViewModalProp
 
             <div className="pt-2 flex items-center justify-between text-[11px] text-slate-300 print:text-black border-t border-slate-800 print:border-gray-400">
               <div className="flex items-center gap-2">
-                <span className="font-bold">APPLICANT SIGNATURE:</span>
-                <span className="font-serif italic font-bold text-emerald-400 print:text-black underline">
-                  {leave.employeeName}
-                </span>
+                <span className="font-bold">APPLICANT SIGNED BY:</span>
+                {leave.applicantSignatureUrl?.startsWith('data:image') || leave.applicantSignatureUrl?.startsWith('http') ? (
+                  <img
+                    src={leave.applicantSignatureUrl}
+                    alt="Signature"
+                    className="h-8 max-w-[140px] object-contain bg-white/90 p-0.5 rounded"
+                  />
+                ) : (
+                  <span className="font-mono font-bold text-emerald-400 print:text-black">
+                    {leave.applicantSignedBy || leave.applicantSignatureUrl?.replace('style:', '') || leave.employeeName}
+                  </span>
+                )}
               </div>
               <div className="flex items-center gap-2">
                 <span className="font-bold">DATE:</span>
@@ -754,9 +807,20 @@ export const OfficialLeaveFormViewModal: React.FC<OfficialLeaveFormViewModalProp
                 <div className="text-[9px] font-bold text-slate-400 print:text-gray-800">HEAD OF UNIT SIGNATURE</div>
                 {leave.workflow?.unitHeadStep?.status === 'Approved' || leave.unitHeadSignedBy ? (
                   <div className="space-y-0.5">
-                    <div className="font-serif italic font-bold text-emerald-400 print:text-black text-xs">
-                      ✓ {leave.unitHeadSignedBy || leave.workflow?.unitHeadStep?.approverName || 'Unit Head Signed'}
-                    </div>
+                    {leave.workflow?.unitHeadStep?.signatureUrl?.startsWith('data:image') || leave.workflow?.unitHeadStep?.signatureUrl?.startsWith('http') ? (
+                      <div className="flex items-center gap-2">
+                        <img
+                          src={leave.workflow?.unitHeadStep?.signatureUrl}
+                          alt="HOU Signature"
+                          className="h-7 max-w-[120px] object-contain bg-white/90 p-0.5 rounded"
+                        />
+                        <span className="text-[8px] font-bold text-emerald-400">[CHST VERIFIED]</span>
+                      </div>
+                    ) : (
+                      <div className="font-serif italic font-bold text-emerald-400 print:text-black text-xs">
+                        ✓ {leave.unitHeadSignedBy || leave.workflow?.unitHeadStep?.approverName || 'Unit Head Signed'}
+                      </div>
+                    )}
                     <div className="text-[9px] text-slate-400 print:text-gray-700 font-mono">
                       Date: {leave.unitHeadSignedDate || leave.workflow?.unitHeadStep?.approvedAt?.slice(0, 10) || leave.appliedOn}
                     </div>
@@ -772,9 +836,20 @@ export const OfficialLeaveFormViewModal: React.FC<OfficialLeaveFormViewModalProp
                 <div className="text-[9px] font-bold text-slate-400 print:text-gray-800">HEAD OF DEPARTMENT SIGNATURE</div>
                 {leave.workflow?.departmentHeadStep?.status === 'Approved' || leave.deptHeadSignedBy ? (
                   <div className="space-y-0.5">
-                    <div className="font-serif italic font-bold text-emerald-400 print:text-black text-xs">
-                      ✓ {leave.deptHeadSignedBy || leave.workflow?.departmentHeadStep?.approverName || 'Department Head Signed'}
-                    </div>
+                    {leave.workflow?.departmentHeadStep?.signatureUrl?.startsWith('data:image') || leave.workflow?.departmentHeadStep?.signatureUrl?.startsWith('http') ? (
+                      <div className="flex items-center gap-2">
+                        <img
+                          src={leave.workflow?.departmentHeadStep?.signatureUrl}
+                          alt="HOD Signature"
+                          className="h-7 max-w-[120px] object-contain bg-white/90 p-0.5 rounded"
+                        />
+                        <span className="text-[8px] font-bold text-emerald-400">[CHST VERIFIED]</span>
+                      </div>
+                    ) : (
+                      <div className="font-serif italic font-bold text-emerald-400 print:text-black text-xs">
+                        ✓ {leave.deptHeadSignedBy || leave.workflow?.departmentHeadStep?.approverName || 'Department Head Signed'}
+                      </div>
+                    )}
                     <div className="text-[9px] text-slate-400 print:text-gray-700 font-mono">
                       Date: {leave.deptHeadSignedDate || leave.workflow?.departmentHeadStep?.approvedAt?.slice(0, 10) || leave.appliedOn}
                     </div>
@@ -820,7 +895,7 @@ export const OfficialLeaveFormViewModal: React.FC<OfficialLeaveFormViewModalProp
               <div className="p-2.5 rounded-xl bg-emerald-500/10 print:bg-gray-100 border border-emerald-500/20 print:border-gray-400">
                 <span className="text-[9px] text-emerald-400 print:text-gray-800 block font-bold">RESUMPTION DATE</span>
                 <span className="font-black text-emerald-300 print:text-black text-xs">
-                  {leave.dateOfResumption || 'Day Following End Date'}
+                  {leave.dateOfResumption || calculateResumptionDate(leave.validatedEndDate || leave.endDate)}
                 </span>
               </div>
             </div>
@@ -837,9 +912,20 @@ export const OfficialLeaveFormViewModal: React.FC<OfficialLeaveFormViewModalProp
                 <div className="text-[9px] font-bold text-slate-400 print:text-gray-800 uppercase">HUMAN RESOURCE MANAGER SIGNATURE</div>
                 {isPartCApproved ? (
                   <div>
-                    <div className="font-serif italic font-bold text-emerald-400 print:text-black text-xs">
-                      ✓ {leave.hrSignedBy || leave.workflow?.hrStep?.approverName || 'Marcus Vance (HR Manager)'}
-                    </div>
+                    {leave.workflow?.hrStep?.signatureUrl?.startsWith('data:image') || leave.workflow?.hrStep?.signatureUrl?.startsWith('http') ? (
+                      <div className="flex items-center justify-end gap-2">
+                        <img
+                          src={leave.workflow?.hrStep?.signatureUrl}
+                          alt="HR Signature"
+                          className="h-8 max-w-[130px] object-contain bg-white/90 p-0.5 rounded"
+                        />
+                        <span className="text-[8px] font-bold text-emerald-400">[CHST HR VERIFIED]</span>
+                      </div>
+                    ) : (
+                      <div className="font-serif italic font-bold text-emerald-400 print:text-black text-xs">
+                        ✓ {leave.hrSignedBy || leave.workflow?.hrStep?.approverName || 'Marcus Vance (HR Manager)'}
+                      </div>
+                    )}
                     <div className="text-[9px] text-slate-400 print:text-gray-700 font-mono">
                       Date: {leave.hrSignedDate || leave.workflow?.hrStep?.approvedAt?.slice(0, 10) || leave.appliedOn}
                     </div>
@@ -896,9 +982,20 @@ export const OfficialLeaveFormViewModal: React.FC<OfficialLeaveFormViewModalProp
                 <div className="text-[9px] font-bold text-slate-400 print:text-gray-800 uppercase">APPROVED BY FACILITY IN-CHARGE</div>
                 {isPartDApproved ? (
                   <div>
-                    <div className="font-serif italic font-extrabold text-amber-400 print:text-black text-sm">
-                      ✓ {leave.facilityInChargeSignedBy || leave.workflow?.facilityHeadStep?.approverName || 'Dr. Arthur Kingsley (Facility In-Charge)'}
-                    </div>
+                    {leave.workflow?.facilityHeadStep?.signatureUrl?.startsWith('data:image') || leave.workflow?.facilityHeadStep?.signatureUrl?.startsWith('http') ? (
+                      <div className="flex items-center justify-end gap-2">
+                        <img
+                          src={leave.workflow?.facilityHeadStep?.signatureUrl}
+                          alt="Executive Signature"
+                          className="h-9 max-w-[140px] object-contain bg-white/90 p-0.5 rounded"
+                        />
+                        <span className="text-[8px] font-bold text-amber-400">[CHST EXECUTIVE SEAL]</span>
+                      </div>
+                    ) : (
+                      <div className="font-serif italic font-extrabold text-amber-400 print:text-black text-sm">
+                        ✓ {leave.facilityInChargeSignedBy || leave.workflow?.facilityHeadStep?.approverName || 'Dr. Arthur Kingsley (Facility In-Charge)'}
+                      </div>
+                    )}
                     <div className="text-[9px] text-slate-400 print:text-gray-700 font-mono">
                       Date: {leave.facilityInChargeSignedDate || leave.workflow?.facilityHeadStep?.approvedAt?.slice(0, 10) || leave.appliedOn}
                     </div>

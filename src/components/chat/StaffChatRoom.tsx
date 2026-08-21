@@ -39,7 +39,7 @@ export const StaffChatRoom: React.FC = () => {
 
   const activeChannel = channels.find((c) => c.id === activeChannelId) || channels[0];
 
-  const channelMessages = chatMessages.filter((m) => m.channelId === activeChannelId);
+  const channelMessages = (chatMessages || []).filter((m) => m && m.channelId === activeChannelId);
 
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
@@ -66,11 +66,13 @@ export const StaffChatRoom: React.FC = () => {
     setInputText('');
   };
 
-  const filteredEmployees = employees.filter(
+  const filteredEmployees = (employees || []).filter(
     (e) =>
-      `${e.firstName} ${e.lastName}`.toLowerCase().includes(staffSearch.toLowerCase()) ||
-      e.department.toLowerCase().includes(staffSearch.toLowerCase()) ||
-      e.jobTitle.toLowerCase().includes(staffSearch.toLowerCase())
+      e && (
+        `${e.firstName || ''} ${e.lastName || ''}`.toLowerCase().includes(staffSearch.toLowerCase()) ||
+        (e.department || '').toLowerCase().includes(staffSearch.toLowerCase()) ||
+        (e.jobTitle || '').toLowerCase().includes(staffSearch.toLowerCase())
+      )
   );
 
   return (

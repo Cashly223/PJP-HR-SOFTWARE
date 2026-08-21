@@ -149,6 +149,42 @@ export interface PromotionRecord {
   status: 'Approved' | 'Pending Gazette / Board Approval' | 'Under Review';
 }
 
+export type EmploymentSource =
+  | 'New Hire'
+  | 'Transfer'
+  | 'Promotion'
+  | 'Reappointment'
+  | 'National Service'
+  | 'Other';
+
+export type TransferType = 'Internal Transfer' | 'External Transfer';
+
+export interface StaffMovementRecord {
+  id: string;
+  employeeId: string;
+  employeeName?: string;
+  empCode?: string;
+  previousDepartment: string;
+  newDepartment: string;
+  previousPosition: string;
+  newPosition: string;
+  previousUnit?: string;
+  newUnit?: string;
+  effectiveDate: string;
+  transferType: 'Internal Transfer' | 'External Transfer' | 'Departmental Redeployment' | 'Promotion Movement' | string;
+  employmentSource?: EmploymentSource | string;
+  previousOrganisation?: string;
+  reason: string;
+  approvingAuthority: string;
+  referenceNumber: string;
+  documentUrl?: string;
+  documentFileName?: string;
+  remarks?: string;
+  recordedBy?: string;
+  recordedAt?: string;
+  status?: 'Completed' | 'Pending Effect' | 'Under Review';
+}
+
 export interface Employee {
   id: string;
   hospitalId: string;
@@ -168,6 +204,19 @@ export interface Employee {
   lastPromotionDate?: string; // Date of most recent promotion
   lastPromotionGrade?: string;
   promotionHistory?: PromotionRecord[];
+  // Employment Source & Transfer Information
+  employmentSource?: EmploymentSource;
+  transferType?: TransferType;
+  previousOrganisation?: string;
+  previousPosition?: string;
+  previousDepartment?: string;
+  transferDate?: string;
+  dateJoinedPJPIIMC?: string;
+  originalHireDate?: string;
+  transferReferenceNumber?: string;
+  currentDepartment?: string;
+  currentPosition?: string;
+  movementHistory?: StaffMovementRecord[];
   managerId?: string;
   employmentType: 'Full-Time' | 'Part-Time' | 'Contract' | 'Locum / On-Call';
   joinDate: string;
@@ -206,6 +255,9 @@ export interface Employee {
   digitalSignatureUrl?: string;
   leaveEntitlement?: number; // Annual leave entitlement in days (e.g. 30 days)
   deferredLeaveDays?: number; // Carried over / deferred leave days
+  adminLoginGranted?: boolean; // Granted by HR to access Administrator Login
+  adminLoginGrantedAt?: string;
+  adminLoginGrantedBy?: string;
   portalAccess?: {
     username: string; // Email or Staff ID (empCode)
     usernameType: 'email' | 'empCode';
@@ -219,6 +271,7 @@ export interface Employee {
     lastLogin?: string;
     mustChangePassword?: boolean;
     customPassword?: string;
+    adminLoginGranted?: boolean;
   };
 }
 
@@ -251,6 +304,17 @@ export interface AttendanceRecord {
   status: 'On-Time' | 'Late' | 'Early-Departure' | 'Absent' | 'Overtime';
   overtimeHours: number;
   approvalStatus: 'Auto-Approved' | 'Pending Approval' | 'Approved' | 'Rejected';
+  snapshotUrl?: string; // Captured live facial selfie snapshot
+  facialVerified?: boolean; // Face match verified against profile photo
+  facialConfidence?: number; // Match confidence score (e.g. 98.4%)
+  coordinates?: {
+    latitude: number;
+    longitude: number;
+    accuracy?: number;
+    distanceMeters?: number;
+  };
+  geofenceVerified?: boolean; // Within allowed hospital perimeter (e.g. <= 150m)
+  deviceType?: string; // e.g. "Mobile Smartphone (iOS/Android)" or "Station Kiosk"
 }
 
 export interface UnitLeadership {
@@ -323,6 +387,9 @@ export interface WorkflowApprovalStep {
   approverTitle?: string;
   approvedAt?: string;
   comments?: string;
+  signatureUrl?: string;
+  signatureCertified?: boolean;
+  signatureUploadedBy?: string;
 }
 
 export interface MultiTierWorkflow {
@@ -364,14 +431,20 @@ export interface LeaveRequest {
   addressOnLeave?: string;
   phoneOnLeave?: string;
   applicantSignedDate?: string;
+  applicantSignedBy?: string;
+  applicantSignatureUrl?: string;
+  applicantSignatureCertified?: boolean;
+  applicantSignedAt?: string;
 
   // PART B (RECOMMENDATION)
   recommendationStatus?: 'RECOMMENDED' | 'NOT RECOMMENDED';
   replacementRequired?: 'REQUIRED' | 'NOT REQUIRED';
   unitHeadSignedBy?: string;
   unitHeadSignedDate?: string;
+  unitHeadSignatureUrl?: string;
   deptHeadSignedBy?: string;
   deptHeadSignedDate?: string;
+  deptHeadSignatureUrl?: string;
 
   // PART C (VALIDATION)
   outstandingLeaveDays?: number;
@@ -381,12 +454,15 @@ export interface LeaveRequest {
   hrRemarks?: string;
   hrSignedBy?: string;
   hrSignedDate?: string;
+  hrSignatureUrl?: string;
 
   // PART D (APPROVAL)
   daysGranted?: number;
   approvalRemarks?: string;
   facilityInChargeSignedBy?: string;
   facilityInChargeSignedDate?: string;
+  facilityHeadSignatureUrl?: string;
+  digitalSignaturesCertified?: boolean;
 }
 
 export interface PayrollRecord {
@@ -548,10 +624,27 @@ export interface Grievance {
 export interface ClinicalCompetency {
   id: string;
   name: string;
-  category: 'Patient Safety' | 'Clinical Skills' | 'Documentation' | 'Emergency Protocol' | 'Patient Communication';
+  category:
+    | 'Patient Safety'
+    | 'Clinical Skills'
+    | 'Documentation'
+    | 'Emergency Protocol'
+    | 'Patient Communication'
+    | 'Quality & Governance'
+    | 'Leadership'
+    | 'Education'
+    | 'Strategy'
+    | 'Governance'
+    | 'Patient Care'
+    | 'Quality'
+    | 'Clinical'
+    | 'Operational'
+    | 'Behavioral';
   score: number; // 1-5
   maxScore: number;
   comments?: string;
+  evaluatorComment?: string;
+  title?: string;
 }
 
 export interface PerformanceGoal {
@@ -567,7 +660,13 @@ export interface PeerFeedback360 {
   id: string;
   reviewerName: string;
   reviewerRole: string;
-  relationship: 'Peer Nurse' | 'Attending Physician' | 'Department Manager' | 'Direct Report';
+  relationship:
+    | 'Peer Nurse'
+    | 'Attending Physician'
+    | 'Department Manager'
+    | 'Direct Report'
+    | 'Peer Consultant'
+    | 'Theatre In-Charge';
   rating: number; // 1-5
   strengths: string;
   areasForGrowth: string;
@@ -776,9 +875,155 @@ export interface StaffAccessPermissions {
   employeeName?: string;
   email?: string;
   grantedModules: string[]; // Module IDs granted by HR (e.g., 'recruitment', 'audit', 'reports', 'assets')
+  hasAdminLoginAccess?: boolean; // Direct HR grant to use ADMINISTRATOR tab on Login Page
   grantedAt?: string;
   grantedBy?: string;
   notes?: string;
+}
+
+export type AppraisalCadre =
+  | 'medical_doctor'
+  | 'unit_head'
+  | 'dept_head'
+  | 'facility_head'
+  | 'general_staff';
+
+export type AppraisalStage =
+  | 'Self / Draft'
+  | 'Unit Head'
+  | 'Departmental Head'
+  | 'HR'
+  | 'Head of Facility'
+  | 'Completed'
+  | 'Returned for Revision'
+  | 'Submitted to Head of Department'
+  | 'Submitted to HR Directorate'
+  | 'Fully Endorsed & Completed'
+  | 'Endorsement by Head of Facility'
+  | 'Review by HR Directorate'
+  | 'Review by Head of Department'
+  | 'Returned for Rectification';
+
+export interface AppraisalWorkflowStep {
+  role?: 'Unit Head' | 'Departmental Head' | 'HR' | 'Head of Facility' | string;
+  stage?: 'Unit Head' | 'Departmental Head' | 'HR' | 'Head of Facility' | string;
+  stageName?: string;
+  status: 'Pending' | 'Approved' | 'Returned' | 'Skipped' | 'Bypassed';
+  action?: 'Approved' | 'Returned' | 'Rejected' | 'Pending';
+  approverId?: string;
+  approverName?: string;
+  approverTitle?: string;
+  approverRole?: string;
+  actionDate?: string;
+  approvedAt?: string;
+  timestamp?: string;
+  comments?: string;
+  ratingGiven?: number;
+}
+
+export interface AppraisalAuditEntry {
+  id: string;
+  stage: string;
+  actorName: string;
+  actorRole: string;
+  action: string;
+  timestamp: string;
+  notes: string;
+}
+
+export interface AppraisalDocument {
+  id: string;
+  fileName: string;
+  fileType?: string;
+  fileSize?: number | string;
+  fileData?: string; // base64 or url
+  fileUrl?: string; // url alias
+  title?: string;
+  uploadedAt: string;
+  uploadedBy: string;
+  category?:
+    | 'Completed Appraisal Form'
+    | 'KPI Evidence Sheet'
+    | 'Peer Review'
+    | 'HOD Sign-Off'
+    | 'Executive Recommendation'
+    | 'Performance Review'
+    | 'Other';
+  description?: string;
+}
+
+export interface PerformanceAppraisal {
+  id: string;
+  employeeId: string;
+  employeeName: string;
+  empCode?: string;
+  employeeStaffId?: string;
+  jobTitle?: string;
+  department: string;
+  unit?: string;
+  cadre: AppraisalCadre; // determines exact multi-tier workflow chain
+  appraisalPeriod?: string; // e.g. "Annual Appraisal 2026", "Mid-Year Review 2026", "Probation Evaluation"
+  period?: string;
+  appraisalCycle?: string;
+  appraisalYear?: number;
+  cycleYear?: string | number;
+  currentStage: AppraisalStage;
+  overallStatus?: 'Draft' | 'In Progress' | 'Completed' | 'Returned for Revision' | 'Submitted' | 'In Review' | 'Returned' | 'Under Review';
+  status?: 'Draft' | 'In Progress' | 'Completed' | 'Returned for Revision' | 'Submitted' | 'In Review' | 'Returned' | 'Under Review';
+
+  // Scoring & Metrics
+  overallScore?: number; // 1.0 - 5.0 or 0 - 100
+  overallRating?: number; // 1.0 - 5.0
+  selfAssessmentScore?: number;
+  scoreCategory?: 'Outstanding' | 'Exceeds Expectations' | 'Meets Standards' | 'Needs Improvement' | 'Unsatisfactory';
+  clinicalCompetencies?: ClinicalCompetency[];
+  coreCompetencies?: any[];
+  kpis?: { metric: string; target: string; achieved: string; rating: number; weightPercent?: number }[];
+  kpiAchievements?: any[];
+  goals?: PerformanceGoal[];
+  feedback360?: PeerFeedback360[];
+
+  // Comments by Stage Reviewers & Objectives
+  selfAppraisalComments?: string;
+  selfReviewNotes?: string;
+  objectivesMet?: string;
+  strengths?: string;
+  areasForImprovement?: string;
+  developmentObjectives?: string;
+  unitHeadComments?: string;
+  deptHeadComments?: string;
+  hrComments?: string;
+  facilityHeadComments?: string;
+  developmentPlan?: string;
+  trainingNeeds?: string[];
+
+  // Multi-tier workflow steps
+  unitHeadStep?: AppraisalWorkflowStep;
+  departmentHeadStep?: AppraisalWorkflowStep;
+  hrStep?: AppraisalWorkflowStep;
+  facilityHeadStep?: AppraisalWorkflowStep;
+  workflowSteps?: AppraisalWorkflowStep[];
+
+  // Attached Appraisal Documents
+  documents: AppraisalDocument[];
+
+  // Dispatch Notification Logs
+  notificationsSent?: {
+    targetRole: string;
+    recipientName: string;
+    sentAt: string;
+    channel: 'In-App' | 'Email' | 'SMS';
+    message: string;
+  }[];
+
+  auditHistory?: AppraisalAuditEntry[];
+  createdAt?: string;
+  updatedAt?: string;
+  submittedAt?: string;
+  initiatedDate?: string;
+  lastUpdatedDate?: string;
+  completedAt?: string;
+  certifiedBy?: string;
 }
 
 export interface ExpenseClaim {

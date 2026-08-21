@@ -47,6 +47,7 @@ import {
   PhoneForwarded,
   Radio,
   Save,
+  Lock,
 } from 'lucide-react';
 import { useHrms } from '../../context/HrmsContext';
 import { AttendanceRecord, Employee, OfficialDocument } from '../../types/hrms';
@@ -69,6 +70,27 @@ export const AttendanceReport: React.FC = () => {
   } = useHrms();
 
   const isHRorAdmin = ['super_admin', 'facility_head', 'hr_director', 'hr_manager', 'dept_head', 'unit_head'].includes(activeRole);
+  const isGlobalAdmin = ['super_admin', 'facility_head', 'hr_director', 'hr_manager'].includes(activeRole);
+
+  // Determine current logged-in employee & their assigned department
+  const currentEmp = React.useMemo(() => {
+    return employees.find(
+      (e) =>
+        e.id === currentUser?.id ||
+        (currentUser?.email && e.email?.toLowerCase() === currentUser.email.toLowerCase()) ||
+        (currentUser?.name && `${e.firstName} ${e.lastName}`.toLowerCase().includes(currentUser.name.toLowerCase().split(' ')[0]))
+    ) || employees[0];
+  }, [employees, currentUser]);
+
+  const userDepartment = React.useMemo(() => {
+    return (
+      currentUser?.department ||
+      currentEmp?.department ||
+      (activeRole === 'dept_head' || activeRole === 'unit_head' || activeRole === 'doctor' || activeRole === 'nurse'
+        ? currentEmp?.department || 'Intensive Care Unit (ICU)'
+        : 'General Healthcare')
+    );
+  }, [currentUser, currentEmp, activeRole]);
 
   // View Mode: 'daily_sync' (Daily Late Comers & Absentees) vs 'periodic_audit' (Weekly/Monthly Hours)
   const [viewTab, setViewTab] = useState<'daily_sync' | 'periodic_audit'>('daily_sync');
@@ -82,7 +104,16 @@ export const AttendanceReport: React.FC = () => {
 
   // Filter States
   const [period, setPeriod] = useState<PeriodType>('this_week');
-  const [selectedDept, setSelectedDept] = useState<string>('All');
+  const [selectedDept, setSelectedDept] = useState<string>(() => {
+    return isGlobalAdmin ? 'All' : userDepartment;
+  });
+
+  // Keep selectedDept locked to userDepartment for departmental staff / unit heads
+  useEffect(() => {
+    if (!isGlobalAdmin) {
+      setSelectedDept(userDepartment);
+    }
+  }, [isGlobalAdmin, userDepartment]);
   const [searchTerm, setSearchTerm] = useState<string>('');
 
   // Selected Employee for Detailed Timesheet Modal
@@ -191,7 +222,10 @@ export const AttendanceReport: React.FC = () => {
   }, [callStatus]);
 
   // List of unique departments
-  const departments = ['All', ...Array.from(new Set(employees.map((e) => e.department)))];
+  const departments = React.useMemo(() => {
+    if (!isGlobalAdmin) return [userDepartment];
+    return ['All', ...Array.from(new Set(employees.map((e) => e.department)))];
+  }, [isGlobalAdmin, userDepartment, employees]);
 
   // Helper to handle date preset selection
   const handleSelectSyncPreset = (preset: SyncRangePreset) => {
@@ -322,13 +356,27 @@ export const AttendanceReport: React.FC = () => {
   const currentEmpEmail = currentUser?.email || '';
 
   // Filter staff by department and search query
-  const filteredEmployees = employees.filter((emp) => {
-    if (!isHRorAdmin) {
-      const isSelf =
-        emp.id === currentUser?.id ||
-        (emp.email && currentEmpEmail && emp.email.toLowerCase() === currentEmpEmail.toLowerCase()) ||
-        (currentEmpName && `${emp.firstName} ${emp.lastName}`.toLowerCase().includes(currentEmpName.toLowerCase().split(' ')[0]));
-      if (!isSelf) return false;
+  const filteredEmployees = (employees || []).filter((emp) => {
+    if (!emp) return false;
+    // If not global admin, enforce strict department isolation
+    if (!isGlobalAdmin) {
+      if (emp.department !== userDepartment) return false;
+      if (!isHRorAdmin) {
+        const isSelf =
+          emp.id === currentUser?.id ||
+          (emp.email && currentEmpEmail && emp.email.toLowerCase() === currentEmpEmail.toLowerCase()) ||
+          (currentEmpName && `${emp.firstName} ${emp.lastName}`.toLowerCase().includes(currentEmpName.toLowerCase().split(' ')[0]));
+        if (!isSelf) return false;
+      }
+    } else {
+      if (selectedDept !== 'All' && emp.department !== selectedDept) return false;
+      if (!isHRorAdmin) {
+        const isSelf =
+          emp.id === currentUser?.id ||
+          (emp.email && currentEmpEmail && emp.email.toLowerCase() === currentEmpEmail.toLowerCase()) ||
+          (currentEmpName && `${emp.firstName} ${emp.lastName}`.toLowerCase().includes(currentEmpName.toLowerCase().split(' ')[0]));
+        if (!isSelf) return false;
+      }
     }
     const matchesDept = selectedDept === 'All' || emp.department === selectedDept;
     const matchesSearch =
@@ -340,8 +388,8 @@ export const AttendanceReport: React.FC = () => {
 
   // Calculate Aggregated Metrics for Each Staff Member
   const staffSummaries = filteredEmployees.map((emp) => {
-    const empRecords = attendance.filter(
-      (r) => r.employeeId === emp.id && isInPeriod(r.date, period)
+    const empRecords = (attendance || []).filter(
+      (r) => r && r.employeeId === emp.id && isInPeriod(r.date, period)
     );
 
     let totalWorkedHours = 0;
@@ -1047,20 +1095,29 @@ Directorate of Human Resources, PJPIIMC`;
               </div>
 
               <div className="flex flex-wrap items-center gap-3">
-                {/* Department Selector */}
+                {/* Department Selector / Locked Indicator */}
                 <div>
-                  <label className="block text-[10px] font-extrabold uppercase text-slate-400 mb-1">Department</label>
-                  <select
-                    value={selectedDept}
-                    onChange={(e) => setSelectedDept(e.target.value)}
-                    className="rounded-xl bg-slate-950 border border-slate-800 px-3 py-1.5 text-xs text-white font-bold focus:border-rose-500 focus:outline-none"
-                  >
-                    {departments.map((dept) => (
-                      <option key={dept} value={dept}>
-                        {dept}
-                      </option>
-                    ))}
-                  </select>
+                  <label className="block text-[10px] font-extrabold uppercase text-slate-400 mb-1">
+                    {!isGlobalAdmin ? 'Department Scope' : 'Department'}
+                  </label>
+                  {!isGlobalAdmin ? (
+                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-black">
+                      <Lock className="h-3 w-3 text-emerald-400" />
+                      <span>{userDepartment}</span>
+                    </div>
+                  ) : (
+                    <select
+                      value={selectedDept}
+                      onChange={(e) => setSelectedDept(e.target.value)}
+                      className="rounded-xl bg-slate-950 border border-slate-800 px-3 py-1.5 text-xs text-white font-bold focus:border-rose-500 focus:outline-none"
+                    >
+                      {departments.map((dept) => (
+                        <option key={dept} value={dept}>
+                          {dept}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </div>
 
                 {/* Audit Date Range Preset Selector */}
@@ -1717,17 +1774,24 @@ Directorate of Human Resources, PJPIIMC`;
             />
           </div>
 
-          <select
-            value={selectedDept}
-            onChange={(e) => setSelectedDept(e.target.value)}
-            className="w-full sm:w-auto rounded-xl bg-slate-950 border border-slate-800 px-3 py-2 text-xs text-slate-200 focus:border-emerald-500 focus:outline-none"
-          >
-            {departments.map((d) => (
-              <option key={d} value={d}>
-                {d === 'All' ? 'All Departments' : d}
-              </option>
-            ))}
-          </select>
+          {!isGlobalAdmin ? (
+            <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-black shrink-0">
+              <Lock className="h-3.5 w-3.5 text-emerald-400" />
+              <span>{userDepartment}</span>
+            </div>
+          ) : (
+            <select
+              value={selectedDept}
+              onChange={(e) => setSelectedDept(e.target.value)}
+              className="w-full sm:w-auto rounded-xl bg-slate-950 border border-slate-800 px-3 py-2 text-xs text-slate-200 focus:border-emerald-500 focus:outline-none"
+            >
+              {departments.map((d) => (
+                <option key={d} value={d}>
+                  {d === 'All' ? 'All Departments' : d}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
       </div>
 
@@ -1947,9 +2011,10 @@ Directorate of Human Resources, PJPIIMC`;
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800 text-slate-200">
-                    {attendance
+                    {(attendance || [])
                       .filter(
                         (r) =>
+                          r &&
                           r.employeeId === selectedEmpTimesheet.id &&
                           isInPeriod(r.date, period)
                       )

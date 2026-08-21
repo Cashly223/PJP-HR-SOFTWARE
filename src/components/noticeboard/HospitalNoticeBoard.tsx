@@ -82,17 +82,18 @@ export const HospitalNoticeBoard: React.FC = () => {
     setIsComposeOpen(false);
   };
 
-  const filteredPosts = noticePosts.filter((post) => {
+  const filteredPosts = (noticePosts || []).filter((post) => {
+    if (!post) return false;
     const matchesSearch =
-      post.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      post.content.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      post.authorName.toLowerCase().includes(searchQuery.toLowerCase());
+      (post.title || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (post.content || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (post.authorName || '').toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCategory = selectedCategory === 'All' || post.category === selectedCategory;
     return matchesSearch && matchesCategory;
   });
 
-  const pinnedPosts = filteredPosts.filter((p) => p.isPinned);
-  const regularPosts = filteredPosts.filter((p) => !p.isPinned);
+  const pinnedPosts = filteredPosts.filter((p) => p && p.isPinned);
+  const regularPosts = filteredPosts.filter((p) => p && !p.isPinned);
 
   return (
     <div className="space-y-6">

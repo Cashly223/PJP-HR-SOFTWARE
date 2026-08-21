@@ -1,5 +1,6 @@
 import express from "express";
 import path from "path";
+import fs from "fs";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
@@ -504,6 +505,11 @@ app.post("/api/notifications/send-email", async (req, res) => {
   });
 });
 
+// Health check route
+app.get("/api/health", (_req, res) => {
+  res.json({ status: "ok", timestamp: new Date().toISOString() });
+});
+
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
@@ -512,10 +518,23 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), "dist");
+    const candidates = [
+      path.join(process.cwd(), "dist"),
+      path.join(__dirname, "dist"),
+      __dirname,
+      process.cwd(),
+    ];
+    const distPath = candidates.find((p) => fs.existsSync(path.join(p, "index.html"))) || path.join(process.cwd(), "dist");
+    
+    console.log(`[Production] Serving static files from: ${distPath}`);
     app.use(express.static(distPath));
     app.get("*", (_req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
+      const indexPath = path.join(distPath, "index.html");
+      if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+      } else {
+        res.status(200).send(`<!doctype html><html><head><title>AuraHR Loading</title><meta http-equiv="refresh" content="2"></head><body style="background:#0f172a;color:#fff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;"><h3>Loading AuraHR Application...</h3></body></html>`);
+      }
     });
   }
 

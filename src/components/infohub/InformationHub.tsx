@@ -38,12 +38,13 @@ export const InformationHub: React.FC = () => {
     { id: 'Code of Conduct & Ethics', label: 'Code of Ethics & Patient Care', icon: ShieldCheck },
   ];
 
-  const filteredArticles = infoArticles.filter((art) => {
+  const filteredArticles = (infoArticles || []).filter((art) => {
+    if (!art) return false;
     const matchesSearch =
-      art.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      art.summary.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      art.content.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      art.tags.some((t) => t.toLowerCase().includes(searchQuery.toLowerCase()));
+      (art.title || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (art.summary || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (art.content || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (art.tags || []).some((t) => (t || '').toLowerCase().includes(searchQuery.toLowerCase()));
     const matchesCategory = activeCategory === 'All' || art.category === activeCategory;
     return matchesSearch && matchesCategory;
   });

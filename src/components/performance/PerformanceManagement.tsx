@@ -21,12 +21,18 @@ import {
   BrainCircuit,
   Stethoscope,
   ShieldCheck,
+  FileText,
+  Workflow,
 } from 'lucide-react';
 import { useHrms } from '../../context/HrmsContext';
 import { PerformanceReview, ClinicalCompetency, PerformanceGoal } from '../../types/hrms';
+import { AutomatedAppraisalWorkflow } from './AutomatedAppraisalWorkflow';
 
 export const PerformanceManagement: React.FC = () => {
   const { performanceReviews, employees, addPerformanceReview, updatePerformanceReview, activeRole, currentUser } = useHrms();
+
+  // Active view: 'workflow' (Automated Appraisal Workflow) vs 'competencies' (Clinical Competencies & 360 Feedback)
+  const [activeTab, setActiveTab] = useState<'workflow' | 'competencies'>('workflow');
 
   const isHRorAdmin = ['super_admin', 'facility_head', 'hr_director', 'hr_manager', 'dept_head', 'unit_head'].includes(activeRole);
   const currentEmpName = currentUser?.name || '';
@@ -49,15 +55,17 @@ export const PerformanceManagement: React.FC = () => {
   const [newDevelopmentPlan, setNewDevelopmentPlan] = useState('');
 
   // Stats Calculations
-  const totalReviews = performanceReviews.length;
-  const completedCount = performanceReviews.filter((r) => r.status === 'Completed').length;
-  const inProgressCount = performanceReviews.filter((r) => r.status !== 'Completed').length;
+  const safeReviews = (performanceReviews || []).filter(Boolean);
+  const totalReviews = safeReviews.length;
+  const completedCount = safeReviews.filter((r) => r?.status === 'Completed').length;
+  const inProgressCount = safeReviews.filter((r) => r?.status !== 'Completed').length;
   const avgRating = totalReviews > 0
-    ? (performanceReviews.reduce((acc, r) => acc + r.overallRating, 0) / totalReviews).toFixed(1)
+    ? (safeReviews.reduce((acc, r) => acc + (r?.overallRating || 0), 0) / totalReviews).toFixed(1)
     : '0.0';
 
   // Filtered List
-  const filteredReviews = performanceReviews.filter((r) => {
+  const filteredReviews = safeReviews.filter((r) => {
+    if (!r) return false;
     if (!isHRorAdmin) {
       const isSelf =
         r.employeeId === currentUser?.id ||
@@ -135,65 +143,100 @@ export const PerformanceManagement: React.FC = () => {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-xl font-bold text-white tracking-tight">Clinical Performance & Competency Engine</h1>
+              <h1 className="text-xl font-bold text-white tracking-tight">Clinical Performance & Appraisal System</h1>
               <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/20 px-2.5 py-0.5 text-xs font-semibold text-emerald-400 border border-emerald-500/30">
-                <BrainCircuit className="h-3 w-3" /> 360° Evaluation
+                <BrainCircuit className="h-3 w-3" /> Multi-Tier Cadre Workflow
               </span>
             </div>
             <p className="mt-1 text-xs text-slate-400 max-w-2xl">
-              Track clinical competencies, hospital KPIs, patient satisfaction ratings, 360-degree peer feedback, and SMART professional development goals.
+              Automated multi-tier appraisal approvals, document storage vault, manager notification dispatch, clinical competencies, and completion monitoring.
             </p>
           </div>
         </div>
 
+        <div className="flex items-center gap-2">
+          {activeTab === 'competencies' && (
+            <button
+              onClick={() => setIsModalOpen(true)}
+              className="flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-semibold text-white shadow-lg shadow-emerald-900/30 hover:bg-emerald-500 transition active:scale-95"
+            >
+              <Plus className="h-4 w-4" /> Start Review Form
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Main Navigation Tabs */}
+      <div className="flex items-center gap-2 p-1.5 bg-slate-950 rounded-2xl border border-slate-800">
         <button
-          onClick={() => setIsModalOpen(true)}
-          className="flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-semibold text-white shadow-lg shadow-emerald-900/30 hover:bg-emerald-500 transition active:scale-95"
+          onClick={() => setActiveTab('workflow')}
+          className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-xs font-bold transition-all ${
+            activeTab === 'workflow'
+              ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40'
+              : 'text-slate-400 hover:text-white hover:bg-slate-900'
+          }`}
         >
-          <Plus className="h-4 w-4" /> Start Appraisal Cycle
+          <Workflow className="h-4 w-4 text-emerald-300" />
+          <span>Automated Performance Appraisal Workflow & Document Tracking</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('competencies')}
+          className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-xs font-bold transition-all ${
+            activeTab === 'competencies'
+              ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40'
+              : 'text-slate-400 hover:text-white hover:bg-slate-900'
+          }`}
+        >
+          <FileText className="h-4 w-4 text-emerald-300" />
+          <span>Clinical Competency Scorecards & 360 Reviews</span>
         </button>
       </div>
 
-      {/* KPI Cards Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="rounded-xl bg-slate-900/90 border border-slate-800 p-4">
-          <div className="flex items-center justify-between text-slate-400 text-xs">
-            <span>Average Hospital Score</span>
-            <Star className="h-4 w-4 text-amber-400 fill-amber-400" />
-          </div>
-          <div className="mt-2 text-2xl font-bold text-white flex items-baseline gap-1">
-            {avgRating} <span className="text-xs text-slate-500 font-normal">/ 5.0</span>
-          </div>
-          <p className="mt-1 text-[11px] text-emerald-400/80">Top 5% across hospital network</p>
-        </div>
+      {activeTab === 'workflow' ? (
+        <AutomatedAppraisalWorkflow />
+      ) : (
+        <div className="space-y-6">
+          {/* KPI Cards Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="rounded-xl bg-slate-900/90 border border-slate-800 p-4">
+              <div className="flex items-center justify-between text-slate-400 text-xs">
+                <span>Average Hospital Score</span>
+                <Star className="h-4 w-4 text-amber-400 fill-amber-400" />
+              </div>
+              <div className="mt-2 text-2xl font-bold text-white flex items-baseline gap-1">
+                {avgRating} <span className="text-xs text-slate-500 font-normal">/ 5.0</span>
+              </div>
+              <p className="mt-1 text-[11px] text-emerald-400/80">Top 5% across hospital network</p>
+            </div>
 
-        <div className="rounded-xl bg-slate-900/90 border border-slate-800 p-4">
-          <div className="flex items-center justify-between text-slate-400 text-xs">
-            <span>Appraisals Cycle Count</span>
-            <FileCheck2 className="h-4 w-4 text-slate-400" />
-          </div>
-          <div className="mt-2 text-2xl font-bold text-white">{totalReviews}</div>
-          <p className="mt-1 text-[11px] text-slate-500">Active evaluation cycles</p>
-        </div>
+            <div className="rounded-xl bg-slate-900/90 border border-slate-800 p-4">
+              <div className="flex items-center justify-between text-slate-400 text-xs">
+                <span>Appraisals Cycle Count</span>
+                <FileCheck2 className="h-4 w-4 text-slate-400" />
+              </div>
+              <div className="mt-2 text-2xl font-bold text-white">{totalReviews}</div>
+              <p className="mt-1 text-[11px] text-slate-500">Active evaluation cycles</p>
+            </div>
 
-        <div className="rounded-xl bg-slate-900/90 border border-slate-800 p-4">
-          <div className="flex items-center justify-between text-slate-400 text-xs">
-            <span>Completed Reviews</span>
-            <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-          </div>
-          <div className="mt-2 text-2xl font-bold text-emerald-400">{completedCount}</div>
-          <p className="mt-1 text-[11px] text-emerald-500/80">Signed off & archived</p>
-        </div>
+            <div className="rounded-xl bg-slate-900/90 border border-slate-800 p-4">
+              <div className="flex items-center justify-between text-slate-400 text-xs">
+                <span>Completed Reviews</span>
+                <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+              </div>
+              <div className="mt-2 text-2xl font-bold text-emerald-400">{completedCount}</div>
+              <p className="mt-1 text-[11px] text-emerald-500/80">Signed off & archived</p>
+            </div>
 
-        <div className="rounded-xl bg-slate-900/90 border border-slate-800 p-4">
-          <div className="flex items-center justify-between text-slate-400 text-xs">
-            <span>In Progress / Review</span>
-            <Clock className="h-4 w-4 text-amber-400" />
+            <div className="rounded-xl bg-slate-900/90 border border-slate-800 p-4">
+              <div className="flex items-center justify-between text-slate-400 text-xs">
+                <span>In Progress / Review</span>
+                <Clock className="h-4 w-4 text-amber-400" />
+              </div>
+              <div className="mt-2 text-2xl font-bold text-amber-400">{inProgressCount}</div>
+              <p className="mt-1 text-[11px] text-amber-500/80">Pending manager sign-off</p>
+            </div>
           </div>
-          <div className="mt-2 text-2xl font-bold text-amber-400">{inProgressCount}</div>
-          <p className="mt-1 text-[11px] text-amber-500/80">Pending manager sign-off</p>
-        </div>
-      </div>
 
       {/* Filter & Search Bar */}
       <div className="rounded-xl bg-slate-900/90 border border-slate-800 p-4 flex flex-col md:flex-row gap-3 justify-between items-stretch md:items-center">
@@ -337,6 +380,8 @@ export const PerformanceManagement: React.FC = () => {
           ))
         )}
       </div>
+    </div>
+  )}
 
       {/* START APPRAISAL MODAL */}
       {isModalOpen && (

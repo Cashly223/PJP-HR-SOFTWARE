@@ -52,6 +52,11 @@ import {
   FileUp,
   FolderArchive,
   TrendingUp,
+  ArrowRightLeft,
+  Printer,
+  History,
+  Tag,
+  ArrowRight,
 } from 'lucide-react';
 import { useHrms } from '../../context/HrmsContext';
 import {
@@ -62,11 +67,15 @@ import {
   EmergencyContact,
   OfficialDocument,
   GhanaCardInfo,
+  StaffMovementRecord,
+  EmploymentSource,
+  TransferType,
 } from '../../types/hrms';
 import { DepartmentLeadershipManager } from './DepartmentLeadershipManager';
 import { OrgHierarchyView } from './OrgHierarchyView';
 import { CreateStaffAccountModal } from './CreateStaffAccountModal';
 import { PromotionTrackingDashboard } from './PromotionTrackingDashboard';
+import { StaffTransferRegistry } from './StaffTransferRegistry';
 
 export const EmployeeDirectory: React.FC = () => {
   const {
@@ -84,14 +93,17 @@ export const EmployeeDirectory: React.FC = () => {
     uploadStaffFile,
     deleteStaffFile,
     toggleStaffFilePermission,
+    recordStaffMovement,
   } = useHrms();
 
-  // Active Main View: 'directory' (Cards/Profiles) | 'portal_accounts' (Logins & Portal Invites) | 'leadership' (HOD/HOU Governance) | 'hierarchy' (Interactive Org Chart) | 'promotions' (Staff Promotions & Forecasting)
-  const [activeView, setActiveView] = useState<'directory' | 'portal_accounts' | 'leadership' | 'hierarchy' | 'promotions'>('directory');
+  // Active Main View: 'directory' (Cards/Profiles) | 'portal_accounts' (Logins & Portal Invites) | 'leadership' (HOD/HOU Governance) | 'hierarchy' (Interactive Org Chart) | 'promotions' (Staff Promotions & Forecasting) | 'transfers' (Staff Transfers & Movement Registry)
+  const [activeView, setActiveView] = useState<'directory' | 'portal_accounts' | 'leadership' | 'hierarchy' | 'promotions' | 'transfers'>('directory');
 
   const [searchTerm, setSearchTerm] = useState('');
   const [deptFilter, setDeptFilter] = useState('All');
   const [inviteStatusFilter, setInviteStatusFilter] = useState('All');
+  const [sourceFilter, setSourceFilter] = useState<string>('All');
+  const [transferTypeFilter, setTransferTypeFilter] = useState<string>('All');
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isCreateHrAccountModalOpen, setIsCreateHrAccountModalOpen] = useState(false);
@@ -99,12 +111,40 @@ export const EmployeeDirectory: React.FC = () => {
   // EDIT EMPLOYEE STATE
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
   const [editActiveTab, setEditActiveTab] = useState<
-    'general' | 'documents' | 'education' | 'contacts' | 'employment' | 'licenses' | 'health'
+    'general' | 'documents' | 'education' | 'contacts' | 'employment' | 'movements' | 'licenses' | 'health'
   >('general');
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
 
+  // Quick Movement State inside Edit Modal
+  const [newMovementForm, setNewMovementForm] = useState<{
+    transferType: TransferType;
+    employmentSource: EmploymentSource;
+    previousDepartment: string;
+    newDepartment: string;
+    previousPosition: string;
+    newPosition: string;
+    effectiveDate: string;
+    previousOrganisation: string;
+    reason: string;
+    approvingAuthority: string;
+    referenceNumber: string;
+  }>({
+    transferType: 'Internal Transfer',
+    employmentSource: 'Transfer',
+    previousDepartment: '',
+    newDepartment: '',
+    previousPosition: '',
+    newPosition: '',
+    effectiveDate: new Date().toISOString().split('T')[0],
+    previousOrganisation: 'PJPIIMC Central',
+    reason: 'Operational rotation & clinical staff re-allocation',
+    approvingAuthority: 'Dr. Kwame Boateng (Chief Medical Officer)',
+    referenceNumber: `TRF-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
+  });
+  const [showAddMovementFormInModal, setShowAddMovementFormInModal] = useState(false);
+
   // DIGITAL FILE DOSSIER MODAL STATE
-  const [digitalFileActiveTab, setDigitalFileActiveTab] = useState<'documents' | 'overview' | 'licenses'>('documents');
+  const [digitalFileActiveTab, setDigitalFileActiveTab] = useState<'documents' | 'overview' | 'transfers' | 'licenses'>('documents');
   const [quickDocTitle, setQuickDocTitle] = useState('');
   const [quickDocCategory, setQuickDocCategory] = useState<OfficialDocument['type']>('Appointment Letter');
   const [quickDocFileName, setQuickDocFileName] = useState('');
@@ -314,12 +354,15 @@ export const EmployeeDirectory: React.FC = () => {
     sendInviteNow: true,
   });
 
-  const filteredEmployees = employees.filter((e) => {
+  const filteredEmployees = (employees || []).filter((e) => {
+    if (!e) return false;
     const matchesSearch =
-      `${e.firstName} ${e.lastName} ${e.empCode} ${e.email} ${e.jobTitle}`
+      `${e.firstName || ''} ${e.lastName || ''} ${e.empCode || ''} ${e.email || ''} ${e.jobTitle || ''} ${e.previousOrganisation || ''} ${e.previousPosition || ''} ${e.previousDepartment || ''} ${e.transferReferenceNumber || ''}`
         .toLowerCase()
         .includes(searchTerm.toLowerCase());
     const matchesDept = deptFilter === 'All' || e.department === deptFilter;
+    const matchesSource = sourceFilter === 'All' || e.employmentSource === sourceFilter;
+    const matchesTransferType = transferTypeFilter === 'All' || e.transferType === transferTypeFilter;
 
     let matchesInvite = true;
     if (inviteStatusFilter === 'Sent') {
@@ -330,7 +373,7 @@ export const EmployeeDirectory: React.FC = () => {
       matchesInvite = !e.portalAccess || e.portalAccess?.inviteStatus === 'Not Invited';
     }
 
-    return matchesSearch && matchesDept && matchesInvite;
+    return matchesSearch && matchesDept && matchesSource && matchesTransferType && matchesInvite;
   });
 
   const handleCreateEmployee = async (e: React.FormEvent) => {
@@ -398,6 +441,20 @@ export const EmployeeDirectory: React.FC = () => {
     setEditingEmployee(JSON.parse(JSON.stringify(emp)));
     setEditActiveTab('general');
     setSaveSuccessMsg(null);
+    setShowAddMovementFormInModal(false);
+    setNewMovementForm({
+      transferType: emp.transferType || 'Internal Transfer',
+      employmentSource: emp.employmentSource || 'Transfer',
+      previousDepartment: emp.department || '',
+      newDepartment: emp.department || '',
+      previousPosition: emp.jobTitle || '',
+      newPosition: emp.jobTitle || '',
+      effectiveDate: new Date().toISOString().split('T')[0],
+      previousOrganisation: emp.previousOrganisation || 'PJPIIMC Central',
+      reason: 'Operational rotation & clinical staffing realignment',
+      approvingAuthority: 'Dr. Kwame Boateng (Chief Medical Officer)',
+      referenceNumber: `TRF-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
+    });
   };
 
   const handleSaveEmployeeEdits = (e: React.FormEvent) => {
@@ -417,6 +474,65 @@ export const EmployeeDirectory: React.FC = () => {
       setSaveSuccessMsg(null);
       setEditingEmployee(null);
     }, 1200);
+  };
+
+  // RECORD MOVEMENT INSIDE EDIT MODAL
+  const handleAddMovementInEditModal = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingEmployee) return;
+
+    const record: StaffMovementRecord = {
+      id: `mov-${Date.now()}`,
+      employeeId: editingEmployee.id,
+      employeeName: `${editingEmployee.firstName} ${editingEmployee.lastName}`,
+      empCode: editingEmployee.empCode,
+      transferType: newMovementForm.transferType,
+      employmentSource: newMovementForm.employmentSource,
+      previousDepartment: newMovementForm.previousDepartment || editingEmployee.department,
+      newDepartment: newMovementForm.newDepartment,
+      previousPosition: newMovementForm.previousPosition || editingEmployee.jobTitle,
+      newPosition: newMovementForm.newPosition,
+      previousOrganisation: newMovementForm.previousOrganisation,
+      effectiveDate: newMovementForm.effectiveDate,
+      reason: newMovementForm.reason,
+      approvingAuthority: newMovementForm.approvingAuthority,
+      referenceNumber: newMovementForm.referenceNumber,
+      recordedAt: new Date().toISOString(),
+      recordedBy: 'HR Administration',
+      status: 'Completed',
+    };
+
+    const updatedHistory = [record, ...(editingEmployee.movementHistory || [])];
+    const updatedEmp: Employee = {
+      ...editingEmployee,
+      department: newMovementForm.newDepartment || editingEmployee.department,
+      currentDepartment: newMovementForm.newDepartment || editingEmployee.department,
+      jobTitle: newMovementForm.newPosition || editingEmployee.jobTitle,
+      currentPosition: newMovementForm.newPosition || editingEmployee.jobTitle,
+      transferType: newMovementForm.transferType,
+      employmentSource: newMovementForm.employmentSource,
+      previousDepartment: newMovementForm.previousDepartment,
+      previousPosition: newMovementForm.previousPosition,
+      previousOrganisation: newMovementForm.previousOrganisation,
+      transferDate: newMovementForm.effectiveDate,
+      transferReferenceNumber: newMovementForm.referenceNumber,
+      movementHistory: updatedHistory,
+    };
+
+    setEditingEmployee(updatedEmp);
+    recordStaffMovement(record);
+    setShowAddMovementFormInModal(false);
+    showToast('success', 'Movement History Recorded', `Logged movement for ${editingEmployee.firstName} to ${newMovementForm.newDepartment}`);
+  };
+
+  const handleRemoveMovementFromEdit = (movId: string) => {
+    if (!editingEmployee) return;
+    const filtered = (editingEmployee.movementHistory || []).filter((m) => m.id !== movId);
+    setEditingEmployee({
+      ...editingEmployee,
+      movementHistory: filtered,
+    });
+    showToast('info', 'Movement Record Removed', 'Movement log removed from this employee profile.');
   };
 
   // PHOTO FILE UPLOAD HANDLER
@@ -743,7 +859,7 @@ export const EmployeeDirectory: React.FC = () => {
     if (!editingEmployee) return;
     setEditingEmployee({
       ...editingEmployee,
-      medicalLicenses: editingEmployee.medicalLicenses.filter((l) => l.id !== licId),
+      medicalLicenses: (editingEmployee.medicalLicenses || []).filter((l) => l && l.id !== licId),
     });
   };
 
@@ -824,101 +940,156 @@ export const EmployeeDirectory: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Header Bar */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between rounded-2xl bg-gradient-to-r from-slate-900 via-slate-900 to-indigo-950 p-6 border border-slate-800 text-white shadow-xl">
-        <div className="flex items-start gap-4">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
-            <Users className="h-6 w-6" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-xl font-bold tracking-tight text-white">
-                Healthcare Staff Directory & HR File Management
-              </h2>
-              <span className="rounded-full bg-emerald-500/20 px-2.5 py-0.5 text-xs font-semibold text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
-                <Pencil className="h-3 w-3" /> HR Edit Access Enabled
-              </span>
+      <div className="rounded-2xl bg-gradient-to-r from-slate-900 via-slate-900 to-indigo-950 p-6 border border-slate-800 text-white shadow-xl space-y-5">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+          <div className="flex items-start gap-4">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+              <Users className="h-6 w-6" />
             </div>
-            <p className="mt-1 text-xs text-slate-400 max-w-2xl">
-              HR administrators have full access to edit employee personal details, job titles, departments, salaries, medical licenses, compliance files, and portal credentials.
-            </p>
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-xl font-bold tracking-tight text-white">
+                  Healthcare Staff Directory & HR File Management
+                </h2>
+                <span className="rounded-full bg-emerald-500/20 px-2.5 py-0.5 text-xs font-semibold text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                  <Pencil className="h-3 w-3" /> HR Edit Access Enabled
+                </span>
+              </div>
+              <p className="mt-1 text-xs text-slate-400 max-w-3xl">
+                HR administrators have full access to edit employee personal details, job titles, departments, salaries, medical licenses, compliance files, movement history, and portal credentials.
+              </p>
+            </div>
+          </div>
+
+          {/* Quick Metrics Badge */}
+          <div className="flex items-center gap-3 self-start lg:self-auto bg-slate-950/80 px-4 py-2 rounded-xl border border-slate-800 text-xs">
+            <div className="flex items-center gap-1.5 text-slate-300">
+              <span className="text-slate-500">Total Staff:</span>
+              <strong className="text-white font-bold">{employees.length}</strong>
+            </div>
+            <span className="text-slate-700">|</span>
+            <div className="flex items-center gap-1.5 text-emerald-400">
+              <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse"></span>
+              <span className="font-semibold">{selectedHospital?.name || 'Main Hospital'}</span>
+            </div>
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-          {/* Main Navigation Tabs */}
-          <div className="flex items-center overflow-x-auto max-w-full bg-slate-950 p-1 rounded-xl border border-slate-800 scrollbar-thin">
+        {/* Navigation Tabs and Actions Bar */}
+        <div className="flex flex-col xl:flex-row items-stretch xl:items-center justify-between gap-3 pt-3 border-t border-slate-800/80">
+          {/* Navigation Items (Tabs) */}
+          <nav className="flex items-center overflow-x-auto p-1.5 bg-slate-950 rounded-xl border border-slate-800 scrollbar-thin gap-1">
             <button
+              id="tab-staff-profiles"
               onClick={() => setActiveView('directory')}
-              className={`px-3 py-2 rounded-lg text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap ${
+              className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 whitespace-nowrap ${
                 activeView === 'directory'
-                  ? 'bg-emerald-600 text-white shadow'
-                  : 'text-slate-400 hover:text-white'
+                  ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/30'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-900'
               }`}
             >
-              <Users className="h-4 w-4" /> Staff Profiles & Files
+              <Users className="h-4 w-4 text-emerald-400" />
+              <span>Staff Profiles & Files</span>
             </button>
+
             <button
+              id="tab-portal-logins"
               onClick={() => setActiveView('portal_accounts')}
-              className={`px-3 py-2 rounded-lg text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap ${
+              className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 whitespace-nowrap ${
                 activeView === 'portal_accounts'
-                  ? 'bg-indigo-600 text-white shadow'
-                  : 'text-slate-400 hover:text-white'
+                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-900/30'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-900'
               }`}
             >
-              <Key className="h-4 w-4 text-indigo-300" /> Portal Logins & Invites
+              <Key className="h-4 w-4 text-indigo-400" />
+              <span>Portal Logins & Invites</span>
             </button>
+
             <button
+              id="tab-dept-leadership"
               onClick={() => setActiveView('leadership')}
-              className={`px-3 py-2 rounded-lg text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap ${
+              className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 whitespace-nowrap ${
                 activeView === 'leadership'
-                  ? 'bg-amber-600 text-white shadow'
-                  : 'text-slate-400 hover:text-white'
+                  ? 'bg-amber-600 text-white shadow-md shadow-amber-900/30'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-900'
               }`}
             >
-              <Crown className="h-4 w-4 text-amber-300" /> Department & Unit Leadership
+              <Crown className="h-4 w-4 text-amber-400" />
+              <span>Department & Unit Leadership</span>
             </button>
+
             <button
+              id="tab-promotions-tracking"
               onClick={() => setActiveView('promotions')}
-              className={`px-3 py-2 rounded-lg text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap ${
+              className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 whitespace-nowrap ${
                 activeView === 'promotions'
-                  ? 'bg-purple-600 text-white shadow'
-                  : 'text-slate-400 hover:text-white'
+                  ? 'bg-purple-600 text-white shadow-md shadow-purple-900/30'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-900'
               }`}
             >
-              <TrendingUp className="h-4 w-4 text-purple-300" /> Promotion Tracking Dashboard (3y/5y)
+              <TrendingUp className="h-4 w-4 text-purple-400" />
+              <span>Promotion Tracking (3y/5y)</span>
             </button>
+
             <button
-              onClick={() => setActiveView('hierarchy')}
-              className={`px-3 py-2 rounded-lg text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap ${
-                activeView === 'hierarchy'
-                  ? 'bg-emerald-600 text-white shadow'
-                  : 'text-slate-400 hover:text-white'
+              id="tab-transfers-history"
+              onClick={() => setActiveView('transfers')}
+              className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 whitespace-nowrap ${
+                activeView === 'transfers'
+                  ? 'bg-teal-600 text-white shadow-md shadow-teal-900/30'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-900'
               }`}
             >
-              <GitFork className="h-4 w-4 text-emerald-300" /> Org Hierarchy Tree
+              <ArrowRightLeft className="h-4 w-4 text-teal-400" />
+              <span>Staff Transfers & Movement History</span>
+            </button>
+
+            <button
+              id="tab-org-hierarchy"
+              onClick={() => setActiveView('hierarchy')}
+              className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 whitespace-nowrap ${
+                activeView === 'hierarchy'
+                  ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/30'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-900'
+              }`}
+            >
+              <GitFork className="h-4 w-4 text-emerald-400" />
+              <span>Org Hierarchy Tree</span>
+            </button>
+          </nav>
+
+          {/* Action Buttons Group */}
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <button
+              id="btn-add-department"
+              onClick={() => setActiveView('leadership')}
+              className="flex items-center gap-2 rounded-xl bg-amber-600 hover:bg-amber-500 px-3.5 py-2 text-xs font-bold text-white shadow transition active:scale-95 border border-amber-400/30 whitespace-nowrap"
+              title="Open Department & Unit Leadership to manage or add departments"
+            >
+              <Building2 className="h-4 w-4 text-amber-200" />
+              <span>(ADD DEPARTMENT)</span>
+            </button>
+
+            <button
+              id="btn-provision-staff-account"
+              onClick={() => setIsCreateHrAccountModalOpen(true)}
+              className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 px-3.5 py-2 text-xs font-bold text-white shadow transition active:scale-95 border border-indigo-400/30 whitespace-nowrap"
+              title="Provision staff self-service portal credentials with HR controls"
+            >
+              <UserPlus className="h-4 w-4 text-indigo-200" />
+              <span>Provision Staff Account (HR)</span>
+            </button>
+
+            <button
+              id="btn-add-staff-profile"
+              onClick={() => setIsAddModalOpen(true)}
+              className="flex items-center gap-2 rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white shadow hover:bg-emerald-500 transition active:scale-95 border border-emerald-400/30 whitespace-nowrap"
+              title="Create a new comprehensive healthcare employee profile"
+            >
+              <Plus className="h-4 w-4 text-emerald-200" />
+              <span>Add Staff Profile</span>
             </button>
           </div>
-
-          <button
-            onClick={() => setActiveView('leadership')}
-            className="flex items-center gap-2 rounded-xl bg-amber-600 hover:bg-amber-500 px-3.5 py-2 text-xs font-bold text-white shadow transition active:scale-95 border border-amber-400/30 whitespace-nowrap"
-          >
-            <Building2 className="h-4 w-4" /> (ADD DEPARTMENT)
-          </button>
-
-          <button
-            onClick={() => setIsCreateHrAccountModalOpen(true)}
-            className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 px-3.5 py-2 text-xs font-bold text-white shadow transition active:scale-95 border border-indigo-400/30 whitespace-nowrap"
-          >
-            <UserPlus className="h-4 w-4" /> Provision Staff Account (HR)
-          </button>
-
-          <button
-            onClick={() => setIsAddModalOpen(true)}
-            className="flex items-center gap-2 rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-semibold text-white shadow hover:bg-emerald-500 transition active:scale-95 whitespace-nowrap"
-          >
-            <Plus className="h-4 w-4" /> Add Staff Profile
-          </button>
         </div>
       </div>
 
@@ -1202,6 +1373,14 @@ export const EmployeeDirectory: React.FC = () => {
         <PromotionTrackingDashboard onSelectEmployee={(emp) => setSelectedEmployee(emp)} />
       )}
 
+      {/* VIEW 6: STAFF TRANSFERS & MOVEMENT REGISTRY */}
+      {activeView === 'transfers' && (
+        <StaffTransferRegistry
+          onSelectEmployee={(emp) => setSelectedEmployee(emp)}
+          onEditEmployee={(emp) => handleOpenEditModal(emp)}
+        />
+      )}
+
       {/* VIEW 1: STANDARD DIRECTORY CARDS VIEW */}
       {activeView === 'directory' && (
         <div className="space-y-6">
@@ -1211,7 +1390,7 @@ export const EmployeeDirectory: React.FC = () => {
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
               <input
                 type="text"
-                placeholder="Search by name, code (DOC-1001), email, or title..."
+                placeholder="Search by name, code (DOC-1001), previous organisation, or role..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full rounded-xl border border-slate-200 pl-9 pr-4 py-2 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
@@ -1237,11 +1416,38 @@ export const EmployeeDirectory: React.FC = () => {
               </div>
 
               <select
+                value={sourceFilter}
+                onChange={(e) => setSourceFilter(e.target.value)}
+                className="rounded-xl border border-slate-200 px-3 py-2 text-xs text-slate-700 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                title="Filter by Employment Induction Source"
+              >
+                <option value="All">All Employment Sources</option>
+                <option value="New Hire">New Hire</option>
+                <option value="Transfer">Transfer</option>
+                <option value="Promotion">Promotion</option>
+                <option value="Reappointment">Reappointment</option>
+                <option value="National Service">National Service</option>
+                <option value="Other">Other</option>
+              </select>
+
+              <select
+                value={transferTypeFilter}
+                onChange={(e) => setTransferTypeFilter(e.target.value)}
+                className="rounded-xl border border-slate-200 px-3 py-2 text-xs text-slate-700 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                title="Filter by Transfer Classification"
+              >
+                <option value="All">All Transfer Types</option>
+                <option value="Internal Transfer">Internal Transfer</option>
+                <option value="External Transfer">External Transfer</option>
+                <option value="Departmental Redeployment">Redeployment</option>
+              </select>
+
+              <select
                 value={inviteStatusFilter}
                 onChange={(e) => setInviteStatusFilter(e.target.value)}
                 className="rounded-xl border border-slate-200 px-3 py-2 text-xs text-slate-700 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
               >
-                <option value="All">All Portal Access Statuses</option>
+                <option value="All">All Portal Statuses</option>
                 <option value="Sent">Invitation Sent</option>
                 <option value="Activated">Portal Activated</option>
                 <option value="Not Invited">Not Invited</option>
@@ -1252,9 +1458,9 @@ export const EmployeeDirectory: React.FC = () => {
           {/* Employee Cards Grid */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {filteredEmployees.map((emp) => {
-              const activeLicenses = emp.medicalLicenses.filter((l) => l.status === 'Active').length;
-              const expiringLicenses = emp.medicalLicenses.filter(
-                (l) => l.status === 'Expiring Soon' || l.status === 'Expired'
+              const activeLicenses = (emp.medicalLicenses || []).filter((l) => l && l.status === 'Active').length;
+              const expiringLicenses = (emp.medicalLicenses || []).filter(
+                (l) => l && (l.status === 'Expiring Soon' || l.status === 'Expired')
               ).length;
               const portalUsername = emp.portalAccess?.username || emp.email;
 
@@ -1281,9 +1487,20 @@ export const EmployeeDirectory: React.FC = () => {
                           <p className="text-[10px] text-slate-400">{emp.department}</p>
                         </div>
                       </div>
-                      <span className="rounded-lg bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                        {emp.empCode}
-                      </span>
+                      <div className="flex flex-col items-end gap-1">
+                        <span className="rounded-lg bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                          {emp.empCode}
+                        </span>
+                        {emp.employmentSource === 'Transfer' ? (
+                          <span className="rounded-lg bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
+                            <ArrowRightLeft className="h-3 w-3" /> {emp.transferType || 'Transfer'}
+                          </span>
+                        ) : emp.employmentSource && emp.employmentSource !== 'New Hire' ? (
+                          <span className="rounded-lg bg-indigo-500/10 px-2 py-0.5 text-[10px] font-bold text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
+                            {emp.employmentSource}
+                          </span>
+                        ) : null}
+                      </div>
                     </div>
 
                     <div className="mt-4 space-y-1.5 border-t border-slate-100 pt-3 text-xs text-slate-600 dark:border-slate-800 dark:text-slate-300">
@@ -1295,6 +1512,14 @@ export const EmployeeDirectory: React.FC = () => {
                         <Phone className="h-3.5 w-3.5 text-slate-400" />
                         <span>{emp.phone}</span>
                       </div>
+                      {emp.previousOrganisation && (
+                        <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/40 p-1.5 rounded-lg border border-slate-100 dark:border-slate-800">
+                          <Building2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+                          <span className="truncate">
+                            Prev: <strong className="text-slate-700 dark:text-slate-200">{emp.previousOrganisation}</strong> ({emp.previousPosition || emp.previousDepartment})
+                          </span>
+                        </div>
+                      )}
                     </div>
 
                     {/* Portal Login Credentials Info Box */}
@@ -1475,7 +1700,19 @@ export const EmployeeDirectory: React.FC = () => {
                     : 'border-transparent text-slate-400 hover:text-slate-200'
                 }`}
               >
-                <Briefcase className="h-4 w-4" /> Position & Compensation
+                <Briefcase className="h-4 w-4" /> Position & Employment Info
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setEditActiveTab('movements')}
+                className={`pb-3 pt-2 px-3 border-b-2 flex items-center gap-1.5 whitespace-nowrap transition ${
+                  editActiveTab === 'movements'
+                    ? 'border-emerald-500 text-emerald-400 font-extrabold'
+                    : 'border-transparent text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <ArrowRightLeft className="h-4 w-4 text-emerald-400" /> Transfers & Movements ({editingEmployee.movementHistory?.length || 0})
               </button>
 
               <button
@@ -2383,98 +2620,545 @@ export const EmployeeDirectory: React.FC = () => {
                 </div>
               )}
 
-              {/* TAB 5: POSITION & COMPENSATION */}
+              {/* TAB 5: POSITION & EMPLOYMENT INFORMATION */}
               {editActiveTab === 'employment' && (
-                <div className="space-y-4">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-slate-300 font-semibold mb-1">Job Title / Designation</label>
-                      <input
-                        type="text"
-                        required
-                        value={editingEmployee.jobTitle}
-                        onChange={(e) =>
-                          setEditingEmployee({ ...editingEmployee, jobTitle: e.target.value })
-                        }
-                        className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-slate-200 focus:border-emerald-500 focus:outline-none font-semibold text-emerald-400"
-                      />
+                <div className="space-y-5">
+                  <div className="rounded-2xl bg-slate-950/60 p-4 border border-slate-800 space-y-4">
+                    <div className="flex items-center justify-between border-b border-slate-800/80 pb-2">
+                      <h4 className="font-bold text-slate-200 text-xs flex items-center gap-2">
+                        <Briefcase className="h-4 w-4 text-emerald-400" />
+                        Current Position & Department Placement
+                      </h4>
+                      <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/60 border border-emerald-500/20 px-2 py-0.5 rounded">
+                        Active Assignment
+                      </span>
                     </div>
 
-                    <div>
-                      <label className="block text-slate-300 font-semibold mb-1">Department</label>
-                      <select
-                        value={editingEmployee.department}
-                        onChange={(e) =>
-                          setEditingEmployee({ ...editingEmployee, department: e.target.value })
-                        }
-                        className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-slate-200 focus:border-emerald-500 focus:outline-none font-medium"
-                      >
-                        <option value="Intensive Care Unit (ICU)">Intensive Care Unit (ICU)</option>
-                        <option value="Cardiology & Intensive Care">Cardiology & ICU</option>
-                        <option value="Emergency & Trauma">Emergency & Trauma</option>
-                        <option value="Human Resources & Workforce">Human Resources</option>
-                        <option value="Surgical Services & OT">Surgical Services & OT</option>
-                        <option value="Pharmacy & Clinical Pharmacology">Pharmacy</option>
-                      </select>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-slate-300 font-semibold mb-1">Current Position / Designation</label>
+                        <input
+                          type="text"
+                          required
+                          value={editingEmployee.currentPosition || editingEmployee.jobTitle}
+                          onChange={(e) =>
+                            setEditingEmployee({
+                              ...editingEmployee,
+                              jobTitle: e.target.value,
+                              currentPosition: e.target.value,
+                            })
+                          }
+                          className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-slate-200 focus:border-emerald-500 focus:outline-none font-semibold text-emerald-400"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-slate-300 font-semibold mb-1">Current Department / Unit</label>
+                        <select
+                          value={editingEmployee.currentDepartment || editingEmployee.department}
+                          onChange={(e) =>
+                            setEditingEmployee({
+                              ...editingEmployee,
+                              department: e.target.value,
+                              currentDepartment: e.target.value,
+                            })
+                          }
+                          className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-slate-200 focus:border-emerald-500 focus:outline-none font-medium"
+                        >
+                          <option value="Intensive Care Unit (ICU)">Intensive Care Unit (ICU)</option>
+                          <option value="Cardiology & Intensive Care">Cardiology & ICU</option>
+                          <option value="Emergency & Trauma">Emergency & Trauma</option>
+                          <option value="Human Resources & Workforce">Human Resources & Workforce</option>
+                          <option value="Surgical Services & OT">Surgical Services & OT</option>
+                          <option value="Pharmacy & Clinical Pharmacology">Pharmacy & Pharmacology</option>
+                          <option value="Internal Medicine & Subspecialties">Internal Medicine</option>
+                          <option value="Pediatrics & Child Health">Pediatrics & Child Health</option>
+                          <option value="Obstetrics & Gynaecology">Obstetrics & Gynaecology</option>
+                          <option value="Laboratory & Pathology">Laboratory & Pathology</option>
+                          <option value="Radiology & Medical Imaging">Radiology & Medical Imaging</option>
+                          <option value="Finance & Accounts">Finance & Accounts</option>
+                          <option value="Estates & Facilities">Estates & Facilities</option>
+                        </select>
+                      </div>
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-slate-300 font-semibold mb-1">Monthly Base Salary ($)</label>
-                      <input
-                        type="number"
-                        required
-                        value={editingEmployee.salary}
-                        onChange={(e) =>
-                          setEditingEmployee({ ...editingEmployee, salary: Number(e.target.value) })
-                        }
-                        className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-slate-200 focus:border-emerald-500 focus:outline-none font-bold text-amber-300"
-                      />
+                  {/* Employment Induction & Source */}
+                  <div className="rounded-2xl bg-slate-950/60 p-4 border border-slate-800 space-y-4">
+                    <div className="flex items-center justify-between border-b border-slate-800/80 pb-2">
+                      <h4 className="font-bold text-slate-200 text-xs flex items-center gap-2">
+                        <Tag className="h-4 w-4 text-indigo-400" />
+                        Employment Source & Transfer Classification
+                      </h4>
+                      <span className="text-[10px] text-slate-400">
+                        Governs appointment records & background history
+                      </span>
                     </div>
 
-                    <div>
-                      <label className="block text-slate-300 font-semibold mb-1">Employment Join Date</label>
-                      <input
-                        type="date"
-                        value={editingEmployee.joinDate}
-                        onChange={(e) =>
-                          setEditingEmployee({ ...editingEmployee, joinDate: e.target.value })
-                        }
-                        className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-slate-200 focus:border-emerald-500 focus:outline-none font-medium"
-                      />
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-slate-300 font-semibold mb-1">
+                          Employment Source <span className="text-rose-400">*</span>
+                        </label>
+                        <select
+                          value={editingEmployee.employmentSource || 'New Hire'}
+                          onChange={(e) => {
+                            const val = e.target.value as EmploymentSource;
+                            setEditingEmployee({
+                              ...editingEmployee,
+                              employmentSource: val,
+                              transferType: val === 'Transfer' ? (editingEmployee.transferType || 'Internal Transfer') : editingEmployee.transferType,
+                            });
+                          }}
+                          className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-slate-200 focus:border-emerald-500 focus:outline-none font-bold text-indigo-300"
+                        >
+                          <option value="New Hire">New Hire</option>
+                          <option value="Transfer">Transfer</option>
+                          <option value="Promotion">Promotion</option>
+                          <option value="Reappointment">Reappointment</option>
+                          <option value="National Service">National Service</option>
+                          <option value="Other">Other</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-slate-300 font-semibold mb-1">Transfer Type Classification</label>
+                        <select
+                          value={editingEmployee.transferType || 'Internal Transfer'}
+                          onChange={(e) =>
+                            setEditingEmployee({
+                              ...editingEmployee,
+                              transferType: e.target.value as TransferType,
+                            })
+                          }
+                          className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-slate-200 focus:border-emerald-500 focus:outline-none font-medium"
+                        >
+                          <option value="Internal Transfer">Internal Transfer</option>
+                          <option value="External Transfer">External Transfer</option>
+                          <option value="Departmental Redeployment">Departmental Redeployment</option>
+                        </select>
+                      </div>
                     </div>
+
+                    {/* DYNAMIC CONDITIONAL TRANSFER DETAILS - Auto shown if Employment Source is Transfer */}
+                    {editingEmployee.employmentSource === 'Transfer' && (
+                      <div className="mt-4 p-4 rounded-xl bg-emerald-950/20 border-2 border-emerald-500/40 space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <ArrowRightLeft className="h-4 w-4 text-emerald-400" />
+                            <span className="font-bold text-emerald-300 text-xs">
+                              Transfer & Previous Employment Information (Active Transfer Record)
+                            </span>
+                          </div>
+                          <span className="bg-emerald-500/20 text-emerald-300 text-[10px] font-bold px-2 py-0.5 rounded border border-emerald-500/30">
+                            Transfer Verified
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                          <div>
+                            <label className="block text-slate-300 font-semibold mb-1">Previous Organisation</label>
+                            <input
+                              type="text"
+                              placeholder="e.g. Korle-Bu Teaching Hospital / 37 Military"
+                              value={editingEmployee.previousOrganisation || ''}
+                              onChange={(e) =>
+                                setEditingEmployee({ ...editingEmployee, previousOrganisation: e.target.value })
+                              }
+                              className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-slate-200 focus:border-emerald-500 focus:outline-none"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-slate-300 font-semibold mb-1">Previous Position</label>
+                            <input
+                              type="text"
+                              placeholder="e.g. Senior Medical Officer / Staff Nurse"
+                              value={editingEmployee.previousPosition || ''}
+                              onChange={(e) =>
+                                setEditingEmployee({ ...editingEmployee, previousPosition: e.target.value })
+                              }
+                              className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-slate-200 focus:border-emerald-500 focus:outline-none"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-slate-300 font-semibold mb-1">Previous Department / Unit</label>
+                            <input
+                              type="text"
+                              placeholder="e.g. Accident & Emergency / ICU"
+                              value={editingEmployee.previousDepartment || ''}
+                              onChange={(e) =>
+                                setEditingEmployee({ ...editingEmployee, previousDepartment: e.target.value })
+                              }
+                              className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-slate-200 focus:border-emerald-500 focus:outline-none"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-slate-300 font-semibold mb-1">Transfer Date</label>
+                            <input
+                              type="date"
+                              value={editingEmployee.transferDate || ''}
+                              onChange={(e) =>
+                                setEditingEmployee({ ...editingEmployee, transferDate: e.target.value })
+                              }
+                              className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-slate-200 focus:border-emerald-500 focus:outline-none"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-slate-300 font-semibold mb-1">
+                              Transfer / Appointment Reference Number
+                            </label>
+                            <input
+                              type="text"
+                              placeholder="e.g. TRF-2024-9182 / APPT-MOH-339"
+                              value={editingEmployee.transferReferenceNumber || ''}
+                              onChange={(e) =>
+                                setEditingEmployee({ ...editingEmployee, transferReferenceNumber: e.target.value })
+                              }
+                              className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-slate-200 focus:border-emerald-500 focus:outline-none font-mono text-emerald-400"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-slate-300 font-semibold mb-1">Bank Account IBAN / Number</label>
-                      <input
-                        type="text"
-                        value={editingEmployee.bankAccount || ''}
-                        onChange={(e) =>
-                          setEditingEmployee({ ...editingEmployee, bankAccount: e.target.value })
-                        }
-                        className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-slate-200 focus:border-emerald-500 focus:outline-none font-mono"
-                      />
+                  {/* Key Milestone Dates & Financials */}
+                  <div className="rounded-2xl bg-slate-950/60 p-4 border border-slate-800 space-y-4">
+                    <h4 className="font-bold text-slate-200 text-xs border-b border-slate-800/80 pb-2 flex items-center gap-2">
+                      <Calendar className="h-4 w-4 text-amber-400" />
+                      Tenure Dates & Financial Compensation
+                    </h4>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-slate-300 font-semibold mb-1">Date Joined PJPIIMC</label>
+                        <input
+                          type="date"
+                          value={editingEmployee.dateJoinedPjpiimc || editingEmployee.joinDate || ''}
+                          onChange={(e) =>
+                            setEditingEmployee({
+                              ...editingEmployee,
+                              joinDate: e.target.value,
+                              dateJoinedPjpiimc: e.target.value,
+                            })
+                          }
+                          className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-slate-200 focus:border-emerald-500 focus:outline-none font-medium"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-slate-300 font-semibold mb-1">Original Hire Date</label>
+                        <input
+                          type="date"
+                          value={editingEmployee.originalHireDate || editingEmployee.joinDate || ''}
+                          onChange={(e) =>
+                            setEditingEmployee({
+                              ...editingEmployee,
+                              originalHireDate: e.target.value,
+                            })
+                          }
+                          className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-slate-200 focus:border-emerald-500 focus:outline-none font-medium"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-slate-300 font-semibold mb-1">Monthly Base Salary ($)</label>
+                        <input
+                          type="number"
+                          required
+                          value={editingEmployee.salary}
+                          onChange={(e) =>
+                            setEditingEmployee({ ...editingEmployee, salary: Number(e.target.value) })
+                          }
+                          className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-slate-200 focus:border-emerald-500 focus:outline-none font-bold text-amber-300"
+                        />
+                      </div>
                     </div>
 
-                    <div>
-                      <label className="block text-slate-300 font-semibold mb-1">Tax Registration ID</label>
-                      <input
-                        type="text"
-                        value={editingEmployee.taxId || ''}
-                        onChange={(e) =>
-                          setEditingEmployee({ ...editingEmployee, taxId: e.target.value })
-                        }
-                        className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-slate-200 focus:border-emerald-500 focus:outline-none font-mono"
-                      />
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+                      <div>
+                        <label className="block text-slate-300 font-semibold mb-1">Bank Account IBAN / Number</label>
+                        <input
+                          type="text"
+                          value={editingEmployee.bankAccount || ''}
+                          onChange={(e) =>
+                            setEditingEmployee({ ...editingEmployee, bankAccount: e.target.value })
+                          }
+                          className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-slate-200 focus:border-emerald-500 focus:outline-none font-mono"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-slate-300 font-semibold mb-1">Tax Registration ID</label>
+                        <input
+                          type="text"
+                          value={editingEmployee.taxId || ''}
+                          onChange={(e) =>
+                            setEditingEmployee({ ...editingEmployee, taxId: e.target.value })
+                          }
+                          className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-slate-200 focus:border-emerald-500 focus:outline-none font-mono"
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>
               )}
 
-              {/* TAB 6: MEDICAL LICENSES & CERTIFICATIONS */}
+              {/* TAB 6: STAFF TRANSFERS / MOVEMENT HISTORY */}
+              {editActiveTab === 'movements' && (
+                <div className="space-y-5">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-slate-950 p-4 rounded-2xl border border-slate-800">
+                    <div>
+                      <h4 className="font-bold text-slate-100 text-sm flex items-center gap-2">
+                        <History className="h-4 w-4 text-emerald-400" /> Staff Transfers & Internal Movement History
+                      </h4>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        Log and audit all historical departmental transfers, promotions, and external postings for {editingEmployee.firstName}.
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setShowAddMovementFormInModal(!showAddMovementFormInModal)}
+                      className="flex items-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 px-3.5 py-2 text-xs font-bold text-white shadow transition active:scale-95 whitespace-nowrap"
+                    >
+                      <Plus className="h-4 w-4" />
+                      {showAddMovementFormInModal ? 'Close Form' : 'Record Movement / Transfer'}
+                    </button>
+                  </div>
+
+                  {/* ADD MOVEMENT INLINE FORM */}
+                  {showAddMovementFormInModal && (
+                    <div className="p-4 rounded-2xl bg-slate-950 border-2 border-emerald-500/40 space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                      <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                        <span className="font-bold text-emerald-400 text-xs flex items-center gap-2">
+                          <PlusCircle className="h-4 w-4" /> New Movement Log Entry
+                        </span>
+                        <span className="text-[10px] text-slate-400">Updates employee current department upon recording</span>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div>
+                          <label className="block text-slate-300 font-semibold mb-1">Transfer Type</label>
+                          <select
+                            value={newMovementForm.transferType}
+                            onChange={(e) =>
+                              setNewMovementForm({ ...newMovementForm, transferType: e.target.value as TransferType })
+                            }
+                            className="w-full rounded-xl bg-slate-900 border border-slate-800 p-2 text-slate-200 focus:border-emerald-500"
+                          >
+                            <option value="Internal Transfer">Internal Transfer</option>
+                            <option value="External Transfer">External Transfer</option>
+                            <option value="Departmental Redeployment">Departmental Redeployment</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-slate-300 font-semibold mb-1">Previous Department</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. ICU"
+                            value={newMovementForm.previousDepartment}
+                            onChange={(e) =>
+                              setNewMovementForm({ ...newMovementForm, previousDepartment: e.target.value })
+                            }
+                            className="w-full rounded-xl bg-slate-900 border border-slate-800 p-2 text-slate-200 focus:border-emerald-500"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-slate-300 font-semibold mb-1">New Department / Unit</label>
+                          <input
+                            type="text"
+                            required
+                            placeholder="e.g. Cardiology & ICU"
+                            value={newMovementForm.newDepartment}
+                            onChange={(e) =>
+                              setNewMovementForm({ ...newMovementForm, newDepartment: e.target.value })
+                            }
+                            className="w-full rounded-xl bg-slate-900 border border-slate-800 p-2 text-slate-200 focus:border-emerald-500 font-bold text-emerald-400"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div>
+                          <label className="block text-slate-300 font-semibold mb-1">Previous Position</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. Staff Nurse"
+                            value={newMovementForm.previousPosition}
+                            onChange={(e) =>
+                              setNewMovementForm({ ...newMovementForm, previousPosition: e.target.value })
+                            }
+                            className="w-full rounded-xl bg-slate-900 border border-slate-800 p-2 text-slate-200 focus:border-emerald-500"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-slate-300 font-semibold mb-1">New Position</label>
+                          <input
+                            type="text"
+                            required
+                            placeholder="e.g. Senior Charge Nurse"
+                            value={newMovementForm.newPosition}
+                            onChange={(e) =>
+                              setNewMovementForm({ ...newMovementForm, newPosition: e.target.value })
+                            }
+                            className="w-full rounded-xl bg-slate-900 border border-slate-800 p-2 text-slate-200 focus:border-emerald-500 font-bold text-indigo-400"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-slate-300 font-semibold mb-1">Effective Date</label>
+                          <input
+                            type="date"
+                            required
+                            value={newMovementForm.effectiveDate}
+                            onChange={(e) =>
+                              setNewMovementForm({ ...newMovementForm, effectiveDate: e.target.value })
+                            }
+                            className="w-full rounded-xl bg-slate-900 border border-slate-800 p-2 text-slate-200 focus:border-emerald-500 font-medium"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-slate-300 font-semibold mb-1">Approving Authority</label>
+                          <input
+                            type="text"
+                            required
+                            placeholder="e.g. Dr. Kwame Boateng (CMO)"
+                            value={newMovementForm.approvingAuthority}
+                            onChange={(e) =>
+                              setNewMovementForm({ ...newMovementForm, approvingAuthority: e.target.value })
+                            }
+                            className="w-full rounded-xl bg-slate-900 border border-slate-800 p-2 text-slate-200 focus:border-emerald-500"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-slate-300 font-semibold mb-1">Reference / Circular Number</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. TRF-2025-0912"
+                            value={newMovementForm.referenceNumber}
+                            onChange={(e) =>
+                              setNewMovementForm({ ...newMovementForm, referenceNumber: e.target.value })
+                            }
+                            className="w-full rounded-xl bg-slate-900 border border-slate-800 p-2 text-slate-200 focus:border-emerald-500 font-mono text-emerald-400"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-slate-300 font-semibold mb-1">Reason for Movement / Notes</label>
+                        <textarea
+                          rows={2}
+                          placeholder="State operational grounds, transfer justification, or clinical duty realignment..."
+                          value={newMovementForm.reason}
+                          onChange={(e) =>
+                            setNewMovementForm({ ...newMovementForm, reason: e.target.value })
+                          }
+                          className="w-full rounded-xl bg-slate-900 border border-slate-800 p-2.5 text-slate-200 focus:border-emerald-500"
+                        />
+                      </div>
+
+                      <div className="flex justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setShowAddMovementFormInModal(false)}
+                          className="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 font-bold"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleAddMovementInEditModal}
+                          className="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold shadow flex items-center gap-1.5"
+                        >
+                          <Save className="h-4 w-4" /> Save Movement Record
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* MOVEMENT HISTORY LOG TABLE */}
+                  {(!editingEmployee.movementHistory || editingEmployee.movementHistory.length === 0) ? (
+                    <div className="text-center py-10 bg-slate-950/40 rounded-2xl border border-dashed border-slate-800">
+                      <History className="h-10 w-10 text-slate-600 mx-auto mb-2" />
+                      <p className="font-bold text-slate-300 text-xs">No Movement History Recorded Yet</p>
+                      <p className="text-[11px] text-slate-500 max-w-sm mx-auto mt-1">
+                        Use the "Record Movement / Transfer" button above to log inter-departmental transfers, promotions, or reassignments.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {editingEmployee.movementHistory.map((mov, idx) => (
+                        <div
+                          key={mov.id || idx}
+                          className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800/80 hover:border-slate-700 transition space-y-2.5"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/60 pb-2">
+                            <div className="flex items-center gap-2">
+                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                {mov.transferType}
+                              </span>
+                              <span className="font-mono text-[10px] text-slate-400">{mov.referenceNumber || 'N/A'}</span>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                              <span className="text-[11px] text-slate-400 flex items-center gap-1">
+                                <Calendar className="h-3 w-3 text-slate-500" /> {mov.effectiveDate}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveMovementFromEdit(mov.id)}
+                                className="p-1 text-slate-500 hover:text-rose-400 transition"
+                                title="Remove movement entry"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                            <div className="bg-slate-900/60 p-2.5 rounded-xl border border-slate-800">
+                              <span className="text-[10px] text-slate-400 font-semibold block">Origin Department & Role</span>
+                              <p className="font-bold text-slate-300 mt-0.5">{mov.previousDepartment || 'PJPIIMC General Pool'}</p>
+                              <p className="text-[11px] text-slate-400">{mov.previousPosition || 'Initial Appointment'}</p>
+                            </div>
+
+                            <div className="bg-emerald-950/20 p-2.5 rounded-xl border border-emerald-500/20">
+                              <span className="text-[10px] text-emerald-400 font-semibold block">Assigned Department & Role</span>
+                              <p className="font-bold text-emerald-300 mt-0.5">{mov.newDepartment}</p>
+                              <p className="text-[11px] text-emerald-400">{mov.newPosition}</p>
+                            </div>
+                          </div>
+
+                          <div className="flex flex-wrap items-center justify-between text-[11px] text-slate-400 pt-1">
+                            <span>
+                              Reason: <strong className="text-slate-300">{mov.reason}</strong>
+                            </span>
+                            <span>
+                              Approved By: <strong className="text-slate-300">{mov.approvingAuthority}</strong>
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* TAB 7: MEDICAL LICENSES & CERTIFICATIONS */}
               {editActiveTab === 'licenses' && (
                 <div className="space-y-4">
                   <div className="flex items-center justify-between bg-slate-950 p-3 rounded-xl border border-slate-800">

@@ -50,9 +50,10 @@ export const AccessControlPanel: React.FC = () => {
     { key: 'credentials', name: 'Medical Credentials Admin', desc: 'Medical license renewals & verification alerts' },
   ];
 
-  const departments = ['All', ...Array.from(new Set(employees.map((e) => e.department)))];
+  const departments = ['All', ...Array.from(new Set((employees || []).filter(Boolean).map((e) => e?.department).filter(Boolean)))];
 
-  const filteredEmployees = employees.filter((emp) => {
+  const filteredEmployees = (employees || []).filter((emp) => {
+    if (!emp) return false;
     const term = (searchTerm || '').toLowerCase();
     const matchesSearch =
       `${emp.firstName || ''} ${emp.lastName || ''}`.toLowerCase().includes(term) ||

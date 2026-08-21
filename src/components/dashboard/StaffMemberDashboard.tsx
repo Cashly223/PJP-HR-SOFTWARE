@@ -49,9 +49,9 @@ export const StaffMemberDashboard: React.FC = () => {
   const [isSubordinateModalOpen, setIsSubordinateModalOpen] = useState(false);
 
   // Find employee profile
-  const emp = employees.find(
-    (e) => (e.email && currentUser?.email && e.email.toLowerCase() === currentUser.email.toLowerCase()) || e.id === currentUser?.id
-  ) || employees[0];
+  const emp = (employees || []).find(
+    (e) => e && ((e.email && currentUser?.email && e.email.toLowerCase() === currentUser.email.toLowerCase()) || e.id === currentUser?.id)
+  ) || (employees || [])[0];
 
   const empFirstName = emp?.firstName || '';
 
@@ -59,30 +59,32 @@ export const StaffMemberDashboard: React.FC = () => {
   const isUnitHead =
     activeRole === 'unit_head' ||
     emp?.role === 'unit_head' ||
-    departmentLeadership.some((d) =>
-      d.units.some(
+    (departmentLeadership || []).some((d) =>
+      d && (d.units || []).some(
         (u) =>
-          u.unitHeadId === emp?.id ||
-          (u.unitHeadEmail && currentUser?.email && u.unitHeadEmail.toLowerCase() === currentUser.email.toLowerCase())
+          u &&
+          (u.unitHeadId === emp?.id ||
+          (u.unitHeadEmail && currentUser?.email && u.unitHeadEmail.toLowerCase() === currentUser.email.toLowerCase()))
       )
     );
 
   const isDeptHead =
     activeRole === 'dept_head' ||
     emp?.role === 'dept_head' ||
-    departmentLeadership.some(
+    (departmentLeadership || []).some(
       (d) =>
-        d.departmentHeadId === emp?.id ||
-        (d.departmentHeadEmail && currentUser?.email && d.departmentHeadEmail.toLowerCase() === currentUser.email.toLowerCase())
+        d &&
+        (d.departmentHeadId === emp?.id ||
+        (d.departmentHeadEmail && currentUser?.email && d.departmentHeadEmail.toLowerCase() === currentUser.email.toLowerCase()))
     );
 
   const isLeadership = isUnitHead || isDeptHead || ['hr_director', 'hr_manager', 'facility_head', 'super_admin'].includes(activeRole);
 
   // Subordinate pending counts
-  const pendingLeaves = leaves.filter((l) => l.status === 'Pending');
-  const pendingSwaps = shiftSwapRequests.filter((s) => s.status === 'Pending_Lead_Approval');
-  const pendingRosters = monthlyUnitRosters.filter((r) => r.status === 'Submitted_To_HOD' || r.status === 'Pending HR Approval');
-  const pendingExpenses = expenseClaims.filter((e) => e.status === 'Pending');
+  const pendingLeaves = (leaves || []).filter((l) => l?.status === 'Pending');
+  const pendingSwaps = (shiftSwapRequests || []).filter((s) => s?.status === 'Pending_Lead_Approval');
+  const pendingRosters = (monthlyUnitRosters || []).filter((r) => r?.status === 'Submitted_To_HOD' || r?.status === 'Pending HR Approval');
+  const pendingExpenses = (expenseClaims || []).filter((e) => e?.status === 'Pending');
 
   const totalSubordinatePending = pendingLeaves.length + pendingSwaps.length + pendingRosters.length + pendingExpenses.length;
 
@@ -102,19 +104,19 @@ export const StaffMemberDashboard: React.FC = () => {
   };
 
   // Calculated staff stats
-  const myLeaves = leaves.filter((l) => (l.employeeName || '').toLowerCase().includes(empFirstName.toLowerCase()));
-  const approvedLeaves = myLeaves.filter((l) => l.status === 'Approved');
-  const myRosters = rosters.filter((r) => (r.doctorName || '').toLowerCase().includes(empFirstName.toLowerCase()));
+  const myLeaves = (leaves || []).filter((l) => (l?.employeeName || '').toLowerCase().includes(empFirstName.toLowerCase()));
+  const approvedLeaves = myLeaves.filter((l) => l?.status === 'Approved');
+  const myRosters = (rosters || []).filter((r) => (r?.doctorName || '').toLowerCase().includes(empFirstName.toLowerCase()));
   const todayShift = myRosters[0];
-  const myCourses = courses;
-  const completedCourses = myCourses.filter((c) => c.status === 'Completed').length;
-  const myPayslips = payrolls.filter((p) => (p.employeeName || '').toLowerCase().includes(empFirstName.toLowerCase()));
-  const latestPayslip = myPayslips[0] || payrolls[0];
-  const activeConference = conferenceMeetings.find((m) => m.status === 'Live' || m.status === 'Scheduled');
+  const myCourses = courses || [];
+  const completedCourses = myCourses.filter((c) => c?.status === 'Completed').length;
+  const myPayslips = (payrolls || []).filter((p) => (p?.employeeName || '').toLowerCase().includes(empFirstName.toLowerCase()));
+  const latestPayslip = myPayslips[0] || (payrolls || [])[0];
+  const activeConference = (conferenceMeetings || []).find((m) => m?.status === 'Live' || m?.status === 'Scheduled');
 
   // Check granted custom permissions by HR
-  const userPerm = staffPermissions.find(
-    (p) => p.employeeId === emp?.id || (currentUser?.email && p.email && p.email.toLowerCase() === currentUser.email.toLowerCase())
+  const userPerm = (staffPermissions || []).find(
+    (p) => p && (p.employeeId === emp?.id || (currentUser?.email && p.email && p.email.toLowerCase() === currentUser.email.toLowerCase()))
   );
   const grantedModules = userPerm?.grantedModules || [];
 

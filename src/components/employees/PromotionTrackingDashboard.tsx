@@ -69,14 +69,14 @@ export const PromotionTrackingDashboard: React.FC<PromotionTrackingDashboardProp
 
   // Calculate promotion eligibility for all hospital staff
   const allPromotionResults: PromotionCalculationResult[] = useMemo(() => {
-    return employees.map((emp) => calculateEmployeePromotion(emp, CURRENT_ANCHOR_DATE));
+    return (employees || []).filter(Boolean).map((emp) => calculateEmployeePromotion(emp, CURRENT_ANCHOR_DATE));
   }, [employees]);
 
   // Dynamic available years list based on calculated next appointment dates
   const availableYears = useMemo(() => {
     const yearsSet = new Set<number>();
-    allPromotionResults.forEach((r) => {
-      if (r.nextPromotionDueYear) {
+    (allPromotionResults || []).forEach((r) => {
+      if (r && r.nextPromotionDueYear) {
         yearsSet.add(r.nextPromotionDueYear);
       }
     });
@@ -88,24 +88,25 @@ export const PromotionTrackingDashboard: React.FC<PromotionTrackingDashboardProp
   // Unique departments
   const departments = useMemo(() => {
     const set = new Set<string>();
-    employees.forEach((e) => {
-      if (e.department) set.add(e.department);
+    (employees || []).forEach((e) => {
+      if (e && e.department) set.add(e.department);
     });
     return ['All', ...Array.from(set).sort()];
   }, [employees]);
 
   // Filtered promotion results
   const filteredResults = useMemo(() => {
-    return allPromotionResults.filter((item) => {
+    return (allPromotionResults || []).filter((item) => {
+      if (!item) return false;
       // 1. Search filter
       const searchMatch =
         searchTerm === '' ||
-        item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.empCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.grade.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.department.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.nextPromotionDueDate.includes(searchTerm) ||
-        item.firstAppointmentDate.includes(searchTerm);
+        (item.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (item.empCode || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (item.grade || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (item.department || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (item.nextPromotionDueDate || '').includes(searchTerm) ||
+        (item.firstAppointmentDate || '').includes(searchTerm);
 
       if (!searchMatch) return false;
 
@@ -157,28 +158,30 @@ export const PromotionTrackingDashboard: React.FC<PromotionTrackingDashboardProp
 
   // Executive KPI summary metrics
   const kpis = useMemo(() => {
-    const dueSubsequentYear = allPromotionResults.filter((r) => r.isDueInSubsequentYear);
-    const dueCurrentYear = allPromotionResults.filter((r) => r.isDueThisYear);
-    const overdue = allPromotionResults.filter((r) => r.isOverdue);
-    const firstPromotionsDue2027 = dueSubsequentYear.filter((r) => r.promotionType === 'First Promotion');
-    const subsequentPromotionsDue2027 = dueSubsequentYear.filter((r) => r.promotionType === 'Subsequent Promotion');
+    const safeResults = allPromotionResults || [];
+    const dueSubsequentYear = safeResults.filter((r) => r?.isDueInSubsequentYear);
+    const dueCurrentYear = safeResults.filter((r) => r?.isDueThisYear);
+    const overdue = safeResults.filter((r) => r?.isOverdue);
+    const firstPromotionsDue2027 = dueSubsequentYear.filter((r) => r?.promotionType === 'First Promotion');
+    const subsequentPromotionsDue2027 = dueSubsequentYear.filter((r) => r?.promotionType === 'Subsequent Promotion');
 
     // Financial impact estimate for selected filtered staff
-    const estimatedMonthlySalaryDelta = filteredResults.reduce((acc, curr) => {
-      const currentSal = curr.employee.salary || 8500;
-      const newSal = currentSal * curr.salaryStepMultiplier;
+    const estimatedMonthlySalaryDelta = (filteredResults || []).reduce((acc, curr) => {
+      if (!curr) return acc;
+      const currentSal = curr.employee?.salary || 8500;
+      const newSal = currentSal * (curr.salaryStepMultiplier || 1);
       return acc + (newSal - currentSal);
     }, 0);
 
     return {
-      totalStaff: allPromotionResults.length,
+      totalStaff: safeResults.length,
       dueSubsequentYearCount: dueSubsequentYear.length,
       dueCurrentYearCount: dueCurrentYear.length,
       overdueCount: overdue.length,
       firstPromotionsDue2027Count: firstPromotionsDue2027.length,
       subsequentPromotionsDue2027Count: subsequentPromotionsDue2027.length,
-      totalFirstPromotions: allPromotionResults.filter((r) => r.promotionType === 'First Promotion').length,
-      totalSubsequentPromotions: allPromotionResults.filter((r) => r.promotionType === 'Subsequent Promotion').length,
+      totalFirstPromotions: safeResults.filter((r) => r?.promotionType === 'First Promotion').length,
+      totalSubsequentPromotions: safeResults.filter((r) => r?.promotionType === 'Subsequent Promotion').length,
       estimatedMonthlySalaryDelta,
     };
   }, [allPromotionResults, filteredResults]);
@@ -487,7 +490,7 @@ export const PromotionTrackingDashboard: React.FC<PromotionTrackingDashboardProp
             >
               <span>2028</span>
               <span className="px-1.5 py-0.2 rounded-full bg-teal-950 text-teal-300 text-[10px] font-bold">
-                {allPromotionResults.filter((r) => r.nextPromotionDueYear === 2028).length}
+                {(allPromotionResults || []).filter((r) => r?.nextPromotionDueYear === 2028).length}
               </span>
             </button>
 
@@ -502,7 +505,7 @@ export const PromotionTrackingDashboard: React.FC<PromotionTrackingDashboardProp
             >
               <span>2029</span>
               <span className="px-1.5 py-0.2 rounded-full bg-teal-950 text-teal-300 text-[10px] font-bold">
-                {allPromotionResults.filter((r) => r.nextPromotionDueYear === 2029).length}
+                {(allPromotionResults || []).filter((r) => r?.nextPromotionDueYear === 2029).length}
               </span>
             </button>
 

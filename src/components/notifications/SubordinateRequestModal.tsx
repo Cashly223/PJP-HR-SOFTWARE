@@ -83,8 +83,8 @@ export const SubordinateRequestModal: React.FC<SubordinateRequestModalProps> = (
   const userUnit = emp?.unit;
 
   // 1. Pending Leaves
-  const pendingLeaves = leaves.filter((l) => {
-    if (l.status !== 'Pending') return false;
+  const pendingLeaves = (leaves || []).filter((l) => {
+    if (!l || l.status !== 'Pending') return false;
 
     if (l.currentStage === 'Unit Head') {
       if (activeRole === 'unit_head' || isUnitHead) {
@@ -112,8 +112,8 @@ export const SubordinateRequestModal: React.FC<SubordinateRequestModalProps> = (
   });
 
   // 2. Pending Shift Swaps
-  const pendingSwaps = shiftSwapRequests.filter((s) => {
-    if (s.status !== 'Pending_Lead_Approval') return false;
+  const pendingSwaps = (shiftSwapRequests || []).filter((s) => {
+    if (!s || s.status !== 'Pending_Lead_Approval') return false;
     if (isUnitHead || isDeptHead || activeRole === 'unit_head' || activeRole === 'dept_head') {
       return !userDept || s.department === userDept;
     }
@@ -121,7 +121,8 @@ export const SubordinateRequestModal: React.FC<SubordinateRequestModalProps> = (
   });
 
   // 3. Pending Duty Rosters
-  const pendingRosters = monthlyUnitRosters.filter((r) => {
+  const pendingRosters = (monthlyUnitRosters || []).filter((r) => {
+    if (!r) return false;
     if (r.status === 'Submitted_To_HOD') {
       return isDeptHead || activeRole === 'dept_head' ? (!userDept || r.department === userDept) : false;
     }
@@ -132,8 +133,8 @@ export const SubordinateRequestModal: React.FC<SubordinateRequestModalProps> = (
   });
 
   // 4. Pending Expense Claims
-  const pendingExpenses = expenseClaims.filter((e) => {
-    if (e.status !== 'Pending') return false;
+  const pendingExpenses = (expenseClaims || []).filter((e) => {
+    if (!e || e.status !== 'Pending') return false;
     if (isUnitHead || isDeptHead) {
       return !userDept || e.department === userDept;
     }

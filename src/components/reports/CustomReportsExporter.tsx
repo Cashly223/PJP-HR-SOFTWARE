@@ -31,13 +31,14 @@ export const CustomReportsExporter: React.FC = () => {
   const [generatedMsg, setGeneratedMsg] = useState('');
 
   // Extract unique departments
-  const departmentList = Array.from(new Set(employees.map((e) => e.department).filter(Boolean)));
+  const departmentList = Array.from(new Set((employees || []).filter(Boolean).map((e) => e.department).filter(Boolean)));
 
   // Query 1: Attendance & Lateness Data
   const getAttendanceData = () => {
-    return attendance
+    return (attendance || [])
+      .filter(Boolean)
       .map((a) => {
-        const emp = employees.find((e) => e.id === a.employeeId);
+        const emp = (employees || []).find((e) => e && e.id === a.employeeId);
         // Calculate late status
         const clockInTime = a.clockIn || '08:00';
         const hour = parseInt(clockInTime.split(':')[0], 10);
@@ -48,7 +49,7 @@ export const CustomReportsExporter: React.FC = () => {
         return {
           id: a.id,
           empCode: emp?.employeeCode || emp?.empCode || 'SJH-1001',
-          staffName: a.employeeName,
+          staffName: a.employeeName || `${emp?.firstName || ''} ${emp?.lastName || ''}`,
           department: emp?.department || 'General Ward',
           date: a.date,
           clockIn: a.clockIn,
@@ -65,9 +66,9 @@ export const CustomReportsExporter: React.FC = () => {
         if (searchTerm) {
           const t = searchTerm.toLowerCase();
           return (
-            rec.staffName.toLowerCase().includes(t) ||
-            rec.empCode.toLowerCase().includes(t) ||
-            rec.department.toLowerCase().includes(t)
+            (rec.staffName || '').toLowerCase().includes(t) ||
+            (rec.empCode || '').toLowerCase().includes(t) ||
+            (rec.department || '').toLowerCase().includes(t)
           );
         }
         return true;
@@ -76,13 +77,14 @@ export const CustomReportsExporter: React.FC = () => {
 
   // Query 2: Leave & Entitlements Data
   const getLeaveData = () => {
-    return leaves
+    return (leaves || [])
+      .filter(Boolean)
       .map((l) => {
-        const emp = employees.find((e) => e.id === l.employeeId);
+        const emp = (employees || []).find((e) => e && e.id === l.employeeId);
         return {
           id: l.id,
           empCode: l.staffId || emp?.employeeCode || 'SJH-1001',
-          staffName: l.employeeName,
+          staffName: l.employeeName || `${emp?.firstName || ''} ${emp?.lastName || ''}`,
           department: l.department || emp?.department || 'General',
           leaveType: l.leaveType,
           totalDays: l.totalDays,
@@ -98,10 +100,10 @@ export const CustomReportsExporter: React.FC = () => {
         if (searchTerm) {
           const t = searchTerm.toLowerCase();
           return (
-            rec.staffName.toLowerCase().includes(t) ||
-            rec.empCode.toLowerCase().includes(t) ||
-            rec.leaveType.toLowerCase().includes(t) ||
-            rec.department.toLowerCase().includes(t)
+            (rec.staffName || '').toLowerCase().includes(t) ||
+            (rec.empCode || '').toLowerCase().includes(t) ||
+            (rec.leaveType || '').toLowerCase().includes(t) ||
+            (rec.department || '').toLowerCase().includes(t)
           );
         }
         return true;
@@ -122,18 +124,18 @@ export const CustomReportsExporter: React.FC = () => {
       status: string;
     }> = [];
 
-    employees.forEach((emp) => {
-      (emp.medicalLicenses || []).forEach((lic) => {
+    (employees || []).filter(Boolean).forEach((emp) => {
+      (emp.medicalLicenses || []).filter(Boolean).forEach((lic) => {
         records.push({
           id: lic.id,
           empCode: emp.employeeCode || emp.empCode || 'SJH-1001',
-          staffName: `${emp.firstName} ${emp.lastName}`,
+          staffName: `${emp.firstName || ''} ${emp.lastName || ''}`.trim() || 'Staff',
           department: emp.department || 'Clinical',
-          licenseName: lic.name,
+          licenseName: lic.name || 'Medical License',
           issuingBody: lic.issuingAuthority || 'State Medical Board',
-          licenseNumber: lic.licenseNumber,
-          expiryDate: lic.expiryDate,
-          status: lic.status,
+          licenseNumber: lic.licenseNumber || 'LIC-N/A',
+          expiryDate: lic.expiryDate || '',
+          status: lic.status || 'Active',
         });
       });
     });
@@ -143,10 +145,10 @@ export const CustomReportsExporter: React.FC = () => {
       if (searchTerm) {
         const t = searchTerm.toLowerCase();
         return (
-          rec.staffName.toLowerCase().includes(t) ||
-          rec.empCode.toLowerCase().includes(t) ||
-          rec.licenseName.toLowerCase().includes(t) ||
-          rec.department.toLowerCase().includes(t)
+          (rec.staffName || '').toLowerCase().includes(t) ||
+          (rec.empCode || '').toLowerCase().includes(t) ||
+          (rec.licenseName || '').toLowerCase().includes(t) ||
+          (rec.department || '').toLowerCase().includes(t)
         );
       }
       return true;
@@ -155,7 +157,8 @@ export const CustomReportsExporter: React.FC = () => {
 
   // Query 4: LMS & Training Data
   const getLmsData = () => {
-    return courses
+    return (courses || [])
+      .filter(Boolean)
       .map((c) => ({
         id: c.id,
         courseTitle: c.title,
@@ -173,9 +176,9 @@ export const CustomReportsExporter: React.FC = () => {
         if (searchTerm) {
           const t = searchTerm.toLowerCase();
           return (
-            rec.courseTitle.toLowerCase().includes(t) ||
-            rec.category.toLowerCase().includes(t) ||
-            rec.instructor.toLowerCase().includes(t)
+            (rec.courseTitle || '').toLowerCase().includes(t) ||
+            (rec.category || '').toLowerCase().includes(t) ||
+            (rec.instructor || '').toLowerCase().includes(t)
           );
         }
         return true;

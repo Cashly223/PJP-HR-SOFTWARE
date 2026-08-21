@@ -6,11 +6,12 @@ export const AuditLogViewer: React.FC = () => {
   const { auditLogs } = useHrms();
   const [searchTerm, setSearchTerm] = useState('');
 
-  const filteredLogs = auditLogs.filter(
+  const filteredLogs = (auditLogs || []).filter(
     (l) =>
-      l.userName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      l.action.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      l.module.toLowerCase().includes(searchTerm.toLowerCase())
+      l &&
+      ((l.userName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (l.action || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (l.module || '').toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
   return (

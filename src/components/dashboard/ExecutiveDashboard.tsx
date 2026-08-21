@@ -32,35 +32,36 @@ import {
 export const ExecutiveDashboard: React.FC = () => {
   const { employees, rosters, attendance, formatCurrency, selectedHospital, setActiveTab } = useHrms();
 
-  const totalStaff = employees.length;
-  const onDutyCount = rosters.filter((r) => r.status === 'Assigned' || r.status === 'Completed').length;
-  const totalOvertime = attendance.reduce((acc, a) => acc + a.overtimeHours, 0);
+  const totalStaff = (employees || []).length;
+  const onDutyCount = (rosters || []).filter((r) => r && (r.status === 'Assigned' || r.status === 'Completed')).length;
+  const totalOvertime = (attendance || []).reduce((acc, a) => acc + (a?.overtimeHours || 0), 0);
 
   // License alert count
-  const expiringLicenses = employees.flatMap((e) => e.medicalLicenses).filter((l) => l.status === 'Expiring Soon' || l.status === 'Expired');
+  const expiringLicenses = (employees || []).flatMap((e) => e?.medicalLicenses || []).filter((l) => l && (l.status === 'Expiring Soon' || l.status === 'Expired'));
 
   // Compute Department Staff Distribution: Count, On Leave, At Post
   const { leaves, departmentLeadership } = useHrms();
 
-  const deptDistributionData = departmentLeadership.map((dept) => {
-    const deptEmployees = employees.filter(
-      (e) => (e.department || '').toLowerCase() === dept.departmentName.toLowerCase()
+  const deptDistributionData = (departmentLeadership || []).map((dept) => {
+    const deptEmployees = (employees || []).filter(
+      (e) => e && (e.department || '').toLowerCase() === (dept?.departmentName || '').toLowerCase()
     );
 
     // Active approved leaves
-    const onLeaveCount = leaves.filter((l) => {
-      const isDeptMatch = (l.department || '').toLowerCase() === dept.departmentName.toLowerCase();
+    const onLeaveCount = (leaves || []).filter((l) => {
+      if (!l) return false;
+      const isDeptMatch = (l.department || '').toLowerCase() === (dept?.departmentName || '').toLowerCase();
       const isApproved = l.status === 'Approved' || l.currentStage === 'Fully Approved';
       return isDeptMatch && isApproved;
     }).length;
 
-    const totalCount = Math.max(deptEmployees.length, dept.units.reduce((acc, u) => acc + (u.staffCount || 5), 0));
+    const totalCount = Math.max(deptEmployees.length, (dept?.units || []).reduce((acc, u) => acc + (u?.staffCount || 5), 0));
     const onLeave = Math.min(onLeaveCount, totalCount);
     const atPost = Math.max(0, totalCount - onLeave);
 
     return {
-      department: dept.departmentName,
-      code: dept.departmentCode,
+      department: dept?.departmentName || '',
+      code: dept?.departmentCode || '',
       count: totalCount,
       onLeave: onLeave,
       atPost: atPost,

@@ -22,6 +22,7 @@ import {
   UserCheck,
   UploadCloud,
   Grid,
+  Printer,
 } from 'lucide-react';
 import { useHrms } from '../../context/HrmsContext';
 import { ShiftRoster, ShiftSwapRequest } from '../../types/hrms';
@@ -39,14 +40,23 @@ export const ShiftRosterManager: React.FC = () => {
     updateShiftSwapStatus,
     activeRole,
     selectedHospital,
+    isHeadOfFacilityOrHr,
+    currentUserDepartment,
+    canAccessDepartmentRoster,
   } = useHrms();
 
   // Active Main Tab
   const [activeTab, setActiveTab] = useState<'roster' | 'swaps' | 'monthly_rosters' | 'monthly_duty_roaster'>('monthly_duty_roaster');
 
+  // Accessible Data Scoped to Department for Regular Staff
+  const visibleRosters = (rosters || []).filter((r) => r && canAccessDepartmentRoster(r.department));
+  const visibleSwapRequests = (shiftSwapRequests || []).filter((s) => s && canAccessDepartmentRoster(s.department));
+  const visibleMonthlyRosters = (monthlyUnitRosters || []).filter((m) => m && canAccessDepartmentRoster(m.department));
+  const assignableEmployees = (employees || []).filter((e) => e && (isHeadOfFacilityOrHr || canAccessDepartmentRoster(e.department)));
+
   // New Roster Assignment Modal State
   const [isAddRosterModalOpen, setIsAddRosterModalOpen] = useState(false);
-  const [selectedEmpId, setSelectedEmpId] = useState(employees[0]?.id || '');
+  const [selectedEmpId, setSelectedEmpId] = useState(assignableEmployees[0]?.id || employees[0]?.id || '');
   const [shiftType, setShiftType] = useState<
     | 'Morning (07:00-15:00)'
     | 'Evening (15:00-23:00)'
@@ -74,14 +84,14 @@ export const ShiftRosterManager: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('All');
 
-  // Stats Calculations for Swaps
-  const totalSwaps = shiftSwapRequests.length;
-  const pendingApprovals = shiftSwapRequests.filter((s) => s.status === 'Pending_Lead_Approval').length;
-  const approvedSwaps = shiftSwapRequests.filter((s) => s.status === 'Approved').length;
-  const rejectedSwaps = shiftSwapRequests.filter((s) => s.status === 'Rejected').length;
+  // Stats Calculations for Swaps (Scoped)
+  const totalSwaps = visibleSwapRequests.length;
+  const pendingApprovals = visibleSwapRequests.filter((s) => s.status === 'Pending_Lead_Approval').length;
+  const approvedSwaps = visibleSwapRequests.filter((s) => s.status === 'Approved').length;
+  const rejectedSwaps = visibleSwapRequests.filter((s) => s.status === 'Rejected').length;
 
   // Filtered Swap Requests
-  const filteredSwapRequests = shiftSwapRequests.filter((req) => {
+  const filteredSwapRequests = visibleSwapRequests.filter((req) => {
     const matchesSearch =
       req.requesterName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       req.targetEmployeeName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -120,7 +130,7 @@ export const ShiftRosterManager: React.FC = () => {
       setRequesterShiftId(rosters[0].id);
     }
 
-    const availableTargets = employees.filter((e) => e.id !== (rosters.find((r) => r.id === preselectedShiftId)?.employeeId || employees[0]?.id));
+    const availableTargets = (employees || []).filter((e) => e && e.id !== ((rosters || []).find((r) => r && r.id === preselectedShiftId)?.employeeId || employees[0]?.id));
     if (availableTargets.length > 0) {
       setTargetEmpId(availableTargets[0].id);
       const targetRosterItem = rosters.find((r) => r.employeeId === availableTargets[0].id);
@@ -201,14 +211,14 @@ export const ShiftRosterManager: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Header Banner */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 rounded-2xl bg-gradient-to-r from-slate-900 via-slate-900 to-emerald-950 p-6 border border-slate-800 shadow-xl">
+      {/* Header Banner - Updated to lighter, crisp slate palette */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 rounded-2xl bg-slate-900/95 p-6 border border-slate-800 shadow-xl">
         <div className="flex items-start gap-4">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 shrink-0">
             <CalendarDays className="h-6 w-6" />
           </div>
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-xl font-bold text-white tracking-tight">
                 {selectedHospital.name} - Shift & Roster Management
               </h1>
@@ -216,22 +226,29 @@ export const ShiftRosterManager: React.FC = () => {
                 <Mail className="h-3 w-3" /> Auto-Email Notifications Active
               </span>
             </div>
-            <p className="mt-1 text-xs text-slate-400 max-w-2xl">
+            <p className="mt-1 text-xs text-slate-300 max-w-2xl">
               24/7 Clinical coverage scheduling, fatigue risk scorecards, and Department Lead-approved shift swap requests with automated email dispatch.
             </p>
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 print:hidden">
+          <button
+            onClick={() => window.print()}
+            className="flex items-center justify-center gap-2 rounded-xl bg-slate-800 px-4 py-2.5 text-xs font-semibold text-slate-200 border border-slate-700 hover:bg-slate-700 hover:text-white transition shadow-sm"
+            title="Print Shift Schedules & Roster Tables"
+          >
+            <Printer className="h-4 w-4 text-sky-400" /> Print Roaster / Schedule
+          </button>
           <button
             onClick={() => handleOpenProposeSwap()}
-            className="flex items-center justify-center gap-2 rounded-xl bg-slate-800 px-4 py-2.5 text-xs font-semibold text-slate-200 border border-slate-700 hover:bg-slate-700 transition"
+            className="flex items-center justify-center gap-2 rounded-xl bg-slate-800 px-4 py-2.5 text-xs font-semibold text-slate-200 border border-slate-700 hover:bg-slate-700 hover:text-white transition shadow-sm"
           >
             <ArrowRightLeft className="h-4 w-4 text-emerald-400" /> Propose Shift Swap
           </button>
           <button
             onClick={() => setIsAddRosterModalOpen(true)}
-            className="flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-semibold text-white shadow-lg shadow-emerald-900/30 hover:bg-emerald-500 transition active:scale-95"
+            className="flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-semibold text-white shadow-lg shadow-emerald-950/40 hover:bg-emerald-500 transition active:scale-95"
           >
             <Plus className="h-4 w-4" /> Assign New Shift
           </button>
@@ -239,7 +256,7 @@ export const ShiftRosterManager: React.FC = () => {
       </div>
 
       {/* Navigation Tabs */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-slate-800 pb-1">
+      <div className="flex flex-wrap items-center gap-2 border-b border-slate-800 pb-1 print:hidden">
         <button
           onClick={() => setActiveTab('monthly_duty_roaster')}
           className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-lg transition ${
@@ -259,7 +276,7 @@ export const ShiftRosterManager: React.FC = () => {
               : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
           }`}
         >
-          <CalendarDays className="h-4 w-4" /> Active Shift Schedule ({rosters.length})
+          <CalendarDays className="h-4 w-4" /> Active Shift Schedule ({visibleRosters.length})
         </button>
 
         <button
@@ -287,9 +304,9 @@ export const ShiftRosterManager: React.FC = () => {
           }`}
         >
           <UploadCloud className="h-4 w-4" /> Roster Documents & Uploads
-          {monthlyUnitRosters.filter((r) => r.status === 'Pending HR Approval').length > 0 && (
+          {visibleMonthlyRosters.filter((r) => r.status === 'Pending HR Approval').length > 0 && (
             <span className="ml-1 rounded-full bg-amber-500 px-2 py-0.5 text-[10px] font-bold text-slate-950">
-              {monthlyUnitRosters.filter((r) => r.status === 'Pending HR Approval').length} HR Pending
+              {visibleMonthlyRosters.filter((r) => r.status === 'Pending HR Approval').length} HR Pending
             </span>
           )}
         </button>
@@ -303,67 +320,117 @@ export const ShiftRosterManager: React.FC = () => {
 
       {/* TAB 1: ACTIVE SHIFT ROSTER */}
       {activeTab === 'roster' && (
-        <div className="rounded-2xl border border-slate-800 bg-slate-900 shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-950 text-slate-400 uppercase tracking-wider font-semibold border-b border-slate-800">
-                <tr>
-                  <th className="px-5 py-3.5">Doctor / Nurse</th>
-                  <th className="px-5 py-3.5">Shift Duty Type</th>
-                  <th className="px-5 py-3.5">Ward / Bed Allocation</th>
-                  <th className="px-5 py-3.5">Date & Time</th>
-                  <th className="px-5 py-3.5">Fatigue Score</th>
-                  <th className="px-5 py-3.5">Status</th>
-                  <th className="px-5 py-3.5 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800 text-slate-200">
-                {rosters.map((r) => (
-                  <tr key={r.id} className="hover:bg-slate-800/50 transition">
-                    <td className="px-5 py-4">
-                      <div className="flex items-center gap-3">
-                        <img
-                          src={r.employeePhoto}
-                          alt={r.employeeName}
-                          className="h-9 w-9 rounded-full object-cover border border-slate-700"
-                        />
-                        <div>
-                          <span className="font-bold text-white">{r.employeeName}</span>
-                          <p className="text-[10px] text-slate-400">{r.role} • {r.department}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-5 py-4 font-bold text-emerald-400">{r.shiftType}</td>
-                    <td className="px-5 py-4 font-medium">{r.ward}</td>
-                    <td className="px-5 py-4 text-slate-300">{r.date} ({r.startTime} - {r.endTime})</td>
-                    <td className="px-5 py-4">
-                      <div className="flex items-center gap-2">
-                        <div className="h-2 w-16 rounded-full bg-slate-800 overflow-hidden">
-                          <div
-                            className={`h-full ${r.fatigueScore > 50 ? 'bg-amber-500' : 'bg-emerald-500'}`}
-                            style={{ width: `${r.fatigueScore}%` }}
-                          ></div>
-                        </div>
-                        <span className="text-[10px] font-bold text-slate-300">{r.fatigueScore}%</span>
-                      </div>
-                    </td>
-                    <td className="px-5 py-4">
-                      <span className="rounded bg-emerald-500/20 px-2.5 py-0.5 text-[10px] font-bold text-emerald-400 border border-emerald-500/30">
-                        {r.status}
-                      </span>
-                    </td>
-                    <td className="px-5 py-4 text-right">
-                      <button
-                        onClick={() => handleOpenProposeSwap(r.id)}
-                        className="inline-flex items-center gap-1.5 rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:bg-emerald-600 hover:text-white transition"
-                      >
-                        <ArrowRightLeft className="h-3.5 w-3.5" /> Propose Swap
-                      </button>
-                    </td>
+        <div className="space-y-4">
+          {/* Department Access Notice */}
+          <div className={`p-3 rounded-xl border flex items-center justify-between gap-3 text-xs ${
+            isHeadOfFacilityOrHr
+              ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-300'
+              : 'bg-amber-950/40 border-amber-500/30 text-amber-200'
+          }`}>
+            <div className="flex items-center gap-2.5">
+              <span className="text-base">{isHeadOfFacilityOrHr ? '🌐' : '🔒'}</span>
+              <div>
+                <p className="font-bold text-xs">
+                  {isHeadOfFacilityOrHr
+                    ? 'Hospital-Wide Shift Schedule (Head of Facility & HR Mode)'
+                    : `Departmental Shift Schedule: Restricted to ${currentUserDepartment}`}
+                </p>
+                <p className="text-[11px] opacity-80 mt-0.5">
+                  {isHeadOfFacilityOrHr
+                    ? 'Displaying all scheduled shifts across hospital wards and clinical departments.'
+                    : 'Per hospital governance guidelines, clinical and general staff can only view shift allocations for their own department.'}
+                </p>
+              </div>
+            </div>
+            <span className="text-[10px] font-black uppercase px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-700 text-slate-300 shrink-0">
+              {visibleRosters.length} Shifts Visible
+            </span>
+          </div>
+
+          <div className="rounded-2xl border border-slate-700 bg-slate-900 shadow-md overflow-hidden">
+            {/* Header Action Bar */}
+            <div className="flex items-center justify-between px-5 py-4 bg-slate-800/80 border-b border-slate-700">
+              <div>
+                <h3 className="text-sm font-bold text-white">Current Active Shift Allocation</h3>
+                <p className="text-xs text-slate-400">Live roster assignments, ward coverage & fatigue indicators</p>
+              </div>
+              <button
+                onClick={() => window.print()}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition shadow-sm print:hidden"
+              >
+                <Printer className="h-3.5 w-3.5 text-sky-400" /> Print Active Roster
+              </button>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-800 text-slate-200 uppercase tracking-wider font-semibold border-b border-slate-700">
+                  <tr>
+                    <th className="px-5 py-3.5">Doctor / Nurse</th>
+                    <th className="px-5 py-3.5">Shift Duty Type</th>
+                    <th className="px-5 py-3.5">Ward / Bed Allocation</th>
+                    <th className="px-5 py-3.5">Date & Time</th>
+                    <th className="px-5 py-3.5">Fatigue Score</th>
+                    <th className="px-5 py-3.5">Status</th>
+                    <th className="px-5 py-3.5 text-right print:hidden">Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-slate-700/80 bg-slate-850/60 text-slate-200">
+                  {visibleRosters.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="px-5 py-8 text-center text-slate-400">
+                        No active shifts currently scheduled for {currentUserDepartment}.
+                      </td>
+                    </tr>
+                  ) : (
+                    visibleRosters.map((r) => (
+                      <tr key={r.id} className="hover:bg-slate-800/70 transition">
+                        <td className="px-5 py-4">
+                          <div className="flex items-center gap-3">
+                            <img
+                              src={r.employeePhoto}
+                              alt={r.employeeName}
+                              className="h-9 w-9 rounded-full object-cover border border-slate-700"
+                            />
+                            <div>
+                              <span className="font-bold text-white">{r.employeeName}</span>
+                              <p className="text-[10px] text-slate-400">{r.role} • {r.department}</p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-5 py-4 font-bold text-emerald-400">{r.shiftType}</td>
+                        <td className="px-5 py-4 font-medium text-slate-200">{r.ward}</td>
+                        <td className="px-5 py-4 text-slate-300">{r.date} ({r.startTime} - {r.endTime})</td>
+                        <td className="px-5 py-4">
+                          <div className="flex items-center gap-2">
+                            <div className="h-2 w-16 rounded-full bg-slate-700 overflow-hidden">
+                              <div
+                                className={`h-full ${r.fatigueScore > 50 ? 'bg-amber-500' : 'bg-emerald-500'}`}
+                                style={{ width: `${r.fatigueScore}%` }}
+                              ></div>
+                            </div>
+                            <span className="text-[10px] font-bold text-slate-300">{r.fatigueScore}%</span>
+                          </div>
+                        </td>
+                        <td className="px-5 py-4">
+                          <span className="rounded bg-emerald-500/20 px-2.5 py-0.5 text-[10px] font-bold text-emerald-400 border border-emerald-500/30">
+                            {r.status}
+                          </span>
+                        </td>
+                        <td className="px-5 py-4 text-right print:hidden">
+                          <button
+                            onClick={() => handleOpenProposeSwap(r.id)}
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:bg-emerald-600 hover:text-white transition border border-slate-700"
+                          >
+                            <ArrowRightLeft className="h-3.5 w-3.5" /> Propose Swap
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}
@@ -373,34 +440,34 @@ export const ShiftRosterManager: React.FC = () => {
         <div className="space-y-6">
           {/* KPI Cards Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="rounded-xl bg-slate-900/90 border border-slate-800 p-4">
+            <div className="rounded-xl bg-slate-900 border border-slate-800 p-4 shadow-sm">
               <div className="flex items-center justify-between text-slate-400 text-xs">
                 <span>Total Swap Proposals</span>
                 <ArrowRightLeft className="h-4 w-4 text-slate-400" />
               </div>
               <div className="mt-2 text-2xl font-bold text-white">{totalSwaps}</div>
-              <p className="mt-1 text-[11px] text-slate-500">Initiated by staff members</p>
+              <p className="mt-1 text-[11px] text-slate-400">Initiated by staff members</p>
             </div>
 
-            <div className="rounded-xl bg-slate-900/90 border border-slate-800 p-4">
+            <div className="rounded-xl bg-slate-900 border border-slate-800 p-4 shadow-sm">
               <div className="flex items-center justify-between text-slate-400 text-xs">
                 <span>Pending Lead Approval</span>
                 <Clock className="h-4 w-4 text-amber-400" />
               </div>
               <div className="mt-2 text-2xl font-bold text-amber-400">{pendingApprovals}</div>
-              <p className="mt-1 text-[11px] text-amber-500/80">Awaiting department lead sign-off</p>
+              <p className="mt-1 text-[11px] text-amber-400/80">Awaiting department lead sign-off</p>
             </div>
 
-            <div className="rounded-xl bg-slate-900/90 border border-slate-800 p-4">
+            <div className="rounded-xl bg-slate-900 border border-slate-800 p-4 shadow-sm">
               <div className="flex items-center justify-between text-slate-400 text-xs">
                 <span>Approved Swaps</span>
                 <CheckCircle2 className="h-4 w-4 text-emerald-400" />
               </div>
               <div className="mt-2 text-2xl font-bold text-emerald-400">{approvedSwaps}</div>
-              <p className="mt-1 text-[11px] text-emerald-500/80">Roster updated automatically</p>
+              <p className="mt-1 text-[11px] text-emerald-400/80">Roster updated automatically</p>
             </div>
 
-            <div className="rounded-xl bg-slate-900/90 border border-slate-800 p-4">
+            <div className="rounded-xl bg-slate-900 border border-slate-800 p-4 shadow-sm">
               <div className="flex items-center justify-between text-slate-400 text-xs">
                 <span>Email Alerts Dispatched</span>
                 <Mail className="h-4 w-4 text-purple-400" />
@@ -413,19 +480,19 @@ export const ShiftRosterManager: React.FC = () => {
           </div>
 
           {/* Search & Filter Bar */}
-          <div className="rounded-xl bg-slate-900/90 border border-slate-800 p-4 flex flex-col md:flex-row gap-3 justify-between items-stretch md:items-center">
+          <div className="rounded-xl bg-slate-900 border border-slate-800 p-4 flex flex-col md:flex-row gap-3 justify-between items-stretch md:items-center">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-500" />
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
               <input
                 type="text"
                 placeholder="Search by employee name, ward, or swap reason..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full rounded-lg bg-slate-950 border border-slate-800 pl-9 pr-4 py-2 text-xs text-slate-200 placeholder-slate-500 focus:border-emerald-500 focus:outline-none"
+                className="w-full rounded-lg bg-slate-800 border border-slate-700 pl-9 pr-4 py-2 text-xs text-slate-100 placeholder-slate-400 focus:border-emerald-500 focus:outline-none"
               />
             </div>
 
-            <div className="flex flex-wrap gap-2 items-center text-xs">
+            <div className="flex flex-wrap gap-2 items-center text-xs print:hidden">
               <div className="flex items-center gap-1 text-slate-400 mr-1">
                 <Filter className="h-3.5 w-3.5" /> Filter Status:
               </div>
@@ -433,20 +500,27 @@ export const ShiftRosterManager: React.FC = () => {
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-xs text-slate-300 focus:border-emerald-500 focus:outline-none"
+                className="rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-xs text-slate-200 focus:border-emerald-500 focus:outline-none"
               >
                 <option value="All">All Statuses</option>
                 <option value="Pending_Lead_Approval">Pending Lead Approval</option>
                 <option value="Approved">Approved</option>
                 <option value="Rejected">Rejected</option>
               </select>
+
+              <button
+                onClick={() => window.print()}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition"
+              >
+                <Printer className="h-3.5 w-3.5 text-sky-400" /> Print Log
+              </button>
             </div>
           </div>
 
           {/* Swap Requests Cards Grid */}
           <div className="grid grid-cols-1 gap-4">
             {filteredSwapRequests.length === 0 ? (
-              <div className="rounded-xl bg-slate-900/60 border border-slate-800 p-8 text-center">
+              <div className="rounded-xl bg-slate-900 border border-slate-800 p-8 text-center">
                 <ArrowRightLeft className="mx-auto h-8 w-8 text-slate-600 mb-2" />
                 <p className="text-sm font-medium text-slate-400">No shift swap requests match your filter.</p>
               </div>
@@ -454,7 +528,7 @@ export const ShiftRosterManager: React.FC = () => {
               filteredSwapRequests.map((req) => (
                 <div
                   key={req.id}
-                  className="rounded-xl bg-slate-900/90 border border-slate-800 p-5 hover:border-slate-700 transition shadow-sm"
+                  className="rounded-xl bg-slate-900 border border-slate-800 p-5 hover:border-slate-700 transition shadow-sm"
                 >
                   {/* Top Bar */}
                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 border-b border-slate-800 pb-3">
@@ -476,17 +550,17 @@ export const ShiftRosterManager: React.FC = () => {
                   </div>
 
                   {/* Side-by-side Swap Visualization */}
-                  <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-950 p-4 rounded-xl border border-slate-800/80">
+                  <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-800/80 p-4 rounded-xl border border-slate-700">
                     {/* Requester Box */}
                     <div className="space-y-2">
-                      <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1">
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
                         <UserCheck className="h-3 w-3 text-emerald-400" /> Proposing Employee
                       </div>
                       <div className="flex items-center gap-3">
                         {req.requesterPhoto ? (
                           <img src={req.requesterPhoto} alt={req.requesterName} className="h-9 w-9 rounded-full object-cover border border-slate-700" />
                         ) : (
-                          <div className="h-9 w-9 rounded-full bg-slate-800 flex items-center justify-center font-bold text-slate-300">
+                          <div className="h-9 w-9 rounded-full bg-slate-700 flex items-center justify-center font-bold text-slate-300">
                             {req.requesterName.charAt(0)}
                           </div>
                         )}
@@ -495,21 +569,21 @@ export const ShiftRosterManager: React.FC = () => {
                           <p className="text-[11px] text-emerald-400 font-semibold">{req.requesterShiftType}</p>
                         </div>
                       </div>
-                      <div className="text-[11px] text-slate-400 bg-slate-900 p-2 rounded border border-slate-800">
-                        Date: <strong className="text-slate-200">{req.requesterShiftDate}</strong> • Ward: <strong className="text-slate-200">{req.requesterWard}</strong>
+                      <div className="text-[11px] text-slate-300 bg-slate-900/90 p-2 rounded border border-slate-700">
+                        Date: <strong className="text-slate-100">{req.requesterShiftDate}</strong> • Ward: <strong className="text-slate-100">{req.requesterWard}</strong>
                       </div>
                     </div>
 
                     {/* Target Employee Box */}
-                    <div className="space-y-2 border-t md:border-t-0 md:border-l border-slate-800 pt-3 md:pt-0 md:pl-4">
-                      <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1">
+                    <div className="space-y-2 border-t md:border-t-0 md:border-l border-slate-700 pt-3 md:pt-0 md:pl-4">
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
                         <ArrowRightLeft className="h-3 w-3 text-sky-400" /> Target Swapped Employee
                       </div>
                       <div className="flex items-center gap-3">
                         {req.targetEmployeePhoto ? (
                           <img src={req.targetEmployeePhoto} alt={req.targetEmployeeName} className="h-9 w-9 rounded-full object-cover border border-slate-700" />
                         ) : (
-                          <div className="h-9 w-9 rounded-full bg-slate-800 flex items-center justify-center font-bold text-slate-300">
+                          <div className="h-9 w-9 rounded-full bg-slate-700 flex items-center justify-center font-bold text-slate-300">
                             {req.targetEmployeeName.charAt(0)}
                           </div>
                         )}
@@ -518,14 +592,14 @@ export const ShiftRosterManager: React.FC = () => {
                           <p className="text-[11px] text-sky-400 font-semibold">{req.targetShiftType}</p>
                         </div>
                       </div>
-                      <div className="text-[11px] text-slate-400 bg-slate-900 p-2 rounded border border-slate-800">
-                        Date: <strong className="text-slate-200">{req.targetShiftDate}</strong> • Ward: <strong className="text-slate-200">{req.targetWard}</strong>
+                      <div className="text-[11px] text-slate-300 bg-slate-900/90 p-2 rounded border border-slate-700">
+                        Date: <strong className="text-slate-100">{req.targetShiftDate}</strong> • Ward: <strong className="text-slate-100">{req.targetWard}</strong>
                       </div>
                     </div>
                   </div>
 
                   {/* Swap Reason Box */}
-                  <div className="mt-3 text-xs text-slate-300 bg-slate-950/60 p-3 rounded-lg border border-slate-800/60">
+                  <div className="mt-3 text-xs text-slate-200 bg-slate-800/80 p-3 rounded-lg border border-slate-700">
                     <strong className="text-slate-400">Reason for Swap Proposal:</strong> "{req.reason}"
                   </div>
 
@@ -536,7 +610,7 @@ export const ShiftRosterManager: React.FC = () => {
                   )}
 
                   {/* Footer Actions & Email Logs */}
-                  <div className="mt-4 pt-3 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-3 text-xs">
+                  <div className="mt-4 pt-3 border-t border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs">
                     <button
                       onClick={() => setViewingEmailLogsSwap(req)}
                       className="inline-flex items-center gap-1.5 text-purple-300 hover:text-purple-200 bg-purple-950/40 border border-purple-500/30 px-3 py-1.5 rounded-lg transition"
@@ -545,7 +619,7 @@ export const ShiftRosterManager: React.FC = () => {
                     </button>
 
                     {req.status === 'Pending_Lead_Approval' && (
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 print:hidden">
                         <button
                           onClick={() => setRejectingSwapId(req.id)}
                           className="flex items-center gap-1.5 rounded-lg bg-rose-600/20 text-rose-300 border border-rose-500/30 px-3 py-1.5 font-semibold hover:bg-rose-600 hover:text-white transition"
@@ -576,16 +650,16 @@ export const ShiftRosterManager: React.FC = () => {
 
       {/* MODAL 1: PROPOSE SHIFT SWAP */}
       {isSwapModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-          <div className="w-full max-w-lg rounded-2xl bg-slate-900 border border-slate-800 p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4 print:hidden">
+          <div className="w-full max-w-lg rounded-2xl bg-slate-900 border border-slate-700 p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-750 pb-3">
               <div className="flex items-center gap-2">
                 <ArrowRightLeft className="h-5 w-5 text-emerald-400" />
                 <h2 className="text-base font-bold text-white">Propose Shift Swap Request</h2>
               </div>
               <button
                 onClick={() => setIsSwapModalOpen(false)}
-                className="text-slate-400 hover:text-white text-xs font-semibold px-2 py-1 rounded bg-slate-800"
+                className="text-slate-300 hover:text-white text-xs font-semibold px-2 py-1 rounded bg-slate-800 border border-slate-700"
               >
                 ✕ Close
               </button>
@@ -597,21 +671,21 @@ export const ShiftRosterManager: React.FC = () => {
                 <Mail className="h-4 w-4 text-purple-400 shrink-0 mt-0.5" />
                 <div>
                   <div className="font-bold">Automated Department Lead Notification</div>
-                  <div className="text-[11px] text-purple-300/80">
+                  <div className="text-[11px] text-purple-300/90">
                     An automated email will be sent to <strong>Dr. Kwame Mensah (Dept Head)</strong> to approve or reject this shift swap.
                   </div>
                 </div>
               </div>
 
               <div>
-                <label className="block text-slate-400 font-medium mb-1">Select Your Assigned Roster Shift</label>
+                <label className="block text-slate-300 font-medium mb-1">Select Your Assigned Roster Shift</label>
                 <select
                   required
                   value={requesterShiftId}
                   onChange={(e) => setRequesterShiftId(e.target.value)}
-                  className="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-slate-200 focus:border-emerald-500 focus:outline-none"
+                  className="w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-slate-100 focus:border-emerald-500 focus:outline-none"
                 >
-                  {rosters.map((r) => (
+                  {visibleRosters.map((r) => (
                     <option key={r.id} value={r.id}>
                       {r.employeeName} - {r.shiftType} ({r.date} @ {r.ward})
                     </option>
@@ -620,14 +694,16 @@ export const ShiftRosterManager: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-slate-400 font-medium mb-1">Select Target Colleague to Swap With</label>
+                <label className="block text-slate-300 font-medium mb-1">
+                  Select Target Colleague to Swap With {!isHeadOfFacilityOrHr && `(${currentUserDepartment})`}
+                </label>
                 <select
                   required
                   value={targetEmpId}
                   onChange={(e) => handleTargetEmpChange(e.target.value)}
-                  className="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-slate-200 focus:border-emerald-500 focus:outline-none"
+                  className="w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-slate-100 focus:border-emerald-500 focus:outline-none"
                 >
-                  {employees.map((emp) => (
+                  {assignableEmployees.map((emp) => (
                     <option key={emp.id} value={emp.id}>
                       {emp.firstName} {emp.lastName} ({emp.jobTitle} - {emp.department})
                     </option>
@@ -636,13 +712,13 @@ export const ShiftRosterManager: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-slate-400 font-medium mb-1">Target Shift to Take</label>
+                <label className="block text-slate-300 font-medium mb-1">Target Shift to Take</label>
                 <select
                   value={targetShiftId}
                   onChange={(e) => setTargetShiftId(e.target.value)}
-                  className="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-slate-200 focus:border-emerald-500 focus:outline-none"
+                  className="w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-slate-100 focus:border-emerald-500 focus:outline-none"
                 >
-                  {rosters
+                  {visibleRosters
                     .filter((r) => r.employeeId === targetEmpId)
                     .map((r) => (
                       <option key={r.id} value={r.id}>
@@ -654,14 +730,14 @@ export const ShiftRosterManager: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-slate-400 font-medium mb-1">Reason for Shift Swap</label>
+                <label className="block text-slate-300 font-medium mb-1">Reason for Shift Swap</label>
                 <textarea
                   required
                   rows={3}
                   placeholder="e.g. CME Medical Conference, Personal Emergency, Academic Exam..."
                   value={swapReason}
                   onChange={(e) => setSwapReason(e.target.value)}
-                  className="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-slate-200 focus:border-emerald-500 focus:outline-none"
+                  className="w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-slate-100 placeholder-slate-400 focus:border-emerald-500 focus:outline-none"
                 />
               </div>
 
@@ -669,7 +745,7 @@ export const ShiftRosterManager: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setIsSwapModalOpen(false)}
-                  className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 font-semibold hover:bg-slate-700"
+                  className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 font-semibold hover:bg-slate-700 border border-slate-700"
                 >
                   Cancel
                 </button>
@@ -687,31 +763,33 @@ export const ShiftRosterManager: React.FC = () => {
 
       {/* MODAL 2: ASSIGN NEW SHIFT ROSTER */}
       {isAddRosterModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-          <div className="w-full max-w-md rounded-2xl bg-slate-900 border border-slate-800 p-6 shadow-2xl space-y-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4 print:hidden">
+          <div className="w-full max-w-md rounded-2xl bg-slate-900 border border-slate-700 p-6 shadow-2xl space-y-4">
             <h3 className="font-bold text-base text-white">Assign Hospital Shift Roster</h3>
             <form onSubmit={handleCreateRoster} className="space-y-3 text-xs">
               <div>
-                <label className="block text-slate-400 font-semibold mb-1">Select Employee</label>
+                <label className="block text-slate-300 font-semibold mb-1">
+                  Select Employee {!isHeadOfFacilityOrHr && `(${currentUserDepartment})`}
+                </label>
                 <select
                   value={selectedEmpId}
                   onChange={(e) => setSelectedEmpId(e.target.value)}
-                  className="w-full rounded-lg bg-slate-950 border border-slate-800 p-2 text-slate-200"
+                  className="w-full rounded-lg bg-slate-800 border border-slate-700 p-2.5 text-slate-100"
                 >
-                  {employees.map((emp) => (
+                  {assignableEmployees.map((emp) => (
                     <option key={emp.id} value={emp.id}>
-                      {emp.firstName} {emp.lastName} ({emp.jobTitle})
+                      {emp.firstName} {emp.lastName} ({emp.jobTitle} - {emp.department})
                     </option>
                   ))}
                 </select>
               </div>
 
               <div>
-                <label className="block text-slate-400 font-semibold mb-1">Shift Type</label>
+                <label className="block text-slate-300 font-semibold mb-1">Shift Type</label>
                 <select
                   value={shiftType}
                   onChange={(e) => setShiftType(e.target.value as any)}
-                  className="w-full rounded-lg bg-slate-950 border border-slate-800 p-2 text-slate-200"
+                  className="w-full rounded-lg bg-slate-800 border border-slate-700 p-2.5 text-slate-100"
                 >
                   <option value="Night ICU (23:00-07:00)">Night ICU (23:00-07:00)</option>
                   <option value="12h Emergency (07:00-19:00)">12h Emergency (07:00-19:00)</option>
@@ -722,12 +800,12 @@ export const ShiftRosterManager: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-slate-400 font-semibold mb-1">Ward / Location</label>
+                <label className="block text-slate-300 font-semibold mb-1">Ward / Location</label>
                 <input
                   type="text"
                   value={ward}
                   onChange={(e) => setWard(e.target.value)}
-                  className="w-full rounded-lg bg-slate-950 border border-slate-800 p-2 text-slate-200"
+                  className="w-full rounded-lg bg-slate-800 border border-slate-700 p-2.5 text-slate-100"
                 />
               </div>
 
@@ -735,11 +813,11 @@ export const ShiftRosterManager: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setIsAddRosterModalOpen(false)}
-                  className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 font-semibold hover:bg-slate-700"
+                  className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 font-semibold hover:bg-slate-700 border border-slate-700"
                 >
                   Cancel
                 </button>
-                <button type="submit" className="px-4 py-2 rounded-lg bg-emerald-600 text-white font-semibold hover:bg-emerald-500">
+                <button type="submit" className="px-4 py-2 rounded-lg bg-emerald-600 text-white font-semibold hover:bg-emerald-500 shadow-md">
                   Confirm Shift
                 </button>
               </div>
@@ -750,10 +828,10 @@ export const ShiftRosterManager: React.FC = () => {
 
       {/* MODAL 3: REJECTION REASON MODAL */}
       {rejectingSwapId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-          <div className="w-full max-w-md rounded-2xl bg-slate-900 border border-slate-800 p-6 shadow-2xl space-y-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4 print:hidden">
+          <div className="w-full max-w-md rounded-2xl bg-slate-900 border border-slate-700 p-6 shadow-2xl space-y-4">
             <h3 className="font-bold text-base text-white">Reject Shift Swap Request</h3>
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-slate-300">
               Please provide feedback for why this shift swap was rejected by the Department Lead. An automated email notification will be dispatched.
             </p>
             <form onSubmit={handleConfirmReject} className="space-y-3 text-xs">
@@ -763,19 +841,19 @@ export const ShiftRosterManager: React.FC = () => {
                 placeholder="e.g. Critical ICU nurse coverage minimum threshold violated for that date..."
                 value={rejectionReasonText}
                 onChange={(e) => setRejectionReasonText(e.target.value)}
-                className="w-full rounded-lg bg-slate-950 border border-slate-800 p-3 text-slate-200 focus:border-rose-500 focus:outline-none"
+                className="w-full rounded-lg bg-slate-800 border border-slate-700 p-3 text-slate-100 placeholder-slate-400 focus:border-rose-500 focus:outline-none"
               />
               <div className="flex justify-end gap-2 pt-2">
                 <button
                   type="button"
                   onClick={() => setRejectingSwapId(null)}
-                  className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 font-semibold"
+                  className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 font-semibold border border-slate-700"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded-lg bg-rose-600 text-white font-semibold hover:bg-rose-500"
+                  className="px-4 py-2 rounded-lg bg-rose-600 text-white font-semibold hover:bg-rose-500 shadow-md"
                 >
                   Confirm Rejection & Send Email
                 </button>
@@ -787,34 +865,42 @@ export const ShiftRosterManager: React.FC = () => {
 
       {/* MODAL 4: VIEW AUTOMATED EMAIL LOGS */}
       {viewingEmailLogsSwap && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-          <div className="w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-2xl bg-slate-900 border border-slate-800 p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
+          <div className="w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-2xl bg-slate-900 border border-slate-700 p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-750 pb-3">
               <div className="flex items-center gap-2">
                 <Mail className="h-5 w-5 text-purple-400" />
                 <h2 className="text-base font-bold text-white">Automated Email Dispatch History</h2>
               </div>
-              <button
-                onClick={() => setViewingEmailLogsSwap(null)}
-                className="rounded bg-slate-800 px-3 py-1 text-xs font-semibold text-slate-300 hover:bg-slate-700"
-              >
-                Close
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => window.print()}
+                  className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 print:hidden"
+                >
+                  <Printer className="h-3.5 w-3.5 text-sky-400" /> Print Trail
+                </button>
+                <button
+                  onClick={() => setViewingEmailLogsSwap(null)}
+                  className="rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-700 border border-slate-700 print:hidden"
+                >
+                  Close
+                </button>
+              </div>
             </div>
 
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-slate-300">
               Audit trail of all automated email notifications triggered for Shift Swap Request <strong className="text-white">{viewingEmailLogsSwap.id}</strong>.
             </p>
 
             <div className="space-y-3">
               {viewingEmailLogsSwap.emailLog.map((log, idx) => (
-                <div key={idx} className="rounded-xl bg-slate-950 p-4 border border-slate-800 text-xs space-y-2">
-                  <div className="flex items-center justify-between border-b border-slate-800/80 pb-2">
+                <div key={idx} className="rounded-xl bg-slate-800/90 p-4 border border-slate-700 text-xs space-y-2">
+                  <div className="flex items-center justify-between border-b border-slate-700/80 pb-2">
                     <span className="font-bold text-purple-300">To: {log.sentTo}</span>
-                    <span className="text-[10px] text-slate-500">{log.sentAt}</span>
+                    <span className="text-[10px] text-slate-400">{log.sentAt}</span>
                   </div>
-                  <div className="font-semibold text-slate-200">Subject: {log.subject}</div>
-                  <p className="text-slate-300 leading-relaxed bg-slate-900 p-3 rounded-lg border border-slate-800/60 font-mono text-[11px]">
+                  <div className="font-semibold text-slate-100">Subject: {log.subject}</div>
+                  <p className="text-slate-200 leading-relaxed bg-slate-900/90 p-3 rounded-lg border border-slate-700/60 font-mono text-[11px]">
                     {log.body}
                   </p>
                 </div>

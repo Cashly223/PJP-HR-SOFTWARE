@@ -26,10 +26,14 @@ import {
   Building2,
   MessageSquare,
   Store,
-  Sparkles
+  Sparkles,
+  Camera,
+  Eye,
+  Compass,
 } from 'lucide-react';
 import { useHrms } from '../context/HrmsContext';
 import { PlayStoreDeployModal } from './mobile/PlayStoreDeployModal';
+import { MobileGeofenceFacialClockIn } from './attendance/MobileGeofenceFacialClockIn';
 
 interface MobileAppSimulatorProps {
   onClose: () => void;
@@ -50,13 +54,14 @@ export const MobileAppSimulator: React.FC<MobileAppSimulatorProps> = ({ onClose 
   } = useHrms();
 
   // Find employee corresponding to current user session or default to staff member
-  const loggedEmp = employees.find(
-    (e) => e.email?.toLowerCase() === currentUser?.email?.toLowerCase() || e.id === currentUser?.id
-  ) || employees[1] || employees[0];
+  const safeEmployees = (employees || []).filter(Boolean);
+  const loggedEmp = safeEmployees.find(
+    (e) => e && (e.email?.toLowerCase() === currentUser?.email?.toLowerCase() || e.id === currentUser?.id)
+  ) || safeEmployees[1] || safeEmployees[0];
 
-  const empRosters = rosters.filter((r) => r.employeeId === loggedEmp?.id || r.employeeName === `${loggedEmp?.firstName} ${loggedEmp?.lastName}`);
-  const empLeaves = leaves.filter((l) => l.employeeId === loggedEmp?.id || l.employeeName === `${loggedEmp?.firstName} ${loggedEmp?.lastName}`);
-  const empAttendance = attendance.filter((a) => a.employeeId === loggedEmp?.id);
+  const empRosters = (rosters || []).filter((r) => r && (r.employeeId === loggedEmp?.id || r.employeeName === `${loggedEmp?.firstName} ${loggedEmp?.lastName}`));
+  const empLeaves = (leaves || []).filter((l) => l && (l.employeeId === loggedEmp?.id || l.employeeName === `${loggedEmp?.firstName} ${loggedEmp?.lastName}`));
+  const empAttendance = (attendance || []).filter((a) => a && a.employeeId === loggedEmp?.id);
 
   // States
   const [activeScreen, setActiveScreen] = useState<'home' | 'attendance' | 'roster' | 'payslip' | 'leave' | 'profile' | 'notices'>('home');
@@ -66,6 +71,7 @@ export const MobileAppSimulator: React.FC<MobileAppSimulatorProps> = ({ onClose 
   const [clockMsg, setClockMsg] = useState('');
   const [showQrModal, setShowQrModal] = useState(false);
   const [showPlayStoreModal, setShowPlayStoreModal] = useState(false);
+  const [showFacialClockInModal, setShowFacialClockInModal] = useState(false);
 
   // Leave Form State
   const [showLeaveForm, setShowLeaveForm] = useState(false);
@@ -155,24 +161,46 @@ export const MobileAppSimulator: React.FC<MobileAppSimulatorProps> = ({ onClose 
                 </div>
               )}
 
+              {/* Option B: Mobile Geofence & Facial Clock-In Flagship Action */}
+              <button
+                onClick={() => setShowFacialClockInModal(true)}
+                className="w-full mb-2.5 py-2.5 px-3 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs shadow-lg shadow-emerald-600/30 transition flex items-center justify-between group active:scale-98"
+              >
+                <div className="flex items-center gap-2">
+                  <div className="p-1 rounded-lg bg-white/20 text-white">
+                    <Camera className="h-4 w-4" />
+                  </div>
+                  <div className="text-left">
+                    <div className="flex items-center gap-1.5">
+                      <span>Face & Geofence Clock-In</span>
+                      <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-emerald-400 text-emerald-950 font-extrabold">
+                        Option B
+                      </span>
+                    </div>
+                    <p className="text-[9px] text-emerald-100 font-normal">Selfie & GPS Radar Verification</p>
+                  </div>
+                </div>
+                <ChevronRight className="h-4 w-4 text-emerald-200 group-hover:translate-x-0.5 transition" />
+              </button>
+
               <div className="grid grid-cols-2 gap-2">
                 <button
                   onClick={handleMobileClockIn}
                   disabled={clockedIn}
-                  className={`py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow ${
+                  className={`py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow ${
                     clockedIn
                       ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
-                      : 'bg-emerald-600 text-white hover:bg-emerald-500 active:scale-95'
+                      : 'bg-slate-800 border border-slate-700 text-slate-200 hover:bg-slate-700 active:scale-95'
                   }`}
                 >
-                  <Clock className="h-3.5 w-3.5" />
-                  <span>{clockedIn ? 'Clocked In' : 'Clock In (GPS)'}</span>
+                  <Clock className="h-3.5 w-3.5 text-emerald-400" />
+                  <span>{clockedIn ? 'Clocked In' : 'Quick GPS'}</span>
                 </button>
 
                 <button
                   onClick={handleMobileClockOut}
                   disabled={!clockedIn}
-                  className={`py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 border ${
+                  className={`py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 border ${
                     !clockedIn
                       ? 'border-slate-800 bg-slate-900 text-slate-600 cursor-not-allowed'
                       : 'border-rose-500/40 bg-rose-950/40 text-rose-300 hover:bg-rose-900/60 active:scale-95'
@@ -188,9 +216,9 @@ export const MobileAppSimulator: React.FC<MobileAppSimulatorProps> = ({ onClose 
                   onClick={() => setShowQrModal(true)}
                   className="text-emerald-400 hover:underline flex items-center gap-1 font-semibold"
                 >
-                  <QrCode className="h-3 w-3" /> Scan Station QR Code
+                  <QrCode className="h-3 w-3" /> Station QR
                 </button>
-                <span>Geofence: 25m Radius</span>
+                <span className="text-emerald-400 font-mono font-semibold">Geofence: 150m OK</span>
               </div>
             </div>
 
@@ -345,21 +373,77 @@ export const MobileAppSimulator: React.FC<MobileAppSimulatorProps> = ({ onClose 
       case 'attendance':
         return (
           <div className="space-y-3 text-xs">
-            <h4 className="font-bold text-emerald-400 text-sm">Clocking Logs & Geofence History</h4>
+            <div className="flex items-center justify-between">
+              <h4 className="font-bold text-emerald-400 text-sm">Clocking Logs & Geofence</h4>
+              <button
+                onClick={() => setShowFacialClockInModal(true)}
+                className="px-2.5 py-1 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[10px] flex items-center gap-1 shadow"
+              >
+                <Camera className="h-3 w-3" /> Live Scan
+              </button>
+            </div>
+
+            {/* Launch Banner */}
+            <div className="p-3 rounded-2xl bg-gradient-to-r from-emerald-950/80 to-slate-900 border border-emerald-500/30 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="font-black text-white text-[11px] flex items-center gap-1.5">
+                  <Compass className="h-3.5 w-3.5 text-emerald-400" />
+                  Mobile Geofence & Facial Clock
+                </span>
+                <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/40">
+                  Option B Active
+                </span>
+              </div>
+              <p className="text-[10px] text-slate-300">
+                Hospital GPS geofence radar & 3D facial liveness biometric authentication.
+              </p>
+              <button
+                onClick={() => setShowFacialClockInModal(true)}
+                className="w-full py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs shadow transition flex items-center justify-center gap-1.5"
+              >
+                <Camera className="h-3.5 w-3.5" /> Launch Geofenced Face Clock-In
+              </button>
+            </div>
+
             <div className="space-y-2">
+              <span className="text-[10px] font-bold text-slate-400 block uppercase tracking-wider">
+                Recent Duty Records ({empAttendance.length})
+              </span>
               {empAttendance.length === 0 ? (
                 <div className="p-3 text-center bg-slate-900 rounded-2xl border border-slate-800 text-slate-400 text-[11px]">
                   No clocking logs recorded today.
                 </div>
               ) : (
                 empAttendance.slice(0, 5).map((a) => (
-                  <div key={a.id} className="p-3 rounded-2xl bg-slate-900 border border-slate-800 flex justify-between items-center">
-                    <div>
-                      <p className="font-bold text-slate-200 text-[11px]">{a.type === 'ClockIn' ? 'Clocked In' : 'Clocked Out'}</p>
-                      <p className="text-[10px] text-slate-400">{a.timestamp} via {a.method}</p>
+                  <div key={a.id} className="p-2.5 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      {a.snapshotUrl ? (
+                        <img
+                          src={a.snapshotUrl}
+                          alt="Face Selfie"
+                          className="h-9 w-9 rounded-xl object-cover border border-emerald-500/60 shrink-0"
+                        />
+                      ) : (
+                        <div className="h-9 w-9 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-emerald-400 shrink-0">
+                          <Camera className="h-4 w-4" />
+                        </div>
+                      )}
+                      <div>
+                        <p className="font-bold text-slate-200 text-[11px]">
+                          {a.clockIn} – {a.clockOut}
+                        </p>
+                        <p className="text-[9px] text-slate-400 truncate max-w-[150px]" title={a.location}>
+                          {a.location || loggedEmp.department}
+                        </p>
+                        {a.facialConfidence && (
+                          <span className="text-[9px] font-mono text-emerald-400">
+                            Face: {a.facialConfidence}% match
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${a.verified ? 'bg-emerald-900/60 text-emerald-300' : 'bg-amber-900/60 text-amber-300'}`}>
-                      {a.verified ? 'Verified GPS' : 'Pending Review'}
+                    <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-emerald-950/80 text-emerald-300 border border-emerald-800 shrink-0">
+                      {a.geofenceVerified ? 'GPS & Face OK' : 'Verified'}
                     </span>
                   </div>
                 ))
@@ -849,6 +933,28 @@ export const MobileAppSimulator: React.FC<MobileAppSimulatorProps> = ({ onClose 
         isOpen={showPlayStoreModal}
         onClose={() => setShowPlayStoreModal(false)}
       />
+
+      {/* Option B: Mobile Geofence & Facial Clock-In Full Modal */}
+      {showFacialClockInModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4 backdrop-blur-md overflow-y-auto">
+          <div className="relative w-full max-w-4xl max-h-[90vh] overflow-y-auto custom-scrollbar">
+            <button
+              onClick={() => setShowFacialClockInModal(false)}
+              className="absolute top-4 right-4 z-10 p-2 rounded-full bg-slate-900/90 text-slate-300 hover:text-white border border-slate-700 shadow-xl transition"
+            >
+              <X className="h-5 w-5" />
+            </button>
+            <MobileGeofenceFacialClockIn
+              embeddedMode={true}
+              onSuccess={() => {
+                setClockedIn(true);
+                setClockMsg('Facial verification & Geofence record synced to HR!');
+                setTimeout(() => setShowFacialClockInModal(false), 2000);
+              }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 };

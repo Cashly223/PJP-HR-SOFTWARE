@@ -91,10 +91,11 @@ export const DigitalSuggestionBox: React.FC = () => {
     setResponseText('');
   };
 
-  const filteredSuggestions = suggestions.filter((item) => {
+  const filteredSuggestions = (suggestions || []).filter((item) => {
+    if (!item) return false;
     const matchesSearch =
-      item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.details.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (item.title || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (item.details || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
       (item.submittedBy || '').toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCat = categoryFilter === 'All' || item.category === categoryFilter;
     const matchesStat = statusFilter === 'All' || item.status === statusFilter;

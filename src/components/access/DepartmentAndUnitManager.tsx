@@ -109,11 +109,12 @@ export const DepartmentAndUnitManager: React.FC = () => {
     setShowAddUnitModal(false);
   };
 
-  const filteredDepts = departmentLeadership.filter(
+  const filteredDepts = (departmentLeadership || []).filter(
     (dept) =>
-      dept.departmentName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      dept.departmentCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      dept.units.some((u) => u.unitName.toLowerCase().includes(searchTerm.toLowerCase()))
+      dept &&
+      ((dept.departmentName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (dept.departmentCode || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (dept.units || []).some((u) => u && (u.unitName || '').toLowerCase().includes(searchTerm.toLowerCase())))
   );
 
   return (

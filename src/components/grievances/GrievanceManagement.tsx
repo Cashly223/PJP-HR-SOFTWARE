@@ -51,18 +51,20 @@ export const GrievanceManagement: React.FC = () => {
   const [resolutionText, setResolutionText] = useState('');
 
   // Stats Calculations
-  const totalGrievances = grievances.length;
-  const inMediationCount = grievances.filter((g) => g.status === 'In Mediation' || g.status === 'Under Review').length;
-  const anonymousCount = grievances.filter((g) => g.isAnonymous).length;
-  const resolvedCount = grievances.filter((g) => g.status === 'Resolved').length;
+  const safeGrievances = (grievances || []).filter(Boolean);
+  const totalGrievances = safeGrievances.length;
+  const inMediationCount = safeGrievances.filter((g) => g?.status === 'In Mediation' || g?.status === 'Under Review').length;
+  const anonymousCount = safeGrievances.filter((g) => g?.isAnonymous).length;
+  const resolvedCount = safeGrievances.filter((g) => g?.status === 'Resolved').length;
 
   // Filtered List
-  const filteredGrievances = grievances.filter((g) => {
+  const filteredGrievances = safeGrievances.filter((g) => {
+    if (!g) return false;
     const matchesSearch =
-      g.ticketNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      g.subject.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      g.department.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      g.description.toLowerCase().includes(searchTerm.toLowerCase());
+      (g.ticketNumber || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (g.subject || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (g.department || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (g.description || '').toLowerCase().includes(searchTerm.toLowerCase());
 
     const matchesStatus = statusFilter === 'All' || g.status === statusFilter;
     const matchesSeverity = severityFilter === 'All' || g.severity === severityFilter;

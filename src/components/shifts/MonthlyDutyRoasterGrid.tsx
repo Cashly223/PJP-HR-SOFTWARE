@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Calendar,
   Building2,
@@ -20,6 +20,7 @@ import {
   MessageSquare,
 } from 'lucide-react';
 import { useHrms } from '../../context/HrmsContext';
+import { PrintDutyRoasterModal } from './PrintDutyRoasterModal';
 
 interface StaffRosterRow {
   id: string;
@@ -30,15 +31,46 @@ interface StaffRosterRow {
 }
 
 export const MonthlyDutyRoasterGrid: React.FC = () => {
-  const { selectedHospital, activeRole, currentUser } = useHrms();
+  const { selectedHospital, activeRole, currentUser, isHeadOfFacilityOrHr, currentUserDepartment } = useHrms();
 
-  const isHRorAdmin = ['super_admin', 'facility_head', 'hr_director', 'hr_manager'].includes(activeRole);
+  const isHRorAdmin = isHeadOfFacilityOrHr;
 
   const [month, setMonth] = useState<string>('APRIL');
   const [year, setYear] = useState<number>(2026);
-  const [department, setDepartment] = useState<string>('CARDIOLOGY & ICU');
+  
+  // Format user department for duty roaster matching
+  const getInitialDept = () => {
+    if (isHeadOfFacilityOrHr) return 'CARDIOLOGY & ICU';
+    const cleanDept = currentUserDepartment.toUpperCase();
+    if (cleanDept.includes('CARDIO') || cleanDept.includes('ICU')) return 'CARDIOLOGY & ICU';
+    if (cleanDept.includes('EMERGENCY') || cleanDept.includes('TRAUMA')) return 'EMERGENCY & TRAUMA';
+    if (cleanDept.includes('SURG') || cleanDept.includes('THEATER') || cleanDept.includes('OT')) return 'SURGICAL SERVICES & OT';
+    if (cleanDept.includes('PED') || cleanDept.includes('NEONATAL')) return 'PEDIATRICS & NEONATAL';
+    if (cleanDept.includes('PHARM')) return 'PHARMACY & DISPENSARY';
+    if (cleanDept.includes('RAD') || cleanDept.includes('IMAG')) return 'RADIOLOGY & IMAGING';
+    return cleanDept || 'GENERAL MEDICAL WARDS';
+  };
+
+  const [department, setDepartment] = useState<string>(getInitialDept());
   const [preparedBy, setPreparedBy] = useState<string>('Dr. Kwame Mensah (HOD)');
   const [savedSuccess, setSavedSuccess] = useState<boolean>(false);
+
+  // Sync department when role or user department changes
+  useEffect(() => {
+    if (!isHeadOfFacilityOrHr) {
+      const cleanDept = currentUserDepartment.toUpperCase();
+      let matched = cleanDept;
+      if (cleanDept.includes('CARDIO') || cleanDept.includes('ICU')) matched = 'CARDIOLOGY & ICU';
+      else if (cleanDept.includes('EMERGENCY') || cleanDept.includes('TRAUMA')) matched = 'EMERGENCY & TRAUMA';
+      else if (cleanDept.includes('SURG') || cleanDept.includes('THEATER') || cleanDept.includes('OT')) matched = 'SURGICAL SERVICES & OT';
+      else if (cleanDept.includes('PED') || cleanDept.includes('NEONATAL')) matched = 'PEDIATRICS & NEONATAL';
+      else if (cleanDept.includes('PHARM')) matched = 'PHARMACY & DISPENSARY';
+      else if (cleanDept.includes('RAD') || cleanDept.includes('IMAG')) matched = 'RADIOLOGY & IMAGING';
+      else matched = cleanDept || 'GENERAL MEDICAL WARDS';
+      
+      setDepartment(matched);
+    }
+  }, [isHeadOfFacilityOrHr, currentUserDepartment, activeRole]);
 
   // HR Approval Status per Department State
   const [hrStatusByDept, setHrStatusByDept] = useState<Record<string, { status: 'Pending HR Approval' | 'Approved' | 'Returned for Revision'; approvedBy?: string; approvedAt?: string; notes?: string }>>({
@@ -53,7 +85,7 @@ export const MonthlyDutyRoasterGrid: React.FC = () => {
 
   const currentHrStatus = hrStatusByDept[department] || { status: 'Pending HR Approval' };
 
-  // HR Notes Modal for Return for Revision
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState<boolean>(false);
   const [showRevisionModal, setShowRevisionModal] = useState<boolean>(false);
   const [revisionNotesInput, setRevisionNotesInput] = useState<string>('');
 
@@ -431,10 +463,11 @@ export const MonthlyDutyRoasterGrid: React.FC = () => {
               <Download className="h-3.5 w-3.5 text-emerald-400" /> Export CSV
             </button>
             <button
-              onClick={() => window.print()}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition border border-slate-700"
+              onClick={() => setIsPrintModalOpen(true)}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-sky-600/90 hover:bg-sky-600 text-white text-xs font-bold transition shadow"
+              title="Open Official Printable Duty Roaster & Template Hub"
             >
-              <Printer className="h-3.5 w-3.5 text-sky-400" /> Print Roaster Template
+              <Printer className="h-3.5 w-3.5" /> Print Roaster / Blank Template
             </button>
             <button
               onClick={handleSaveRoster}
@@ -443,6 +476,32 @@ export const MonthlyDutyRoasterGrid: React.FC = () => {
               <Save className="h-4 w-4" /> Save Monthly Duty Roaster
             </button>
           </div>
+        </div>
+
+        {/* Access Governance Notice */}
+        <div className={`p-3 rounded-xl border flex items-center justify-between gap-3 text-xs ${
+          isHRorAdmin
+            ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-300'
+            : 'bg-amber-950/40 border-amber-500/30 text-amber-200'
+        }`}>
+          <div className="flex items-center gap-2.5">
+            <span className="text-base">{isHRorAdmin ? '🌐' : '🔒'}</span>
+            <div>
+              <p className="font-bold text-xs">
+                {isHRorAdmin
+                  ? 'Hospital-Wide Roster Governance Access (Head of Facility & HR Mode)'
+                  : `Departmental Roster View: Restricted to ${department}`}
+              </p>
+              <p className="text-[11px] opacity-80 mt-0.5">
+                {isHRorAdmin
+                  ? 'You have hospital-wide authorization to view, audit, review revisions, and approve monthly rosters across all clinical and administrative departments.'
+                  : 'Per hospital data access policy, all clinical and general staff apart from the Head of Facility and HR can only view their own department roster.'}
+              </p>
+            </div>
+          </div>
+          <span className="text-[10px] font-black uppercase px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-700 text-slate-300 shrink-0">
+            Role: {activeRole.replace('_', ' ').toUpperCase()}
+          </span>
         </div>
 
         {savedSuccess && (
@@ -536,19 +595,34 @@ export const MonthlyDutyRoasterGrid: React.FC = () => {
           </div>
 
           <div>
-            <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Hospital Department</label>
-            <select
-              value={department}
-              onChange={(e) => setDepartment(e.target.value)}
-              className="w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-white font-bold text-xs focus:border-emerald-500 focus:outline-none"
-            >
-              <option value="CARDIOLOGY & ICU">CARDIOLOGY & ICU</option>
-              <option value="EMERGENCY & TRAUMA">EMERGENCY & TRAUMA</option>
-              <option value="GENERAL MEDICAL WARDS">GENERAL MEDICAL WARDS</option>
-              <option value="SURGICAL SERVICES & OT">SURGICAL SERVICES & OT</option>
-              <option value="PEDIATRICS & NEONATAL">PEDIATRICS & NEONATAL</option>
-              <option value="PHARMACY & DISPENSARY">PHARMACY & DISPENSARY</option>
-            </select>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-[10px] uppercase font-bold text-slate-400">Hospital Department</label>
+              {!isHRorAdmin && (
+                <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                  Staff View (Locked)
+                </span>
+              )}
+            </div>
+            {isHRorAdmin ? (
+              <select
+                value={department}
+                onChange={(e) => setDepartment(e.target.value)}
+                className="w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-white font-bold text-xs focus:border-emerald-500 focus:outline-none cursor-pointer"
+              >
+                <option value="CARDIOLOGY & ICU">CARDIOLOGY & ICU</option>
+                <option value="EMERGENCY & TRAUMA">EMERGENCY & TRAUMA</option>
+                <option value="GENERAL MEDICAL WARDS">GENERAL MEDICAL WARDS</option>
+                <option value="SURGICAL SERVICES & OT">SURGICAL SERVICES & OT</option>
+                <option value="PEDIATRICS & NEONATAL">PEDIATRICS & NEONATAL</option>
+                <option value="PHARMACY & DISPENSARY">PHARMACY & DISPENSARY</option>
+                <option value="RADIOLOGY & IMAGING">RADIOLOGY & IMAGING</option>
+              </select>
+            ) : (
+              <div className="w-full rounded-xl bg-slate-900/90 border border-amber-500/40 px-3 py-2 text-white font-bold text-xs flex items-center justify-between shadow-inner">
+                <span className="text-emerald-300 truncate">{department}</span>
+                <span className="text-[10px] text-slate-400 font-normal ml-2 shrink-0">Your Dept</span>
+              </div>
+            )}
           </div>
 
           <div>
@@ -791,6 +865,18 @@ export const MonthlyDutyRoasterGrid: React.FC = () => {
           </div>
         </div>
       )}
+      {/* Official Duty Roaster Printable Modal */}
+      <PrintDutyRoasterModal
+        isOpen={isPrintModalOpen}
+        onClose={() => setIsPrintModalOpen(false)}
+        month={month}
+        year={year}
+        department={department}
+        preparedBy={preparedBy}
+        staffList={staffList}
+        hrApprovalStatus={currentHrStatus}
+        hospitalName={selectedHospital?.name || 'POPE JOHN PAUL II MEDICAL CENTRE - JAMASI'}
+      />
     </div>
   );
 };

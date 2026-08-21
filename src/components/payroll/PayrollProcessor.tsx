@@ -48,8 +48,9 @@ export const PayrollProcessor: React.FC = () => {
   const currentEmpEmail = currentUser?.email || '';
 
   const displayedPayrolls = isHRorAdmin
-    ? payrolls
-    : payrolls.filter((p) => {
+    ? (payrolls || [])
+    : (payrolls || []).filter((p) => {
+        if (!p) return false;
         if (p.employeeId === currentUser?.id) return true;
         const pName = (p.employeeName || '').toLowerCase();
         if (currentEmpName && pName.includes(currentEmpName.toLowerCase().split(' ')[0])) return true;
@@ -58,8 +59,9 @@ export const PayrollProcessor: React.FC = () => {
       });
 
   const displayedExpenseClaims = isHRorAdmin
-    ? expenseClaims
-    : expenseClaims.filter((c) => {
+    ? (expenseClaims || [])
+    : (expenseClaims || []).filter((c) => {
+        if (!c) return false;
         if (c.employeeId === currentUser?.id) return true;
         const cName = (c.employeeName || '').toLowerCase();
         if (currentEmpName && cName.includes(currentEmpName.toLowerCase().split(' ')[0])) return true;

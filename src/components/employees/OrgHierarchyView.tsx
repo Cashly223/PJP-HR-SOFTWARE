@@ -232,8 +232,8 @@ export const OrgHierarchyView: React.FC = () => {
   // Find root employees (Employees with NO manager assigned, or assigned to top facility head)
   const rootEmployees = useMemo(() => {
     // If an employee has no managerId or their managerId doesn't exist, they are top roots
-    const validEmpIds = new Set(employees.map((e) => e.id));
-    return employees.filter((e) => !e.managerId || !validEmpIds.has(e.managerId));
+    const validEmpIds = new Set((employees || []).filter(Boolean).map((e) => e.id));
+    return (employees || []).filter((e) => e && (!e.managerId || !validEmpIds.has(e.managerId)));
   }, [employees]);
 
   // Handle reassigning manager
@@ -242,8 +242,8 @@ export const OrgHierarchyView: React.FC = () => {
 
     updateEmployee(employeeId, { managerId: newManagerId || undefined });
 
-    const emp = employees.find((e) => e.id === employeeId);
-    const newMgr = employees.find((e) => e.id === newManagerId);
+    const emp = (employees || []).find((e) => e && e.id === employeeId);
+    const newMgr = (employees || []).find((e) => e && e.id === newManagerId);
 
     const empName = emp ? `${emp.firstName} ${emp.lastName}` : 'Employee';
     const mgrName = newMgr ? `${newMgr.firstName} ${newMgr.lastName}` : 'Top Executive Leadership';
@@ -259,22 +259,23 @@ export const OrgHierarchyView: React.FC = () => {
   };
 
   // Compute stats
-  const totalEmployees = employees.length;
+  const totalEmployees = (employees || []).length;
   const managersCount = useMemo(() => {
-    const managerSet = new Set(employees.map((e) => e.managerId).filter(Boolean));
+    const managerSet = new Set((employees || []).filter(Boolean).map((e) => e.managerId).filter(Boolean));
     return managerSet.size;
   }, [employees]);
 
   const avgSpanOfControl = managersCount > 0 ? (totalEmployees / managersCount).toFixed(1) : '0';
 
   const unassignedManagerCount = useMemo(() => {
-    return employees.filter((e) => !e.managerId && e.role !== 'facility_head' && e.role !== 'super_admin').length;
+    return (employees || []).filter((e) => e && !e.managerId && e.role !== 'facility_head' && e.role !== 'super_admin').length;
   }, [employees]);
 
   // Filtered employees for matrix / table
   const filteredEmployees = useMemo(() => {
-    return employees.filter((e) => {
-      const matchesSearch = `${e.firstName} ${e.lastName} ${e.empCode} ${e.jobTitle} ${e.department}`
+    return (employees || []).filter((e) => {
+      if (!e) return false;
+      const matchesSearch = `${e.firstName || ''} ${e.lastName || ''} ${e.empCode || ''} ${e.jobTitle || ''} ${e.department || ''}`
         .toLowerCase()
         .includes(searchTerm.toLowerCase());
       const matchesDept = deptFilter === 'All' || e.department === deptFilter;
@@ -460,9 +461,9 @@ export const OrgHierarchyView: React.FC = () => {
       {viewMode === 'department_matrix' && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {uniqueDepartments.map((deptName) => {
-            const deptStaff = employees.filter((e) => e.department === deptName);
+            const deptStaff = (employees || []).filter((e) => e && e.department === deptName);
             const deptHead = deptStaff.find(
-              (e) => e.role === 'dept_head' || e.jobTitle.toLowerCase().includes('head') || e.jobTitle.toLowerCase().includes('chief')
+              (e) => e && (e.role === 'dept_head' || e.jobTitle?.toLowerCase().includes('head') || e.jobTitle?.toLowerCase().includes('chief'))
             );
 
             // Group by unit
@@ -595,8 +596,8 @@ export const OrgHierarchyView: React.FC = () => {
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {filteredEmployees.map((emp) => {
-                  const directReportsCount = employees.filter((e) => e.managerId === emp.id).length;
-                  const currentManager = employees.find((m) => m.id === emp.managerId);
+                  const directReportsCount = (employees || []).filter((e) => e && e.managerId === emp.id).length;
+                  const currentManager = (employees || []).find((m) => m && m.id === emp.managerId);
 
                   return (
                     <tr key={emp.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition">
@@ -763,17 +764,17 @@ export const OrgHierarchyView: React.FC = () => {
             {/* Direct Reports Under This Employee */}
             <div className="space-y-2">
               <h4 className="text-xs font-extrabold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center justify-between">
-                <span>Direct Team Members ({employees.filter((e) => e.managerId === selectedEmployee.id).length})</span>
+                <span>Direct Team Members ({(employees || []).filter((e) => e && e.managerId === selectedEmployee.id).length})</span>
               </h4>
 
               <div className="max-h-48 overflow-y-auto space-y-2 pr-1">
-                {employees.filter((e) => e.managerId === selectedEmployee.id).length === 0 ? (
+                {(employees || []).filter((e) => e && e.managerId === selectedEmployee.id).length === 0 ? (
                   <p className="text-xs text-slate-400 italic p-3 bg-slate-50 dark:bg-slate-800/40 rounded-xl text-center">
                     No direct reports assigned to this employee.
                   </p>
                 ) : (
-                  employees
-                    .filter((e) => e.managerId === selectedEmployee.id)
+                  (employees || [])
+                    .filter((e) => e && e.managerId === selectedEmployee.id)
                     .map((report) => (
                       <div
                         key={report.id}

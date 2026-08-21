@@ -12,6 +12,7 @@ import {
 } from 'firebase/auth';
 import { 
   getFirestore, 
+  initializeFirestore,
   collection, 
   doc, 
   getDoc, 
@@ -31,9 +32,23 @@ const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
-export const db = firebaseConfig.firestoreDatabaseId
-  ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
-  : getFirestore(app);
+
+let dbInstance;
+try {
+  dbInstance = firebaseConfig.firestoreDatabaseId
+    ? initializeFirestore(app, {
+        experimentalAutoDetectLongPolling: true,
+      }, firebaseConfig.firestoreDatabaseId)
+    : initializeFirestore(app, {
+        experimentalAutoDetectLongPolling: true,
+      });
+} catch (e) {
+  dbInstance = firebaseConfig.firestoreDatabaseId
+    ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
+    : getFirestore(app);
+}
+
+export const db = dbInstance;
 
 export enum OperationType {
   CREATE = 'create',

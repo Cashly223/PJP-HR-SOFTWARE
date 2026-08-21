@@ -21,6 +21,7 @@ import {
   MessageSquare,
   Sparkles,
   Check,
+  Printer,
 } from 'lucide-react';
 import { useHrms } from '../../context/HrmsContext';
 import { DepartmentMonthlyRoster } from '../../types/hrms';
@@ -32,6 +33,9 @@ export const DepartmentRosterUploader: React.FC = () => {
     updateMonthlyUnitRosterStatus,
     activeRole,
     selectedHospital,
+    isHeadOfFacilityOrHr,
+    currentUserDepartment,
+    canAccessDepartmentRoster,
   } = useHrms();
 
   // Filters
@@ -41,7 +45,9 @@ export const DepartmentRosterUploader: React.FC = () => {
 
   // Upload Modal State
   const [isUploadModalOpen, setIsUploadModalOpen] = useState<boolean>(false);
-  const [department, setDepartment] = useState<string>('Intensive Care Unit (ICU)');
+  const [department, setDepartment] = useState<string>(
+    !isHeadOfFacilityOrHr ? currentUserDepartment : 'Intensive Care Unit (ICU)'
+  );
   const [unit, setUnit] = useState<string>('ICU Critical Care Ward');
   const [month, setMonth] = useState<string>('September');
   const [year, setYear] = useState<number>(2026);
@@ -80,21 +86,29 @@ export const DepartmentRosterUploader: React.FC = () => {
     'General Medical Wards',
   ];
 
-  // Stats
-  const totalRostersCount = monthlyUnitRosters.length;
-  const pendingCount = monthlyUnitRosters.filter((r) => r.status === 'Pending HR Approval').length;
-  const approvedCount = monthlyUnitRosters.filter((r) => r.status === 'Approved').length;
-  const revisionCount = monthlyUnitRosters.filter((r) => r.status === 'Returned for Revision').length;
+  // Scoped Accessible Rosters based on Governance Policy
+  const safeMonthlyRosters = (monthlyUnitRosters || []).filter(Boolean);
+  const visibleRosters = safeMonthlyRosters.filter((r) => canAccessDepartmentRoster(r?.department));
+
+  // Stats (Scoped)
+  const totalRostersCount = visibleRosters.length;
+  const pendingCount = visibleRosters.filter((r) => r?.status === 'Pending HR Approval').length;
+  const approvedCount = visibleRosters.filter((r) => r?.status === 'Approved').length;
+  const revisionCount = visibleRosters.filter((r) => r?.status === 'Returned for Revision').length;
 
   // Filtered List
-  const filteredRosters = monthlyUnitRosters.filter((r) => {
+  const filteredRosters = visibleRosters.filter((r) => {
+    if (!r) return false;
     const matchesStatus = statusFilter === 'All' || r.status === statusFilter;
-    const matchesDept = selectedDeptFilter === 'All' || r.department === selectedDeptFilter;
+    const matchesDept =
+      !isHeadOfFacilityOrHr ||
+      selectedDeptFilter === 'All' ||
+      r.department === selectedDeptFilter;
     const matchesSearch =
-      r.department.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      r.unit.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      r.preparedBy.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      r.fileName.toLowerCase().includes(searchTerm.toLowerCase());
+      (r.department || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (r.unit || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (r.preparedBy || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (r.fileName || '').toLowerCase().includes(searchTerm.toLowerCase());
 
     return matchesStatus && matchesDept && matchesSearch;
   });
@@ -183,16 +197,157 @@ export const DepartmentRosterUploader: React.FC = () => {
     document.body.removeChild(link);
   };
 
+  const handlePrintDepartmentRoster = (roster: DepartmentMonthlyRoster) => {
+    const gridRows = roster.dutyRosterGrid && roster.dutyRosterGrid.length > 0
+      ? roster.dutyRosterGrid
+      : [
+          { staffName: 'Elena Rostova', role: 'Senior Nurse', week1: 'Morning (07-15)', week2: 'Night ICU (23-07)', week3: 'Off / Leave', week4: 'Evening (15-23)' },
+          { staffName: 'Dr. Sarah Jenkins', role: 'Attending Physician', week1: '12h Emergency (07-19)', week2: 'Morning (07-15)', week3: 'Night ICU (23-07)', week4: 'On-Call 24h' },
+        ];
+
+    const htmlDoc = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Department Duty Roster - ${roster.department} (${roster.month} ${roster.year})</title>
+  <style>
+    @page { size: A4 landscape; margin: 8mm 10mm; }
+    * { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; color: #0f172a; margin: 0; padding: 12px; font-size: 10px; }
+    .header { text-align: center; border-bottom: 2px solid #0f172a; padding-bottom: 6px; margin-bottom: 8px; }
+    .meta { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; padding: 6px 10px; margin-bottom: 10px; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 9.5px; }
+    th, td { border: 1px solid #64748b; padding: 6px 8px; text-align: left; }
+    th { background: #0f172a; color: #ffffff; text-transform: uppercase; font-size: 9px; }
+    tr:nth-child(even) { background: #f8fafc; }
+    .sign-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-top: 15px; }
+    .sign-box { border: 1px solid #94a3b8; border-radius: 6px; padding: 8px; background: #ffffff; font-size: 9px; }
+    .sig-line { margin-top: 20px; border-top: 1px dashed #64748b; padding-top: 3px; display: flex; justify-content: space-between; font-size: 8px; color: #475569; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div style="font-size: 8.5px; font-weight: 800; letter-spacing: 2px; color: #475569; text-transform: uppercase;">CATHOLIC HEALTH SERVICE TRUST (CHST)</div>
+    <h2 style="margin: 2px 0; font-size: 16px; font-weight: 900; text-transform: uppercase;">${selectedHospital.name}</h2>
+    <h3 style="margin: 0; font-size: 12px; font-weight: 800; color: #047857; text-transform: uppercase;">DEPARTMENTAL MONTHLY DUTY ROSTER (${roster.month.toUpperCase()} ${roster.year})</h3>
+  </div>
+  <div class="meta">
+    <div><strong style="color: #64748b; font-size: 8px; text-transform: uppercase; display: block;">Department:</strong> ${roster.department}</div>
+    <div><strong style="color: #64748b; font-size: 8px; text-transform: uppercase; display: block;">Unit / Ward:</strong> ${roster.unit}</div>
+    <div><strong style="color: #64748b; font-size: 8px; text-transform: uppercase; display: block;">Prepared By:</strong> ${roster.preparedBy} (${roster.preparedByRole})</div>
+    <div><strong style="color: #64748b; font-size: 8px; text-transform: uppercase; display: block;">HR Audit Status:</strong> <span style="font-weight: 900; color: ${roster.status === 'Approved' ? '#059669' : '#d97706'};">${roster.status}</span></div>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 25px;">#</th>
+        <th>Staff Name</th>
+        <th>Designation / Role</th>
+        <th>Week 1 Allocation</th>
+        <th>Week 2 Allocation</th>
+        <th>Week 3 Allocation</th>
+        <th>Week 4 Allocation</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${gridRows.map((row, idx) => `
+        <tr>
+          <td style="font-weight: bold; color: #64748b;">${idx + 1}</td>
+          <td style="font-weight: bold; color: #0f172a;">${row.staffName}</td>
+          <td style="color: #475569;">${row.role}</td>
+          <td style="font-weight: 600; color: #047857;">${row.week1}</td>
+          <td style="font-weight: 600; color: #b45309;">${row.week2}</td>
+          <td style="font-weight: 600; color: #334155;">${row.week3}</td>
+          <td style="font-weight: 600; color: #0f766e;">${row.week4}</td>
+        </tr>
+      `).join('')}
+    </tbody>
+  </table>
+  <div class="sign-grid">
+    <div class="sign-box">
+      <div style="font-weight: 800; text-transform: uppercase; border-bottom: 1px solid #cbd5e1; padding-bottom: 3px; margin-bottom: 4px;">1. Prepared By (Unit Head)</div>
+      <div><strong>Name:</strong> ${roster.preparedBy}</div>
+      <div class="sig-line"><span>Signature: _______________</span><span>Date: ${roster.submissionDate}</span></div>
+    </div>
+    <div class="sign-box">
+      <div style="font-weight: 800; text-transform: uppercase; border-bottom: 1px solid #cbd5e1; padding-bottom: 3px; margin-bottom: 4px;">2. Directorate of HR</div>
+      <div><strong>Verified:</strong> Human Resources Audit</div>
+      <div class="sig-line"><span>Stamp & Sign: _____________</span><span>Date: ____/____/2026</span></div>
+    </div>
+    <div class="sign-box">
+      <div style="font-weight: 800; text-transform: uppercase; border-bottom: 1px solid #cbd5e1; padding-bottom: 3px; margin-bottom: 4px;">3. Medical Admin</div>
+      <div><strong>Authority:</strong> Hospital Administration</div>
+      <div class="sig-line"><span>Seal: _____________________</span><span>Date: ____/____/2026</span></div>
+    </div>
+  </div>
+  <script>window.onload = function() { setTimeout(function() { window.print(); }, 300); };</script>
+</body>
+</html>`;
+
+    try {
+      const printWindow = window.open('', '_blank', 'width=1100,height=800');
+      if (printWindow) {
+        printWindow.document.open();
+        printWindow.document.write(htmlDoc);
+        printWindow.document.close();
+        printWindow.focus();
+        return;
+      }
+    } catch (e) {
+      console.warn('Popup blocked, fallback to hidden iframe', e);
+    }
+
+    try {
+      const printIframe = document.createElement('iframe');
+      printIframe.style.position = 'fixed';
+      printIframe.style.right = '0';
+      printIframe.style.bottom = '0';
+      printIframe.style.width = '0';
+      printIframe.style.height = '0';
+      printIframe.style.border = 'none';
+      printIframe.style.visibility = 'hidden';
+      document.body.appendChild(printIframe);
+
+      const iframeDoc = printIframe.contentWindow?.document || printIframe.contentDocument;
+      if (iframeDoc) {
+        iframeDoc.open();
+        iframeDoc.write(htmlDoc);
+        iframeDoc.close();
+
+        setTimeout(() => {
+          if (printIframe.contentWindow) {
+            printIframe.contentWindow.focus();
+            printIframe.contentWindow.print();
+          } else {
+            window.print();
+          }
+          setTimeout(() => {
+            try {
+              document.body.removeChild(printIframe);
+            } catch (err) {
+              // Ignore
+            }
+          }, 2000);
+        }, 400);
+        return;
+      }
+    } catch (err) {
+      console.warn('Iframe print failed', err);
+    }
+
+    window.print();
+  };
+
   return (
     <div className="space-y-6">
       {/* Top Banner & Upload Trigger */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 rounded-2xl bg-gradient-to-r from-slate-900 via-slate-900 to-teal-950 p-6 border border-slate-800 shadow-xl text-white">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 rounded-2xl bg-slate-900/95 p-6 border border-slate-800 shadow-xl text-white">
         <div className="flex items-start gap-4">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-teal-500/10 text-teal-400 border border-teal-500/30">
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-teal-500/10 text-teal-400 border border-teal-500/30 shrink-0">
             <UploadCloud className="h-6 w-6" />
           </div>
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-xl font-bold tracking-tight text-white">
                 Department & Unit Monthly Duty Roster Submissions
               </h2>
@@ -200,18 +355,27 @@ export const DepartmentRosterUploader: React.FC = () => {
                 HR Approval Portal
               </span>
             </div>
-            <p className="mt-1 text-xs text-slate-400 max-w-2xl">
+            <p className="mt-1 text-xs text-slate-300 max-w-2xl">
               Every hospital department and clinical unit uploads their monthly duty roster for HR compliance review, shift hour validation, and administrative sign-off for {selectedHospital.name}.
             </p>
           </div>
         </div>
 
-        <button
-          onClick={() => setIsUploadModalOpen(true)}
-          className="flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 py-3 text-xs font-bold text-white shadow-lg shadow-emerald-950/40 hover:bg-emerald-500 transition active:scale-95"
-        >
-          <UploadCloud className="h-4 w-4" /> Upload Monthly Duty Roster
-        </button>
+        <div className="flex flex-wrap items-center gap-2 print:hidden">
+          <button
+            onClick={() => window.print()}
+            className="flex items-center justify-center gap-2 rounded-xl bg-slate-800 px-4 py-3 text-xs font-bold text-slate-200 border border-slate-700 hover:bg-slate-700 hover:text-white transition shadow-sm"
+            title="Print Submissions Audit List"
+          >
+            <Printer className="h-4 w-4 text-sky-400" /> Print Submissions
+          </button>
+          <button
+            onClick={() => setIsUploadModalOpen(true)}
+            className="flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 py-3 text-xs font-bold text-white shadow-lg shadow-emerald-950/40 hover:bg-emerald-500 transition active:scale-95"
+          >
+            <UploadCloud className="h-4 w-4" /> Upload Monthly Duty Roster
+          </button>
+        </div>
       </div>
 
       {/* Overview Stat KPI Cards */}
@@ -313,19 +477,51 @@ export const DepartmentRosterUploader: React.FC = () => {
             />
           </div>
 
-          <select
-            value={selectedDeptFilter}
-            onChange={(e) => setSelectedDeptFilter(e.target.value)}
-            className="w-full sm:w-auto rounded-xl bg-slate-950 border border-slate-800 px-3 py-2 text-xs text-slate-200 focus:border-emerald-500 focus:outline-none"
-          >
-            <option value="All">All Departments</option>
-            {hospitalDepartments.map((d) => (
-              <option key={d} value={d}>
-                {d}
-              </option>
-            ))}
-          </select>
+          {isHeadOfFacilityOrHr ? (
+            <select
+              value={selectedDeptFilter}
+              onChange={(e) => setSelectedDeptFilter(e.target.value)}
+              className="w-full sm:w-auto rounded-xl bg-slate-950 border border-slate-800 px-3 py-2 text-xs text-slate-200 focus:border-emerald-500 focus:outline-none"
+            >
+              <option value="All">All Departments</option>
+              {hospitalDepartments.map((d) => (
+                <option key={d} value={d}>
+                  {d}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-950 border border-amber-500/30 text-amber-300 text-xs font-semibold">
+              <span>🔒 {currentUserDepartment}</span>
+            </div>
+          )}
         </div>
+      </div>
+
+      {/* Access Governance Notice */}
+      <div className={`p-3.5 rounded-xl border flex items-center justify-between gap-3 text-xs ${
+        isHeadOfFacilityOrHr
+          ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-300'
+          : 'bg-amber-950/40 border-amber-500/30 text-amber-200'
+      }`}>
+        <div className="flex items-center gap-2.5">
+          <span className="text-base">{isHeadOfFacilityOrHr ? '🌐' : '🔒'}</span>
+          <div>
+            <p className="font-bold text-xs">
+              {isHeadOfFacilityOrHr
+                ? 'Hospital-Wide Roster Document Archive (Facility Head & HR Authority)'
+                : `Departmental Document Access: ${currentUserDepartment}`}
+            </p>
+            <p className="text-[11px] opacity-80 mt-0.5">
+              {isHeadOfFacilityOrHr
+                ? 'Authorized to view, review, approve, and return monthly duty rosters from all hospital departments.'
+                : 'Per hospital governance guidelines, staff members are restricted to viewing and managing rosters for their designated department only.'}
+            </p>
+          </div>
+        </div>
+        <span className="text-[10px] font-black uppercase px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-700 text-slate-300 shrink-0">
+          {filteredRosters.length} Records
+        </span>
       </div>
 
       {/* Roster Submissions Table */}
@@ -433,7 +629,7 @@ export const DepartmentRosterUploader: React.FC = () => {
                           <Eye className="h-3.5 w-3.5 text-teal-400" /> Preview
                         </button>
 
-                        {roster.status === 'Pending HR Approval' && (
+                        {roster.status === 'Pending HR Approval' && isHeadOfFacilityOrHr && (
                           <>
                             <button
                               onClick={() => updateMonthlyUnitRosterStatus(roster.id, 'Approved')}
@@ -747,8 +943,8 @@ export const DepartmentRosterUploader: React.FC = () => {
               </div>
             </div>
 
-            {/* File Info */}
-            <div className="flex items-center justify-between bg-slate-950 p-3 rounded-xl border border-slate-800 text-xs">
+            {/* File Info & Export/Print Actions */}
+            <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-950 p-3 rounded-xl border border-slate-800 text-xs">
               <div className="flex items-center gap-3">
                 <FileSpreadsheet className="h-6 w-6 text-emerald-400" />
                 <div>
@@ -757,12 +953,21 @@ export const DepartmentRosterUploader: React.FC = () => {
                 </div>
               </div>
 
-              <button
-                onClick={() => handleDownloadRosterCSV(selectedRosterForReview)}
-                className="flex items-center gap-1.5 rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-bold text-slate-200 hover:bg-slate-700 transition"
-              >
-                <Download className="h-4 w-4 text-emerald-400" /> Export CSV
-              </button>
+              <div className="flex items-center gap-2 print:hidden">
+                <button
+                  onClick={() => handlePrintDepartmentRoster(selectedRosterForReview)}
+                  className="flex items-center gap-1.5 rounded-lg bg-sky-600/90 hover:bg-sky-600 px-3 py-1.5 text-xs font-bold text-white transition shadow"
+                  title="Print this Official Department Duty Roster Document"
+                >
+                  <Printer className="h-4 w-4" /> Print Roster
+                </button>
+                <button
+                  onClick={() => handleDownloadRosterCSV(selectedRosterForReview)}
+                  className="flex items-center gap-1.5 rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-bold text-slate-200 hover:bg-slate-700 border border-slate-700 transition"
+                >
+                  <Download className="h-4 w-4 text-emerald-400" /> Export CSV
+                </button>
+              </div>
             </div>
 
             {/* Roster Grid Preview */}

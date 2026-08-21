@@ -57,29 +57,30 @@ export const StaffPromotionsTracker: React.FC<StaffPromotionsTrackerProps> = ({ 
 
   // Calculate promotion data for all employees
   const allPromotionResults: PromotionCalculationResult[] = useMemo(() => {
-    return employees.map((emp) => calculateEmployeePromotion(emp, '2026-08-14'));
+    return (employees || []).filter(Boolean).map((emp) => calculateEmployeePromotion(emp, '2026-08-14'));
   }, [employees]);
 
   // Unique departments
   const departments = useMemo(() => {
     const set = new Set<string>();
-    employees.forEach((e) => {
-      if (e.department) set.add(e.department);
+    (employees || []).forEach((e) => {
+      if (e && e.department) set.add(e.department);
     });
     return ['All', ...Array.from(set).sort()];
   }, [employees]);
 
   // Filtered promotion results
   const filteredResults = useMemo(() => {
-    return allPromotionResults.filter((item) => {
+    return (allPromotionResults || []).filter((item) => {
+      if (!item) return false;
       // Search
       const searchMatch =
         searchTerm === '' ||
-        item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.empCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.grade.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.department.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.nextPromotionDueDate.includes(searchTerm);
+        (item.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (item.empCode || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (item.grade || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (item.department || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (item.nextPromotionDueDate || '').includes(searchTerm);
 
       if (!searchMatch) return false;
 
@@ -109,11 +110,12 @@ export const StaffPromotionsTracker: React.FC<StaffPromotionsTrackerProps> = ({ 
 
   // Key KPI metrics
   const kpis = useMemo(() => {
-    const dueSubsequentYear = allPromotionResults.filter((r) => r.isDueInSubsequentYear);
-    const dueCurrentYear = allPromotionResults.filter((r) => r.isDueThisYear);
-    const overdue = allPromotionResults.filter((r) => r.isOverdue);
-    const firstPromotionsDue2027 = dueSubsequentYear.filter((r) => r.promotionType === 'First Promotion');
-    const subsequentPromotionsDue2027 = dueSubsequentYear.filter((r) => r.promotionType === 'Subsequent Promotion');
+    const safeResults = allPromotionResults || [];
+    const dueSubsequentYear = safeResults.filter((r) => r?.isDueInSubsequentYear);
+    const dueCurrentYear = safeResults.filter((r) => r?.isDueThisYear);
+    const overdue = safeResults.filter((r) => r?.isOverdue);
+    const firstPromotionsDue2027 = dueSubsequentYear.filter((r) => r?.promotionType === 'First Promotion');
+    const subsequentPromotionsDue2027 = dueSubsequentYear.filter((r) => r?.promotionType === 'Subsequent Promotion');
 
     return {
       dueSubsequentYearCount: dueSubsequentYear.length,
@@ -121,7 +123,7 @@ export const StaffPromotionsTracker: React.FC<StaffPromotionsTrackerProps> = ({ 
       overdueCount: overdue.length,
       firstPromotionsDue2027Count: firstPromotionsDue2027.length,
       subsequentPromotionsDue2027Count: subsequentPromotionsDue2027.length,
-      totalStaff: allPromotionResults.length,
+      totalStaff: safeResults.length,
     };
   }, [allPromotionResults]);
 
@@ -330,7 +332,7 @@ export const StaffPromotionsTracker: React.FC<StaffPromotionsTrackerProps> = ({ 
               <Award className="h-3 w-3 text-teal-400" /> 1st Promotion (3 Yrs)
             </span>
             <div className="text-2xl font-black text-teal-300 mt-1">
-              {allPromotionResults.filter((r) => r.promotionType === 'First Promotion').length} Staff
+              {(allPromotionResults || []).filter((r) => r?.promotionType === 'First Promotion').length} Staff
             </div>
             <span className="text-[10px] text-slate-400">3 yrs from 1st appointment</span>
           </div>
@@ -346,7 +348,7 @@ export const StaffPromotionsTracker: React.FC<StaffPromotionsTrackerProps> = ({ 
               <TrendingUp className="h-3 w-3 text-purple-400" /> Subsq Promo (5 Yrs)
             </span>
             <div className="text-2xl font-black text-purple-300 mt-1">
-              {allPromotionResults.filter((r) => r.promotionType === 'Subsequent Promotion').length} Staff
+              {(allPromotionResults || []).filter((r) => r?.promotionType === 'Subsequent Promotion').length} Staff
             </div>
             <span className="text-[10px] text-slate-400">5 yrs from last promotion</span>
           </div>

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useHrms } from '../../context/HrmsContext';
 import { AnnualUnitLeaveRoaster, AnnualUnitLeaveRoasterItem } from '../../types/hrms';
+import { PrintAnnualLeaveRoasterModal } from './PrintAnnualLeaveRoasterModal';
 import {
   CalendarDays,
   FileSpreadsheet,
@@ -44,20 +45,42 @@ export const AnnualUnitLeaveRoasterManager: React.FC = () => {
     employees,
     activeRole,
     currentUser,
+    isHeadOfFacilityOrHr,
+    currentUserDepartment,
+    canAccessDepartmentRoster,
   } = useHrms();
 
-  const isHR = ['super_admin', 'hr_director', 'hr_manager'].includes(activeRole);
-  const isUnitHead = ['unit_head', 'dept_head', 'super_admin', 'hr_director'].includes(activeRole);
+  const isHR = isHeadOfFacilityOrHr;
+  const isUnitHead = ['unit_head', 'dept_head', 'super_admin', 'hr_director', 'facility_head'].includes(activeRole);
+
+  // Scoped visible leave roasters
+  const safeAnnualRoasters = (annualUnitLeaveRoasters || []).filter(Boolean);
+  const visibleRoasters = safeAnnualRoasters.filter((r) => canAccessDepartmentRoster(r?.departmentName));
 
   const [selectedRoasterId, setSelectedRoasterId] = useState<string>(
-    annualUnitLeaveRoasters[0]?.id || ''
+    visibleRoasters[0]?.id || safeAnnualRoasters[0]?.id || ''
   );
+
+  // Sync selected roaster if visible list changes or current selection isn't visible
+  React.useEffect(() => {
+    if (visibleRoasters.length > 0 && !visibleRoasters.some((r) => r.id === selectedRoasterId)) {
+      setSelectedRoasterId(visibleRoasters[0].id);
+    }
+  }, [visibleRoasters, selectedRoasterId]);
 
   // New Roaster Form Modal
   const [showNewRoasterModal, setShowNewRoasterModal] = useState(false);
-  const [selectedDept, setSelectedDept] = useState(departmentLeadership[0]?.departmentName || '');
-  const [selectedUnit, setSelectedUnit] = useState(departmentLeadership[0]?.units[0]?.unitName || '');
+  const [selectedDept, setSelectedDept] = useState(
+    !isHeadOfFacilityOrHr ? currentUserDepartment : departmentLeadership[0]?.departmentName || ''
+  );
+  const [selectedUnit, setSelectedUnit] = useState(
+    departmentLeadership.find((d) => d.departmentName.toLowerCase().includes(currentUserDepartment.toLowerCase()))?.units[0]?.unitName ||
+    departmentLeadership[0]?.units[0]?.unitName || ''
+  );
   const [targetYear, setTargetYear] = useState<number>(2027);
+
+  // Print Hub Modal
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState<boolean>(false);
 
   // Edit Mode state for staff entries
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
@@ -74,20 +97,20 @@ export const AnnualUnitLeaveRoasterManager: React.FC = () => {
     setTimeout(() => setToastMsg(null), 4000);
   };
 
-  const activeRoaster = annualUnitLeaveRoasters.find((r) => r.id === selectedRoasterId) || annualUnitLeaveRoasters[0];
+  const activeRoaster = visibleRoasters.find((r) => r.id === selectedRoasterId) || visibleRoasters[0];
 
   const handleCreateNewRoaster = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedDept || !selectedUnit) return;
 
     // Filter staff in that unit/dept
-    const unitStaff = employees.filter(
+    const unitStaff = (employees || []).filter(
       (emp) =>
-        emp.department?.toLowerCase() === selectedDept.toLowerCase() ||
-        emp.unit?.toLowerCase() === selectedUnit.toLowerCase()
+        emp && (emp.department?.toLowerCase() === selectedDept.toLowerCase() ||
+        emp.unit?.toLowerCase() === selectedUnit.toLowerCase())
     );
 
-    const initialItems: AnnualUnitLeaveRoasterItem[] = (unitStaff.length > 0 ? unitStaff : employees.slice(0, 6)).map((emp, index) => {
+    const initialItems: AnnualUnitLeaveRoasterItem[] = (unitStaff.length > 0 ? unitStaff : (employees || []).slice(0, 6)).map((emp, index) => {
       const monthIdx = (index * 2) % 12;
       return {
         id: `an-item-${Date.now()}-${index}`,
@@ -184,11 +207,12 @@ export const AnnualUnitLeaveRoasterManager: React.FC = () => {
             )}
 
             <button
-              onClick={() => window.print()}
-              className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold transition-all flex items-center gap-2 border border-slate-700"
+              onClick={() => setIsPrintModalOpen(true)}
+              className="px-4 py-2.5 bg-sky-600/90 hover:bg-sky-600 text-white rounded-xl text-xs font-semibold transition-all flex items-center gap-2 shadow"
+              title="Open Official Annual Leave Roaster & Template Print Hub"
             >
-              <Printer className="w-4 h-4 text-blue-400" />
-              Print / Export PDF
+              <Printer className="w-4 h-4" />
+              Print Roaster / Blank Template
             </button>
           </div>
         </div>
@@ -201,6 +225,32 @@ export const AnnualUnitLeaveRoasterManager: React.FC = () => {
           <span>{toastMsg}</span>
         </div>
       )}
+
+      {/* Access Governance Notice */}
+      <div className={`p-3.5 rounded-xl border flex items-center justify-between gap-3 text-xs ${
+        isHeadOfFacilityOrHr
+          ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-300'
+          : 'bg-amber-950/40 border-amber-500/30 text-amber-200'
+      }`}>
+        <div className="flex items-center gap-2.5">
+          <span className="text-base">{isHeadOfFacilityOrHr ? '🌐' : '🔒'}</span>
+          <div>
+            <p className="font-bold text-xs">
+              {isHeadOfFacilityOrHr
+                ? 'Hospital-Wide Annual Leave Planning (Head of Facility & HR Mode)'
+                : `Departmental Leave Planning: ${currentUserDepartment}`}
+            </p>
+            <p className="text-[11px] opacity-80 mt-0.5">
+              {isHeadOfFacilityOrHr
+                ? 'Full administrative authority to review, adjust, and approve annual leave rosters across all clinical departments.'
+                : `Per hospital governance policy, all staff apart from the Head of Facility and HR can only access rosters and leave allocations for their own department (${currentUserDepartment}).`}
+            </p>
+          </div>
+        </div>
+        <span className="text-[10px] font-black uppercase px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-700 text-slate-300 shrink-0">
+          {visibleRoasters.length} Unit Rosters
+        </span>
+      </div>
 
       {/* Selector & Actions */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-slate-900/60 p-4 rounded-2xl border border-slate-800">
@@ -215,7 +265,7 @@ export const AnnualUnitLeaveRoasterManager: React.FC = () => {
               onChange={(e) => setSelectedRoasterId(e.target.value)}
               className="w-full bg-slate-950 border border-slate-800 text-slate-100 text-xs rounded-xl px-3 py-2 focus:outline-none focus:border-emerald-500"
             >
-              {annualUnitLeaveRoasters.map((r) => (
+              {visibleRoasters.map((r) => (
                 <option key={r.id} value={r.id}>
                   {r.departmentName} — {r.unitName} ({r.year}) [{r.status}]
                 </option>
@@ -528,6 +578,13 @@ export const AnnualUnitLeaveRoasterManager: React.FC = () => {
           </div>
         </div>
       )}
+      {/* Print Hub Modal for Annual Unit Leave Roaster */}
+      <PrintAnnualLeaveRoasterModal
+        isOpen={isPrintModalOpen}
+        onClose={() => setIsPrintModalOpen(false)}
+        roaster={activeRoaster}
+        hospitalName="POPE JOHN PAUL II MEDICAL CENTRE - JAMASI"
+      />
     </div>
   );
 };

@@ -63,13 +63,13 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileMenu, onOpenAIAssi
   const [isEmailConsoleOpen, setIsEmailConsoleOpen] = useState(false);
   const [showPlayStoreModal, setShowPlayStoreModal] = useState(false);
 
-  const unreadCount = notifications.filter((n) => !n.read).length;
+  const unreadCount = (notifications || []).filter((n) => n && !n.read).length;
 
   // Subordinate Pending Requests Count for Leadership
-  const pendingLeavesCount = leaves.filter((l) => l.status === 'Pending').length;
-  const pendingSwapsCount = shiftSwapRequests.filter((s) => s.status === 'Pending_Lead_Approval').length;
-  const pendingRostersCount = monthlyUnitRosters.filter((r) => r.status === 'Submitted_To_HOD' || r.status === 'Pending HR Approval').length;
-  const pendingExpensesCount = expenseClaims.filter((e) => e.status === 'Pending').length;
+  const pendingLeavesCount = (leaves || []).filter((l) => l && l.status === 'Pending').length;
+  const pendingSwapsCount = (shiftSwapRequests || []).filter((s) => s && s.status === 'Pending_Lead_Approval').length;
+  const pendingRostersCount = (monthlyUnitRosters || []).filter((r) => r && (r.status === 'Submitted_To_HOD' || r.status === 'Pending HR Approval')).length;
+  const pendingExpensesCount = (expenseClaims || []).filter((e) => e && e.status === 'Pending').length;
   const totalSubordinatePending = pendingLeavesCount + pendingSwapsCount + pendingRostersCount + pendingExpensesCount;
 
   const rolesList: { role: UserRole; label: string }[] = [

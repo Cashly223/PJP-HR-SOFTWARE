@@ -87,11 +87,12 @@ export const LearningHub: React.FC = () => {
 
   // Helper: check if logged-in user is checked in for a course
   const isUserCheckedIn = (courseId: string) => {
-    return trainingAttendance.some(
+    return (trainingAttendance || []).some(
       (r) =>
+        r &&
         r.courseId === courseId &&
         (r.employeeId === currentUser?.id ||
-          (currentEmpName && r.employeeName.toLowerCase().includes(currentEmpName.toLowerCase().split(' ')[0])))
+          (currentEmpName && (r.employeeName || '').toLowerCase().includes(currentEmpName.toLowerCase().split(' ')[0])))
     );
   };
 
@@ -122,7 +123,8 @@ export const LearningHub: React.FC = () => {
   };
 
   // Filtered Training Attendance Records
-  const filteredAttendance = trainingAttendance.filter((rec) => {
+  const filteredAttendance = (trainingAttendance || []).filter((rec) => {
+    if (!rec) return false;
     if (!isInstructorOrAdmin) {
       const isSelf =
         rec.employeeId === currentUser?.id ||
@@ -142,8 +144,8 @@ export const LearningHub: React.FC = () => {
 
   // Calculate Course Attendance Stats
   const getCourseAttendanceCount = (courseId: string) => {
-    const records = trainingAttendance.filter((r) => r.courseId === courseId);
-    const presentCount = records.filter((r) => r.status === 'Present' || r.status === 'Late').length;
+    const records = (trainingAttendance || []).filter((r) => r && r.courseId === courseId);
+    const presentCount = records.filter((r) => r && (r.status === 'Present' || r.status === 'Late')).length;
     return {
       totalRecords: records.length,
       presentCount,
@@ -154,8 +156,8 @@ export const LearningHub: React.FC = () => {
   // Submit New Attendance Record Form
   const handleAddAttendanceRecord = (e: React.FormEvent) => {
     e.preventDefault();
-    const crs = courses.find((c) => c.id === formCourseId);
-    const emp = employees.find((e) => e.id === formEmpId);
+    const crs = (courses || []).find((c) => c && c.id === formCourseId);
+    const emp = (employees || []).find((e) => e && e.id === formEmpId);
 
     if (!crs || !emp) return;
 
@@ -331,10 +333,10 @@ export const LearningHub: React.FC = () => {
             Attendance Compliance
           </div>
           <div className="mt-2 text-2xl font-black text-slate-900 dark:text-slate-100">
-            {trainingAttendance.length
+            {(trainingAttendance || []).length
               ? Math.round(
-                  (trainingAttendance.filter((r) => r.status === 'Present' || r.status === 'Late').length /
-                    trainingAttendance.length) *
+                  ((trainingAttendance || []).filter((r) => r && (r.status === 'Present' || r.status === 'Late')).length /
+                    (trainingAttendance || []).length) *
                     100
                 )
               : 100}

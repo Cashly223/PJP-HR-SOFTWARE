@@ -91,23 +91,25 @@ export const DepartmentConferencePlatform: React.FC = () => {
   ];
 
   // Active meeting object
-  const currentLiveMeeting = conferenceMeetings.find((m) => m.id === activeMeetingId) || conferenceMeetings[0];
+  const currentLiveMeeting = (conferenceMeetings || []).find((m) => m && m.id === activeMeetingId) || (conferenceMeetings || [])[0];
 
   // Stats
-  const totalMeetings = conferenceMeetings.length;
-  const liveCount = conferenceMeetings.filter((m) => m.status === 'Live Now').length;
-  const scheduledCount = conferenceMeetings.filter((m) => m.status === 'Scheduled').length;
-  const completedCount = conferenceMeetings.filter((m) => m.status === 'Completed').length;
+  const safeMeetings = (conferenceMeetings || []).filter(Boolean);
+  const totalMeetings = safeMeetings.length;
+  const liveCount = safeMeetings.filter((m) => m?.status === 'Live Now').length;
+  const scheduledCount = safeMeetings.filter((m) => m?.status === 'Scheduled').length;
+  const completedCount = safeMeetings.filter((m) => m?.status === 'Completed').length;
 
   // Filtered List
-  const filteredMeetings = conferenceMeetings.filter((m) => {
+  const filteredMeetings = safeMeetings.filter((m) => {
+    if (!m) return false;
     const matchesDept = departmentFilter === 'All' || m.department === departmentFilter;
     const matchesStatus = statusFilter === 'All' || m.status === statusFilter;
     const matchesSearch =
-      m.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      m.department.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      m.hostName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      m.meetingCode.toLowerCase().includes(searchQuery.toLowerCase());
+      (m.title || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (m.department || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (m.hostName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (m.meetingCode || '').toLowerCase().includes(searchQuery.toLowerCase());
 
     return matchesDept && matchesStatus && matchesSearch;
   });

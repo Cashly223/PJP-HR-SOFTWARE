@@ -29,6 +29,7 @@ import {
   MessageSquare,
   Lightbulb,
   BookOpen,
+  Gavel,
   X,
 } from 'lucide-react';
 import { useHrms } from '../context/HrmsContext';
@@ -61,6 +62,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, onCloseMobile })
     { id: 'lms', label: t('lms'), icon: GraduationCap },
     { id: 'performance', label: t('performance'), icon: TrendingUp },
     { id: 'grievances', label: t('grievances'), icon: Scale, badge: 'Protected' },
+    { id: 'disciplinary_board', label: 'Disciplinary Board', icon: Gavel, badge: 'Tribunal' },
     { id: 'staff_files', label: 'Staff File Vault', icon: FolderOpen, badge: 'Vault' },
     { id: 'credentials', label: t('credentials'), icon: Award, badge: 'Alerts' },
     { id: 'recruitment', label: t('recruitment'), icon: Briefcase },

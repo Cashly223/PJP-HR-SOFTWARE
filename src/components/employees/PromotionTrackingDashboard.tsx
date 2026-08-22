@@ -36,6 +36,7 @@ import {
   getNextGradeRecommendation,
   GRADE_PROGRESSION_LADDERS,
 } from '../../utils/promotionUtils';
+import { printElementById } from '../../utils/printDocument';
 
 interface PromotionTrackingDashboardProps {
   onSelectEmployee?: (employee: Employee) => void;
@@ -1126,10 +1127,13 @@ export const PromotionTrackingDashboard: React.FC<PromotionTrackingDashboardProp
             </div>
 
             {/* Official Letter Paper Document Preview */}
-            <div className="p-6 rounded-2xl bg-white text-slate-900 shadow-inner font-serif space-y-4 text-xs leading-relaxed border border-slate-300">
+            <div
+              id="promotion-letter-printable-content"
+              className="p-6 rounded-2xl bg-white text-slate-900 shadow-inner font-serif space-y-4 text-xs leading-relaxed border border-slate-300"
+            >
               <div className="text-center border-b-2 border-slate-900 pb-3 space-y-0.5">
                 <h2 className="text-sm font-black tracking-wider uppercase">
-                  PETER JAN PAUL II MEMORIAL COMMUNITY HOSPITAL
+                  POPE JOHN PAUL II MEDICAL CENTRE
                 </h2>
                 <p className="text-[10px] text-slate-700 font-sans uppercase tracking-widest font-semibold">
                   Directorate of Human Resource & Health Administration
@@ -1187,7 +1191,7 @@ export const PromotionTrackingDashboard: React.FC<PromotionTrackingDashboardProp
                   <div className="border-b border-slate-900 w-36 mb-1" />
                   <p className="font-bold">DR. AGYEMAN BOATENG</p>
                   <p className="text-slate-600">Director of Human Resources</p>
-                  <p className="text-slate-500">Peter Jan Paul II Memorial Community Hospital</p>
+                  <p className="text-slate-500">Pope John Paul II Medical Centre</p>
                 </div>
                 <div className="text-right text-slate-500 text-[9px]">
                   <span>cc: Internal Audit • Personnel Dossier • Payroll Office</span>
@@ -1206,7 +1210,11 @@ export const PromotionTrackingDashboard: React.FC<PromotionTrackingDashboardProp
               </button>
               <button
                 type="button"
-                onClick={() => window.print()}
+                onClick={() => {
+                  printElementById('promotion-letter-printable-content', `Promotion_Letter_${letterModalStaff.empCode}`, {
+                    title: `Promotion Notice - ${letterModalStaff.name}`,
+                  });
+                }}
                 className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs transition flex items-center gap-1.5 shadow"
               >
                 <Printer className="h-4 w-4" /> Print Official Promotion Letter

@@ -16,6 +16,7 @@ import {
   FileText,
 } from 'lucide-react';
 import { useHrms } from '../../context/HrmsContext';
+import { printElementById } from '../../utils/printDocument';
 
 export const CustomReportsExporter: React.FC = () => {
   const { employees, payrolls, attendance, leaves, courses, trainingAttendance } = useHrms();
@@ -391,10 +392,15 @@ export const CustomReportsExporter: React.FC = () => {
               </button>
               <button
                 type="button"
-                onClick={() => window.print()}
-                className={`px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 text-slate-400 hover:text-white`}
+                onClick={() => {
+                  printElementById('custom-reports-preview-table', `PJPIIMC_Report_${queryCategory}`, {
+                    landscape: true,
+                    title: `PJPIIMC - Report: ${queryCategory.replace('_', ' ').toUpperCase()}`,
+                  });
+                }}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700`}
               >
-                <Printer className="w-3.5 h-3.5" /> PDF Print
+                <Printer className="w-3.5 h-3.5 text-cyan-400" /> PDF Print
               </button>
             </div>
 
@@ -416,7 +422,7 @@ export const CustomReportsExporter: React.FC = () => {
       </div>
 
       {/* Queried Data Preview Table */}
-      <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
+      <div id="custom-reports-preview-table" className="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
         <div className="flex items-center justify-between pb-3 border-b border-slate-800">
           <h3 className="text-sm font-bold text-white flex items-center gap-2">
             <FileText className="w-4 h-4 text-indigo-400" />

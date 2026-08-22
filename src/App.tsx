@@ -15,6 +15,7 @@ import { OnboardingWorkflow } from './components/onboarding/OnboardingWorkflow';
 import { LearningHub } from './components/lms/LearningHub';
 import { EmployeeHealthIncidents } from './components/health/EmployeeHealthIncidents';
 import { GrievanceManagement } from './components/grievances/GrievanceManagement';
+import { DisciplinaryBoardManager } from './components/employees/DisciplinaryBoardManager';
 import { PerformanceManagement } from './components/performance/PerformanceManagement';
 import { AssetManager } from './components/assets/AssetManager';
 import { AuditLogViewer } from './components/audit/AuditLogViewer';
@@ -121,6 +122,8 @@ const AppContent: React.FC = () => {
         return <EmployeeHealthIncidents />;
       case 'grievances':
         return <GrievanceManagement />;
+      case 'disciplinary_board':
+        return <DisciplinaryBoardManager />;
       case 'performance':
         return <PerformanceManagement />;
       case 'assets':

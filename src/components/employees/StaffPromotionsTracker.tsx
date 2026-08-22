@@ -29,6 +29,7 @@ import {
   getNextGradeRecommendation,
   GRADE_PROGRESSION_LADDERS,
 } from '../../utils/promotionUtils';
+import { printElementById } from '../../utils/printDocument';
 
 interface StaffPromotionsTrackerProps {
   onSelectEmployee?: (employee: Employee) => void;
@@ -799,10 +800,14 @@ export const StaffPromotionsTracker: React.FC<StaffPromotionsTrackerProps> = ({ 
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => window.print()}
-                  className="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition flex items-center gap-1"
+                  onClick={() => {
+                    printElementById('staff-promotions-letter-content', `Promotion_Letter_${letterModalStaff.empCode}`, {
+                      title: `Promotion Notice - ${letterModalStaff.name}`,
+                    });
+                  }}
+                  className="px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition flex items-center gap-1 shadow"
                 >
-                  <Printer className="h-3.5 w-3.5" /> Print
+                  <Printer className="h-3.5 w-3.5" /> Print Letter
                 </button>
                 <button
                   type="button"
@@ -815,7 +820,10 @@ export const StaffPromotionsTracker: React.FC<StaffPromotionsTrackerProps> = ({ 
             </div>
 
             {/* Letter Paper Preview */}
-            <div className="rounded-xl bg-white p-8 text-slate-900 shadow-inner font-serif text-xs space-y-4 border border-slate-300">
+            <div
+              id="staff-promotions-letter-content"
+              className="rounded-xl bg-white p-8 text-slate-900 shadow-inner font-serif text-xs space-y-4 border border-slate-300"
+            >
               {/* Hospital Letterhead */}
               <div className="text-center border-b-2 border-slate-900 pb-3 space-y-0.5 font-sans">
                 <h1 className="text-base font-black tracking-tight text-slate-950 uppercase">

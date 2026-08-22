@@ -69,6 +69,11 @@ import {
   ChatChannel,
   SuggestionItem,
   InfoHubArticle,
+  DisciplinaryBoardMember,
+  StaffQuery,
+  DisciplinaryHearing,
+  DisciplinarySanction,
+  BoardRole,
 } from '../types/hrms';
 import {
   MOCK_HOSPITALS,
@@ -100,6 +105,9 @@ import {
   MOCK_CHAT_MESSAGES,
   MOCK_SUGGESTIONS,
   MOCK_INFO_ARTICLES,
+  MOCK_DISCIPLINARY_BOARD_MEMBERS,
+  MOCK_STAFF_QUERIES,
+  MOCK_DISCIPLINARY_HEARINGS,
 } from '../data/mockHrmsData';
 import { calculateLeaveDays, calculateResumptionDate, updateAllLeaveApplicationsWithWorkingDays } from '../lib/leaveUtils';
 
@@ -330,6 +338,22 @@ interface HrmsContextType {
   // PJPIIMC Information Hub
   infoArticles: InfoHubArticle[];
 
+  // Disciplinary Board, Hearings & Staff Queries
+  disciplinaryBoardMembers: DisciplinaryBoardMember[];
+  staffQueries: StaffQuery[];
+  disciplinaryHearings: DisciplinaryHearing[];
+  canIssueQueries: (role?: UserRole, employeeId?: string) => boolean;
+  addDisciplinaryBoardMember: (member: Omit<DisciplinaryBoardMember, 'id'>) => void;
+  updateDisciplinaryBoardMember: (id: string, updates: Partial<DisciplinaryBoardMember>) => void;
+  removeDisciplinaryBoardMember: (id: string) => void;
+  issueStaffQuery: (queryData: Omit<StaffQuery, 'id' | 'queryNumber' | 'dateIssued' | 'status'>) => StaffQuery;
+  updateStaffQuery: (queryId: string, updates: Partial<StaffQuery>) => void;
+  submitStaffQueryResponse: (queryId: string, response: StaffQuery['staffResponse']) => void;
+  updateStaffQueryStatus: (queryId: string, status: StaffQuery['status'], updates?: Partial<StaffQuery>) => void;
+  scheduleDisciplinaryHearing: (hearingData: Omit<DisciplinaryHearing, 'id' | 'hearingCaseNumber' | 'createdAt'>) => DisciplinaryHearing;
+  updateDisciplinaryHearing: (id: string, updates: Partial<DisciplinaryHearing>) => void;
+  recordHearingVerdict: (hearingId: string, verdict: DisciplinaryHearing['verdictRecommendation'], finalStatus: StaffQuery['status']) => void;
+
   // Department & Roster Role-Based Access Governance
   isHeadOfFacilityOrHr: boolean;
   currentUserDepartment: string;
@@ -358,6 +382,7 @@ const TRANSLATIONS: Record<LanguageCode, Record<string, string>> = {
     lms: 'LMS & Clinical Training',
     health: 'Employee Health & Safety',
     grievances: 'Grievances & Whistleblower',
+    disciplinary_board: 'Disciplinary Board',
     performance: 'Performance & Competency',
     assets: 'Asset & PPE Tracking',
     audit: 'Audit Trail & History',
@@ -380,6 +405,7 @@ const TRANSLATIONS: Record<LanguageCode, Record<string, string>> = {
     lms: 'Capacitación Médica',
     health: 'Salud y Seguridad Ocupacional',
     grievances: 'Quejas y Denuncias',
+    disciplinary_board: 'Junta Disciplinaria',
     performance: 'Rendimiento y Competencias',
     assets: 'Gestión de Activos y EPP',
     audit: 'Auditoría e Historial',
@@ -822,6 +848,70 @@ export const HrmsProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>(MOCK_CHAT_MESSAGES);
   const [suggestions, setSuggestions] = useState<SuggestionItem[]>(MOCK_SUGGESTIONS);
   const [infoArticles] = useState<InfoHubArticle[]>(MOCK_INFO_ARTICLES);
+
+  // Disciplinary Board, Staff Queries & Hearings State
+  const [disciplinaryBoardMembers, setDisciplinaryBoardMembers] = useState<DisciplinaryBoardMember[]>(() => {
+    const saved = localStorage.getItem('pjpiimc_disciplinary_board_members_v1');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch (e) {
+        // fallback
+      }
+    }
+    return MOCK_DISCIPLINARY_BOARD_MEMBERS;
+  });
+
+  const [staffQueries, setStaffQueries] = useState<StaffQuery[]>(() => {
+    const saved = localStorage.getItem('pjpiimc_staff_queries_v1');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch (e) {
+        // fallback
+      }
+    }
+    return MOCK_STAFF_QUERIES;
+  });
+
+  const [disciplinaryHearings, setDisciplinaryHearings] = useState<DisciplinaryHearing[]>(() => {
+    const saved = localStorage.getItem('pjpiimc_disciplinary_hearings_v1');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch (e) {
+        // fallback
+      }
+    }
+    return MOCK_DISCIPLINARY_HEARINGS;
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('pjpiimc_disciplinary_board_members_v1', JSON.stringify(disciplinaryBoardMembers));
+    } catch (e) {
+      console.warn('Failed to persist disciplinary board members to localStorage', e);
+    }
+  }, [disciplinaryBoardMembers]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('pjpiimc_staff_queries_v1', JSON.stringify(staffQueries));
+    } catch (e) {
+      console.warn('Failed to persist staff queries to localStorage', e);
+    }
+  }, [staffQueries]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('pjpiimc_disciplinary_hearings_v1', JSON.stringify(disciplinaryHearings));
+    } catch (e) {
+      console.warn('Failed to persist disciplinary hearings to localStorage', e);
+    }
+  }, [disciplinaryHearings]);
   const [systemCustomization, setSystemCustomization] = useState<SystemCustomizationSettings>({
     hospitalName: 'St. Jude Teaching & Research Hospital',
     hospitalTagline: 'Excellence in Clinical Care, Research & HR Governance',
@@ -4208,16 +4298,12 @@ export const HrmsProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const SUPERVISORY_ROLES: UserRole[] = ['dept_head', 'unit_head'];
 
   const hasModuleAccess = (role: UserRole, employeeId: string | undefined, moduleKey: string): boolean => {
+    // Executive Leadership (Super Admin, Facility Head, HR Director, HR Manager) has full system access
     if (EXECUTIVE_ROLES.includes(role)) {
       return true;
     }
-    if (SUPERVISORY_ROLES.includes(role)) {
-      const supervisoryModules = [...DEFAULT_STAFF_MODULES, 'employees', 'org_hierarchy', 'conference'];
-      if (supervisoryModules.includes(moduleKey)) return true;
-    }
-    if (DEFAULT_STAFF_MODULES.includes(moduleKey)) {
-      return true;
-    }
+
+    // Check if user has explicit HR-granted custom access via Staff Access Permissions Manager
     const checkId = employeeId || currentUser?.id;
     if (checkId) {
       const perm = (staffPermissions || []).find(
@@ -4227,7 +4313,308 @@ export const HrmsProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return true;
       }
     }
+
+    // Disciplinary Board & Query Issuance are strictly restricted to HR & Head of Facility, or explicit HR grant
+    if (moduleKey === 'disciplinary_board' || moduleKey === 'query_issuance') {
+      return false;
+    }
+
+    // Supervisory roles baseline modules
+    if (SUPERVISORY_ROLES.includes(role)) {
+      const supervisoryModules = [...DEFAULT_STAFF_MODULES, 'employees', 'org_hierarchy', 'conference'];
+      if (supervisoryModules.includes(moduleKey)) return true;
+    }
+
+    // Standard baseline staff modules
+    if (DEFAULT_STAFF_MODULES.includes(moduleKey)) {
+      return true;
+    }
+
     return false;
+  };
+
+  const canIssueQueries = (roleToCheck?: UserRole, empIdToCheck?: string): boolean => {
+    const currentRole = roleToCheck || activeRole;
+    // HR Directorate & Head of Facility have unconditional authority to query staff
+    if (EXECUTIVE_ROLES.includes(currentRole)) {
+      return true;
+    }
+
+    // For Unit Heads, Departmental Heads, or any other staff: HR must have explicitly granted query authority in Access Control
+    const checkId = empIdToCheck || currentUser?.id;
+    if (checkId) {
+      const perm = (staffPermissions || []).find(
+        (p) => p && (p.employeeId === checkId || (currentUser?.email && p.email && p.email.toLowerCase() === currentUser.email.toLowerCase()))
+      );
+      if (
+        perm &&
+        (perm.grantedModules || []).some((m) =>
+          ['query_issuance', 'disciplinary_board', 'disciplinary_queries'].includes(m)
+        )
+      ) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  // Disciplinary Board & Query Handlers
+  const addDisciplinaryBoardMember = (member: Omit<DisciplinaryBoardMember, 'id'>) => {
+    const newMember: DisciplinaryBoardMember = {
+      ...member,
+      id: `dbm-${Date.now()}`,
+    };
+    setDisciplinaryBoardMembers((prev) => [newMember, ...prev]);
+    addAuditLog(
+      `Appointed Disciplinary Board Member: ${newMember.name} as ${newMember.boardRole}`,
+      'Disciplinary & Governance',
+      `Appointed by ${currentUser?.name || 'HR Management'}`
+    );
+    dispatchNotification(
+      newMember.employeeId || 'all_staff',
+      'New Disciplinary Board Appointment',
+      `${newMember.name} has been appointed to the Standing Disciplinary Board as ${newMember.boardRole}.`,
+      'In-App',
+      'Alert'
+    );
+    showToast('success', 'Board Member Appointed', `${newMember.name} is now registered on the Disciplinary Panel.`);
+  };
+
+  const updateDisciplinaryBoardMember = (id: string, updates: Partial<DisciplinaryBoardMember>) => {
+    setDisciplinaryBoardMembers((prev) =>
+      prev.map((m) => (m.id === id ? { ...m, ...updates } : m))
+    );
+    addAuditLog(
+      `Updated Disciplinary Board Member ${id}`,
+      'Disciplinary & Governance',
+      `Modified attributes: ${Object.keys(updates).join(', ')}`
+    );
+    showToast('success', 'Board Record Updated', 'Member details have been updated.');
+  };
+
+  const removeDisciplinaryBoardMember = (id: string) => {
+    const target = disciplinaryBoardMembers.find((m) => m.id === id);
+    setDisciplinaryBoardMembers((prev) => prev.filter((m) => m.id !== id));
+    addAuditLog(
+      `Removed Disciplinary Board Member: ${target?.name || id}`,
+      'Disciplinary & Governance',
+      `Removed by ${currentUser?.name || 'HR Management'}`
+    );
+    showToast('success', 'Board Member Removed', `${target?.name || 'Member'} has been removed from the board.`);
+  };
+
+  const issueStaffQuery = (queryData: Omit<StaffQuery, 'id' | 'queryNumber' | 'dateIssued' | 'status'>): StaffQuery => {
+    const seqNumber = String(staffQueries.length + 1).padStart(3, '0');
+    const queryYear = new Date().getFullYear();
+    const queryNumber = `PJPII/HR/QRY/${queryYear}/${seqNumber}`;
+    const dateIssued = new Date().toISOString().replace('T', ' ').slice(0, 16);
+
+    const newQuery: StaffQuery = {
+      ...queryData,
+      id: `qry-${Date.now()}`,
+      queryNumber,
+      dateIssued,
+      status: 'Awaiting Staff Response',
+    };
+
+    setStaffQueries((prev) => [newQuery, ...prev]);
+
+    addAuditLog(
+      `Issued Staff Query ${queryNumber} to ${newQuery.staffName} (${newQuery.staffEmpCode})`,
+      'Disciplinary & Governance',
+      `Allegation: ${newQuery.subject} (Severity: ${newQuery.severity})`
+    );
+
+    dispatchNotification(
+      newQuery.staffId,
+      'Formal Query Issued',
+      `HR Disciplinary Query ${queryNumber} issued to ${newQuery.staffName}. Response deadline: ${newQuery.responseDeadlineHours} hrs.`,
+      'Email',
+      'Alert'
+    );
+
+    showToast('success', 'Staff Query Issued', `Official query ${queryNumber} dispatched to ${newQuery.staffName}.`);
+    return newQuery;
+  };
+
+  const updateStaffQuery = (queryId: string, updates: Partial<StaffQuery>) => {
+    setStaffQueries((prev) =>
+      prev.map((q) => (q.id === queryId ? { ...q, ...updates } : q))
+    );
+
+    addAuditLog(
+      `Updated Query Memo: ${queryId}`,
+      'Disciplinary & Governance',
+      `Modified memo particulars by ${currentUser?.name || 'Authorized Officer'}`
+    );
+
+    showToast('success', 'Query Memorandum Updated', 'Changes to the official query memorandum have been saved.');
+  };
+
+  const submitStaffQueryResponse = (queryId: string, response: StaffQuery['staffResponse']) => {
+    setStaffQueries((prev) =>
+      prev.map((q) =>
+        q.id === queryId
+          ? {
+              ...q,
+              staffResponse: response,
+              status: 'Response Submitted',
+            }
+          : q
+      )
+    );
+
+    const targetQuery = staffQueries.find((q) => q.id === queryId);
+
+    addAuditLog(
+      `Staff Query Response Filed for ${targetQuery?.queryNumber || queryId}`,
+      'Disciplinary & Governance',
+      `Plea: ${response?.plea || 'Written explanation tendered'}`
+    );
+
+    dispatchNotification(
+      targetQuery?.issuedById || 'hr_director',
+      'Query Defense Submitted',
+      `Staff ${targetQuery?.staffName || 'Employee'} has submitted a written response for query ${targetQuery?.queryNumber || queryId}.`,
+      'Email',
+      'Alert'
+    );
+
+    showToast('success', 'Defense Submitted', 'Your formal written response has been recorded and submitted to HR & the Disciplinary Board.');
+  };
+
+  const updateStaffQueryStatus = (queryId: string, status: StaffQuery['status'], updates?: Partial<StaffQuery>) => {
+    setStaffQueries((prev) =>
+      prev.map((q) =>
+        q.id === queryId
+          ? {
+              ...q,
+              status,
+              ...(updates || {}),
+            }
+          : q
+      )
+    );
+
+    addAuditLog(
+      `Updated Query Status: ${queryId} to ${status}`,
+      'Disciplinary & Governance',
+      `Action taken by ${currentUser?.name || 'HR Management'}`
+    );
+
+    showToast('success', 'Query Status Updated', `Status updated to ${status}.`);
+  };
+
+  const scheduleDisciplinaryHearing = (hearingData: Omit<DisciplinaryHearing, 'id' | 'hearingCaseNumber' | 'createdAt'>): DisciplinaryHearing => {
+    const hearingYear = new Date().getFullYear();
+    const seq = String(disciplinaryHearings.length + 1).padStart(3, '0');
+    const hearingCaseNumber = `PJPII/DH/${hearingYear}/${seq}`;
+    const createdAt = new Date().toISOString().replace('T', ' ').slice(0, 16);
+
+    const newHearing: DisciplinaryHearing = {
+      ...hearingData,
+      id: `dh-${Date.now()}`,
+      hearingCaseNumber,
+      createdAt,
+      status: 'Scheduled',
+    };
+
+    setDisciplinaryHearings((prev) => [newHearing, ...prev]);
+
+    // Also update associated query status if present
+    if (newHearing.queryId) {
+      setStaffQueries((prev) =>
+        prev.map((q) =>
+          q.id === newHearing.queryId
+            ? {
+                ...q,
+                hearingId: newHearing.id,
+                status: 'Hearing Scheduled',
+              }
+            : q
+        )
+      );
+    }
+
+    addAuditLog(
+      `Scheduled Disciplinary Hearing ${hearingCaseNumber} for ${newHearing.accusedStaffName}`,
+      'Disciplinary & Governance',
+      `Date: ${newHearing.hearingDate} ${newHearing.hearingTime} at ${newHearing.venue}`
+    );
+
+    dispatchNotification(
+      newHearing.accusedStaffId,
+      'Disciplinary Hearing Summon',
+      `Hearing ${hearingCaseNumber} scheduled on ${newHearing.hearingDate} for ${newHearing.accusedStaffName}. Venue: ${newHearing.venue}.`,
+      'Email',
+      'Alert'
+    );
+
+    showToast('success', 'Hearing Scheduled', `Hearing case ${hearingCaseNumber} convened.`);
+    return newHearing;
+  };
+
+  const updateDisciplinaryHearing = (id: string, updates: Partial<DisciplinaryHearing>) => {
+    setDisciplinaryHearings((prev) =>
+      prev.map((h) => (h.id === id ? { ...h, ...updates } : h))
+    );
+    addAuditLog(
+      `Updated Disciplinary Hearing Record ${id}`,
+      'Disciplinary & Governance',
+      `Modified attributes: ${Object.keys(updates).join(', ')}`
+    );
+    showToast('success', 'Hearing Record Updated', 'Proceedings and details updated.');
+  };
+
+  const recordHearingVerdict = (
+    hearingId: string,
+    verdict: DisciplinaryHearing['verdictRecommendation'],
+    finalStatus: StaffQuery['status']
+  ) => {
+    setDisciplinaryHearings((prev) =>
+      prev.map((h) =>
+        h.id === hearingId
+          ? {
+              ...h,
+              verdictRecommendation: verdict,
+              status: 'Concluded',
+            }
+          : h
+      )
+    );
+
+    const hearing = disciplinaryHearings.find((h) => h.id === hearingId);
+    if (hearing?.queryId) {
+      setStaffQueries((prev) =>
+        prev.map((q) =>
+          q.id === hearing.queryId
+            ? {
+                ...q,
+                status: finalStatus || 'Verdict Delivered',
+                sanctionApplied: verdict?.outcome,
+                resolvedDate: verdict?.effectiveDate || new Date().toISOString().slice(0, 10),
+                resolvedBy: verdict?.signedByChairman || 'Disciplinary Board',
+              }
+            : q
+        )
+      );
+    }
+
+    addAuditLog(
+      `Recorded Disciplinary Verdict for Hearing ${hearing?.hearingCaseNumber || hearingId}`,
+      'Disciplinary & Governance',
+      `Verdict: ${verdict?.outcome} - ${verdict?.justification}`
+    );
+
+    dispatchNotification(
+      hearing?.accusedStaffId || 'all_staff',
+      'Disciplinary Verdict Delivered',
+      `Board verdict concluded for ${hearing?.accusedStaffName || 'staff'}: ${verdict?.outcome}.`,
+      'Email',
+      'Alert'
+    );
+
+    showToast('success', 'Verdict Recorded', `Disciplinary decision promulgated: ${verdict?.outcome}`);
   };
 
   // Expense Claims Handlers
@@ -4434,6 +4821,21 @@ export const HrmsProvider: React.FC<{ children: React.ReactNode }> = ({ children
         respondToSuggestion,
 
         infoArticles,
+
+        disciplinaryBoardMembers,
+        staffQueries,
+        disciplinaryHearings,
+        canIssueQueries,
+        addDisciplinaryBoardMember,
+        updateDisciplinaryBoardMember,
+        removeDisciplinaryBoardMember,
+        issueStaffQuery,
+        updateStaffQuery,
+        submitStaffQueryResponse,
+        updateStaffQueryStatus,
+        scheduleDisciplinaryHearing,
+        updateDisciplinaryHearing,
+        recordHearingVerdict,
 
         isHeadOfFacilityOrHr,
         currentUserDepartment,

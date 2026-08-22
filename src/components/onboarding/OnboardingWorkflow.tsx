@@ -1,10 +1,43 @@
 import React, { useState } from 'react';
 import { UserPlus, CheckSquare, Printer, Shield, Shirt, CreditCard } from 'lucide-react';
 import { useHrms } from '../../context/HrmsContext';
+import { printHtmlContent } from '../../utils/printDocument';
 
 export const OnboardingWorkflow: React.FC = () => {
   const { onboardingTasks, toggleOnboardingTask, employees } = useHrms();
   const [selectedBadgeEmp, setSelectedBadgeEmp] = useState<any>(employees[0]);
+
+  const handlePrintBadge = () => {
+    if (!selectedBadgeEmp) return;
+    const badgeHtml = `
+      <div style="font-family: Arial, sans-serif; display: flex; justify-content: center; padding: 20px;">
+        <div style="width: 320px; height: 480px; border: 2px solid #059669; border-radius: 16px; padding: 18px; text-align: center; background: #ffffff; box-shadow: 0 4px 12px rgba(0,0,0,0.1); position: relative;">
+          <div style="border-bottom: 2px solid #059669; padding-bottom: 8px; margin-bottom: 14px;">
+            <h3 style="margin: 0; font-size: 13pt; color: #0f172a; text-transform: uppercase; font-weight: 900;">POPE JOHN PAUL II</h3>
+            <p style="margin: 2px 0 0 0; font-size: 8pt; font-weight: bold; color: #059669; letter-spacing: 1px;">MEDICAL CENTRE • STAFF IDENTITY</p>
+          </div>
+
+          <div style="margin: 16px 0;">
+            <img src="${selectedBadgeEmp.photo || 'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?w=200'}" alt="Staff Photo" style="width: 110px; height: 110px; border-radius: 12px; object-fit: cover; border: 3px solid #059669; margin: 0 auto; display: block;" />
+          </div>
+
+          <h4 style="margin: 10px 0 2px 0; font-size: 14pt; color: #0f172a; font-weight: 800;">${selectedBadgeEmp.firstName} ${selectedBadgeEmp.lastName}</h4>
+          <p style="margin: 0; font-size: 10pt; font-weight: bold; color: #047857;">${selectedBadgeEmp.jobTitle}</p>
+          <p style="margin: 2px 0 14px 0; font-size: 8.5pt; color: #64748b;">${selectedBadgeEmp.department}</p>
+
+          <div style="border-top: 1px dashed #cbd5e1; padding-top: 10px; display: flex; justify-content: space-between; font-size: 8.5pt; font-family: monospace; color: #334155;">
+            <span>ID: <strong>${selectedBadgeEmp.empCode}</strong></span>
+            <span style="background: #059669; color: #fff; padding: 2px 6px; border-radius: 4px; font-weight: bold;">ALL-ACCESS</span>
+          </div>
+
+          <div style="margin-top: 20px; font-size: 7pt; color: #94a3b8;">
+            Property of Pope John Paul II Medical Centre. If found, please return to HR Directorate.
+          </div>
+        </div>
+      </div>
+    `;
+    printHtmlContent(badgeHtml, `Staff_Badge_${selectedBadgeEmp.empCode}`);
+  };
 
   return (
     <div className="space-y-6">
@@ -95,8 +128,8 @@ export const OnboardingWorkflow: React.FC = () => {
           </div>
 
           <button
-            onClick={() => window.print()}
-            className="mt-4 w-full flex items-center justify-center gap-2 rounded-xl bg-emerald-600 py-2.5 text-xs font-bold text-white hover:bg-emerald-500"
+            onClick={handlePrintBadge}
+            className="mt-4 w-full flex items-center justify-center gap-2 rounded-xl bg-emerald-600 py-2.5 text-xs font-bold text-white hover:bg-emerald-500 shadow"
           >
             <Printer className="h-4 w-4" /> Print Hospital Smart Badge
           </button>

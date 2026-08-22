@@ -1111,4 +1111,177 @@ export interface InfoHubArticle {
   tags: string[];
 }
 
+export type BoardRole =
+  | 'Chairman'
+  | 'Vice Chairman'
+  | 'Secretary'
+  | 'HR Representative'
+  | 'Legal & Ethics Advisor'
+  | 'Clinical Director Representative'
+  | 'Nursing Directorate Representative'
+  | 'Staff Representative'
+  | 'Standing Committee Member'
+  | 'Member';
+
+export interface DisciplinaryBoardMember {
+  id: string;
+  employeeId: string;
+  name: string;
+  email: string;
+  department: string;
+  designation: string;
+  boardRole: BoardRole;
+  votingRights: boolean;
+  tenureStartDate: string;
+  tenureEndDate?: string;
+  status: 'Active' | 'On Leave' | 'Inactive' | 'Recused';
+  appointedBy: string;
+  appointmentNotes?: string;
+  avatar?: string;
+  phone?: string;
+}
+
+export type MisconductCategory =
+  | 'Absenteeism & Chronic Lateness'
+  | 'Clinical Negligence / Protocol Breach'
+  | 'Insubordination & Refusal of Duty'
+  | 'Insubordination & Refusal of Lawful Duty'
+  | 'Financial & Billing Irregularity'
+  | 'Workplace Harassment / Unprofessional Conduct'
+  | 'Patient Safety & Care Violation'
+  | 'Confidentiality & HIPAA / Data Breach'
+  | 'Confidentiality / HIPAA & Records Breach'
+  | 'Medication & Prescription Discrepancy'
+  | 'Substance Abuse on Duty'
+  | 'Fraudulent Certification / Misrepresentation'
+  | 'Loss or Damage to Hospital Property'
+  | 'General Misconduct';
+
+export type QuerySeverity = 'Minor' | 'Low' | 'Medium' | 'High' | 'Critical / Gross Misconduct';
+
+export type QueryStatus =
+  | 'Query Issued'
+  | 'Awaiting Staff Response'
+  | 'Response Submitted'
+  | 'Under Review'
+  | 'Referred to Disciplinary Board'
+  | 'Hearing Scheduled'
+  | 'Verdict Delivered'
+  | 'Case Closed / Exonerated'
+  | 'Case Closed / Dropped'
+  | 'Sanction Applied';
+
+export type DisciplinarySanction =
+  | 'Exonerated / Charges Dismissed'
+  | 'Exonerated / Case Dismissed'
+  | 'Formal Verbal Warning'
+  | 'Written Warning / Reprimand'
+  | 'Final Written Warning'
+  | 'Suspension (Half Pay)'
+  | 'Suspension (No Pay)'
+  | 'Suspension With Half Pay'
+  | 'Suspension Without Pay'
+  | 'Demotion / Reduction in Rank'
+  | 'Salary Withholding / Surcharge'
+  | 'Surcharge / Restitution'
+  | 'Termination of Appointment'
+  | 'Summary Dismissal'
+  | 'Summary Dismissal / Termination'
+  | 'Referral to Medical and Dental Council / Nursing Council';
+
+export interface StaffQueryEvidence {
+  id: string;
+  name: string;
+  type: string;
+  url?: string;
+  uploadedAt: string;
+  uploadedBy: string;
+}
+
+export interface StaffQueryResponse {
+  submittedAt: string;
+  plea: 'Admitted / Apologetic' | 'Denied with Evidence' | 'Mitigating Circumstances';
+  explanation: string;
+  supportingDocuments?: { name: string; url?: string }[];
+  submittedByName: string;
+  signatureDate: string;
+}
+
+export interface BoardQueryReview {
+  reviewedAt: string;
+  reviewedBy: string;
+  actionTaken: 'Satisfactory / Case Dropped' | 'Referred to Board Hearing' | 'Formal Warning Issued' | 'Pending More Details';
+  notes: string;
+}
+
+export interface StaffQuery {
+  id: string;
+  queryNumber: string; // e.g. QRY-2026-001
+  staffId: string;
+  staffName: string;
+  staffEmpCode: string;
+  staffDepartment: string;
+  staffRole: string;
+  staffEmail?: string;
+  staffAvatar?: string;
+  issuedBy: string;
+  issuedById: string;
+  issuedByRole: string;
+  dateIssued: string;
+  incidentDate: string;
+  incidentLocation?: string;
+  misconductCategory: MisconductCategory;
+  subject: string;
+  allegationDetails: string;
+  policyClauseViolated: string;
+  responseDeadlineHours: number; // e.g. 48, 72, 120
+  responseDeadlineDate: string;
+  severity: QuerySeverity;
+  status: QueryStatus;
+  attachedEvidence?: StaffQueryEvidence[];
+  staffResponse?: StaffQueryResponse;
+  boardReview?: BoardQueryReview;
+  hearingId?: string;
+  sanctionApplied?: DisciplinarySanction;
+  resolvedDate?: string;
+  resolvedBy?: string;
+  appealSubmitted?: boolean;
+  appealNotes?: string;
+}
+
+export interface DisciplinaryHearingVerdict {
+  outcome: DisciplinarySanction;
+  justification: string;
+  sanctionDurationDays?: number;
+  surchargeAmount?: number;
+  effectiveDate: string;
+  signedByChairman: string;
+  signedBySecretary: string;
+  signedDate: string;
+  appealDeadlineDate?: string;
+}
+
+export interface DisciplinaryHearing {
+  id: string;
+  hearingCaseNumber: string; // e.g. DH-2026-001
+  queryId: string;
+  queryNumber: string;
+  accusedStaffId: string;
+  accusedStaffName: string;
+  accusedStaffEmpCode: string;
+  accusedStaffDept: string;
+  accusedStaffRole: string;
+  hearingDate: string;
+  hearingTime: string;
+  venue: string;
+  presidingPanel: string[]; // Member names
+  secretaryName: string;
+  complainantOrWitnesses?: string[];
+  chargesSummary: string;
+  status: 'Scheduled' | 'In Session' | 'Deliberating' | 'Adjourned' | 'Concluded';
+  minutesOfHearing?: string;
+  verdictRecommendation?: DisciplinaryHearingVerdict;
+  createdAt: string;
+}
+
 

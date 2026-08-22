@@ -67,6 +67,8 @@ export const AttendanceReport: React.FC = () => {
     dispatchNotification,
     updateEmployee,
     addAuditLog,
+    canIssueQueries,
+    showToast,
   } = useHrms();
 
   const isHRorAdmin = ['super_admin', 'facility_head', 'hr_director', 'hr_manager', 'dept_head', 'unit_head'].includes(activeRole);
@@ -722,6 +724,14 @@ export const AttendanceReport: React.FC = () => {
 
   // 2. FLAG DISCIPLINARY HANDLERS
   const handleOpenDisciplinary = (item: SyncAuditItem) => {
+    if (!canIssueQueries(activeRole, currentUser?.id)) {
+      showToast(
+        'warning',
+        'HR Query Issuance Authorization Required',
+        'Unit Heads and Departmental Heads require Query Issuing Authority granted by HR in the Access Control Manager before issuing formal queries.'
+      );
+      return;
+    }
     setDisciplinaryStaff(item);
     setDisciplinaryViolation(
       item.syncStatus === 'Absent'

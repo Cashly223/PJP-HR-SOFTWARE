@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { useHrms } from '../../context/HrmsContext';
 import { PayrollRecord, ExpenseClaim } from '../../types/hrms';
+import { printHtmlContent, printElementById } from '../../utils/printDocument';
 
 export const PayrollProcessor: React.FC = () => {
   const {
@@ -87,7 +88,84 @@ export const PayrollProcessor: React.FC = () => {
   };
 
   const handlePrintPayslip = () => {
-    window.print();
+    if (!selectedPayslip) return;
+    const payslipHtml = `
+      <div style="font-family: Arial, sans-serif; padding: 24px; color: #000; max-width: 700px; margin: 0 auto; border: 1px solid #cbd5e1; border-radius: 8px;">
+        <div style="text-align: center; border-bottom: 2px solid #0f172a; padding-bottom: 12px; margin-bottom: 16px;">
+          <h2 style="margin: 0; font-size: 16pt; color: #0f172a;">POPE JOHN PAUL II MEDICAL CENTRE</h2>
+          <p style="margin: 3px 0; font-size: 9.5pt; font-weight: bold; color: #475569;">CATHOLIC DIOCESAN HEALTH SERVICES • CHAG</p>
+          <p style="margin: 0; font-size: 11pt; color: #047857; font-weight: bold; text-transform: uppercase;">
+            OFFICIAL SALARY VOUCHER & PAYSLIP • ${selectedPayslip.month} ${selectedPayslip.year}
+          </p>
+        </div>
+
+        <table style="width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 10pt;">
+          <tr>
+            <td style="width: 25%; font-weight: bold; padding: 6px; background: #f8fafc; border: 1px solid #cbd5e1;">Staff Name</td>
+            <td style="padding: 6px; border: 1px solid #cbd5e1;"><strong>${selectedPayslip.employeeName}</strong></td>
+            <td style="width: 25%; font-weight: bold; padding: 6px; background: #f8fafc; border: 1px solid #cbd5e1;">Department</td>
+            <td style="padding: 6px; border: 1px solid #cbd5e1;">${selectedPayslip.department}</td>
+          </tr>
+          <tr>
+            <td style="font-weight: bold; padding: 6px; background: #f8fafc; border: 1px solid #cbd5e1;">Payment Date</td>
+            <td style="padding: 6px; border: 1px solid #cbd5e1;">${selectedPayslip.paymentDate}</td>
+            <td style="font-weight: bold; padding: 6px; background: #f8fafc; border: 1px solid #cbd5e1;">Status</td>
+            <td style="padding: 6px; border: 1px solid #cbd5e1; font-weight: bold; color: #047857;">${selectedPayslip.status}</td>
+          </tr>
+        </table>
+
+        <h4 style="margin: 12px 0 6px 0; font-size: 10.5pt; text-transform: uppercase; color: #0f172a; border-bottom: 1px solid #cbd5e1; padding-bottom: 4px;">
+          Earnings & Clinical Allowances Breakdown
+        </h4>
+        <table style="width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 10pt;">
+          <thead>
+            <tr style="background: #f1f5f9;">
+              <th style="padding: 6px; border: 1px solid #cbd5e1; text-align: left;">Description</th>
+              <th style="padding: 6px; border: 1px solid #cbd5e1; text-align: right;">Amount (GHS)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td style="padding: 6px; border: 1px solid #cbd5e1;">Basic Consolidated Salary</td>
+              <td style="padding: 6px; border: 1px solid #cbd5e1; text-align: right; font-weight: bold;">${formatCurrency(selectedPayslip.baseSalary)}</td>
+            </tr>
+            <tr>
+              <td style="padding: 6px; border: 1px solid #cbd5e1;">Night Duty Shift Allowance</td>
+              <td style="padding: 6px; border: 1px solid #cbd5e1; text-align: right; color: #047857;">+${formatCurrency(selectedPayslip.nightDutyAllowance)}</td>
+            </tr>
+            <tr>
+              <td style="padding: 6px; border: 1px solid #cbd5e1;">Clinical Hazard Allowance</td>
+              <td style="padding: 6px; border: 1px solid #cbd5e1; text-align: right; color: #047857;">+${formatCurrency(selectedPayslip.hazardPay)}</td>
+            </tr>
+            <tr>
+              <td style="padding: 6px; border: 1px solid #cbd5e1;">On-Call & Emergency Allowance</td>
+              <td style="padding: 6px; border: 1px solid #cbd5e1; text-align: right; color: #047857;">+${formatCurrency(selectedPayslip.onCallAllowance)}</td>
+            </tr>
+            <tr>
+              <td style="padding: 6px; border: 1px solid #cbd5e1; color: #b91c1c;">Statutory Tax & SSNIT Pension Deductions</td>
+              <td style="padding: 6px; border: 1px solid #cbd5e1; text-align: right; color: #b91c1c;">-${formatCurrency(selectedPayslip.taxDeduction + selectedPayslip.pensionDeduction)}</td>
+            </tr>
+            <tr style="background: #ecfdf5; font-size: 11pt;">
+              <td style="padding: 8px; border: 1px solid #047857; font-weight: bold; color: #065f46;">NET SALARY DISBURSED</td>
+              <td style="padding: 8px; border: 1px solid #047857; text-align: right; font-weight: bold; color: #065f46;">${formatCurrency(selectedPayslip.netPay)}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div style="display: flex; justify-content: space-between; margin-top: 40px; font-size: 9pt;">
+          <div style="width: 40%; border-top: 1px solid #000; padding-top: 4px; text-align: center;">
+            <strong>Finance & Payroll Officer</strong><br/>
+            <span>Pope John Paul II Medical Centre</span>
+          </div>
+          <div style="width: 40%; border-top: 1px solid #000; padding-top: 4px; text-align: center;">
+            <strong>Internal Audit Directorate</strong><br/>
+            <span>Stamp / Verification</span>
+          </div>
+        </div>
+      </div>
+    `;
+
+    printHtmlContent(payslipHtml, `Payslip_${selectedPayslip.employeeName.replace(/\s+/g, '_')}_${selectedPayslip.month}_${selectedPayslip.year}`);
   };
 
   const handleSubmitNewClaim = (e: React.FormEvent) => {

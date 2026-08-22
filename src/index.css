@@ -63,11 +63,19 @@
     print-color-adjust: exact !important;
   }
 
-  /* Hide navigation, header, sidebar, FAB, mobile prompts and simulation tools */
+  /* Hide navigation, header, sidebar, FAB, mobile prompts, toasts and simulation tools */
   nav, header, sidebar, aside,
   #global-quick-actions-fab,
-  .print\:hidden {
+  .print\:hidden,
+  .no-print,
+  [role="alert"],
+  .toast,
+  #ai-assistant-modal {
     display: none !important;
+  }
+
+  .print-only {
+    display: block !important;
   }
 
   /* When an isolated printable modal is open, only show that modal overlay */
@@ -111,6 +119,12 @@
     overflow: visible !important;
     width: 100% !important;
     max-width: 100% !important;
+  }
+
+  /* Ensure text is dark and clear for paper print */
+  h1, h2, h3, h4, h5, h6, p, span, strong, td, th {
+    color: #000000 !important;
+    text-shadow: none !important;
   }
 
   /* High contrast table borders and clean text */

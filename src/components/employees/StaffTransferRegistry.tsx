@@ -32,6 +32,7 @@ import {
 } from 'lucide-react';
 import { useHrms } from '../../context/HrmsContext';
 import { Employee, StaffMovementRecord, EmploymentSource, TransferType } from '../../types/hrms';
+import { printElementById, printHtmlContent } from '../../utils/printDocument';
 
 interface StaffTransferRegistryProps {
   onSelectEmployee?: (emp: Employee) => void;
@@ -279,7 +280,81 @@ export const StaffTransferRegistry: React.FC<StaffTransferRegistryProps> = ({
 
   // Print Transfer Registry
   const handlePrintRegistry = () => {
-    window.print();
+    printElementById('staff-transfer-registry-table', 'Staff Transfer & Postings Registry', {
+      landscape: true,
+      title: 'PJPIIMC - Official Staff Movement & Postings Registry',
+    });
+  };
+
+  const handlePrintTransferMemo = (record: { movement: StaffMovementRecord; employee?: Employee }) => {
+    const memoHtml = `
+      <div style="font-family: Arial, sans-serif; padding: 20px; color: #000;">
+        <div style="text-align: center; border-bottom: 2px solid #000; padding-bottom: 12px; margin-bottom: 20px;">
+          <h2 style="margin: 0; font-size: 18pt; text-transform: uppercase; color: #0f172a;">POPE JOHN PAUL II MEDICAL CENTRE</h2>
+          <p style="margin: 3px 0; font-size: 10pt; font-weight: bold; color: #334155;">CATHOLIC DIOCESAN HEALTH SERVICES • MEMBER OF CHAG</p>
+          <p style="margin: 0; font-size: 9pt; color: #059669; font-weight: bold;">DIRECTORATE OF HUMAN RESOURCE MANAGEMENT & CLINICAL POSTINGS</p>
+        </div>
+
+        <div style="text-align: right; font-size: 10pt; margin-bottom: 15px;">
+          <strong>Date:</strong> ${record.movement.effectiveDate || new Date().toISOString().slice(0, 10)}<br/>
+          <strong>Ref No:</strong> ${record.movement.referenceNumber || `PJPIIMC/TRF/${record.movement.id.slice(0, 6).toUpperCase()}`}
+        </div>
+
+        <h3 style="text-align: center; text-decoration: underline; font-size: 13pt; margin-bottom: 20px; text-transform: uppercase;">
+          OFFICIAL POSTING / TRANSFER NOTIFICATION MEMORANDUM
+        </h3>
+
+        <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 10.5pt;">
+          <tr>
+            <td style="width: 30%; font-weight: bold; padding: 8px; border: 1px solid #cbd5e1; background: #f8fafc;">Employee Name</td>
+            <td style="padding: 8px; border: 1px solid #cbd5e1;">${record.employee ? `${record.employee.firstName} ${record.employee.lastName}` : 'Hospital Staff'} (${record.employee?.empCode || 'N/A'})</td>
+          </tr>
+          <tr>
+            <td style="font-weight: bold; padding: 8px; border: 1px solid #cbd5e1; background: #f8fafc;">Movement Type</td>
+            <td style="padding: 8px; border: 1px solid #cbd5e1;">${record.movement.transferType} (Source: ${record.movement.employmentSource || 'Internal Post'})</td>
+          </tr>
+          <tr>
+            <td style="font-weight: bold; padding: 8px; border: 1px solid #cbd5e1; background: #f8fafc;">Previous Department / Role</td>
+            <td style="padding: 8px; border: 1px solid #cbd5e1;">${record.movement.previousDepartment} • ${record.movement.previousPosition}</td>
+          </tr>
+          <tr>
+            <td style="font-weight: bold; padding: 8px; border: 1px solid #cbd5e1; background: #f8fafc;">New Department / Role</td>
+            <td style="padding: 8px; border: 1px solid #cbd5e1; font-weight: bold; color: #047857;">${record.movement.newDepartment} • ${record.movement.newPosition}</td>
+          </tr>
+          <tr>
+            <td style="font-weight: bold; padding: 8px; border: 1px solid #cbd5e1; background: #f8fafc;">Effective Date</td>
+            <td style="padding: 8px; border: 1px solid #cbd5e1; font-weight: bold;">${record.movement.effectiveDate}</td>
+          </tr>
+          <tr>
+            <td style="font-weight: bold; padding: 8px; border: 1px solid #cbd5e1; background: #f8fafc;">Approving Authority</td>
+            <td style="padding: 8px; border: 1px solid #cbd5e1;">${record.movement.approvingAuthority}</td>
+          </tr>
+        </table>
+
+        <div style="margin-bottom: 25px; font-size: 10.5pt; line-height: 1.6;">
+          <p><strong>Clinical Justification / Administrative Reason:</strong></p>
+          <p style="padding: 12px; background: #f8fafc; border-left: 4px solid #059669; margin: 5px 0;">
+            ${record.movement.reason}
+          </p>
+          <p style="margin-top: 15px;">
+            By copy of this memorandum, the recipient is advised to execute formal handover procedures with the Head of Department and report to their new duty station on or before the effective date.
+          </p>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; margin-top: 50px; font-size: 10pt;">
+          <div style="width: 45%; border-top: 1px solid #000; padding-top: 5px; text-align: center;">
+            <strong>${record.movement.approvingAuthority}</strong><br/>
+            <span>Medical Director / HR Directorate</span>
+          </div>
+          <div style="width: 45%; border-top: 1px solid #000; padding-top: 5px; text-align: center;">
+            <strong>Employee Acknowledgement</strong><br/>
+            <span>Signature & Date</span>
+          </div>
+        </div>
+      </div>
+    `;
+
+    printHtmlContent(memoHtml, `Transfer_Memo_${record.employee?.empCode || 'Staff'}`);
   };
 
   // Export CSV
@@ -1065,7 +1140,7 @@ export const StaffTransferRegistry: React.FC<StaffTransferRegistryProps> = ({
               <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
                 <button
                   type="button"
-                  onClick={() => window.print()}
+                  onClick={() => handlePrintTransferMemo(viewingRecord)}
                   className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs flex items-center gap-1.5"
                 >
                   <Printer className="h-3.5 w-3.5 text-cyan-400" /> Print Memo

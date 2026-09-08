@@ -31,6 +31,7 @@ import {
 } from 'lucide-react';
 import { useHrms } from '../../context/HrmsContext';
 import { PerformanceAppraisal, AppraisalCadre, AppraisalWorkflowStep } from '../../types/hrms';
+import { CatholicHealthAppraisalFormModal } from './CatholicHealthAppraisalFormModal';
 
 export const AutomatedAppraisalWorkflow: React.FC = () => {
   const {
@@ -52,6 +53,8 @@ export const AutomatedAppraisalWorkflow: React.FC = () => {
 
   // Modals
   const [isInitiateModalOpen, setIsInitiateModalOpen] = useState(false);
+  const [isCatholicFormModalOpen, setIsCatholicFormModalOpen] = useState(false);
+  const [selectedAppraisalForForm, setSelectedAppraisalForForm] = useState<PerformanceAppraisal | null>(null);
   const [selectedAppraisal, setSelectedAppraisal] = useState<PerformanceAppraisal | null>(null);
   const [actionModal, setActionModal] = useState<{
     appraisal: PerformanceAppraisal;
@@ -406,12 +409,24 @@ export const AutomatedAppraisalWorkflow: React.FC = () => {
           </div>
         </div>
 
-        <button
-          onClick={() => setIsInitiateModalOpen(true)}
-          className="flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white shadow-md hover:bg-emerald-500 transition active:scale-95"
-        >
-          <Plus className="h-4 w-4" /> Initiate Appraisal Submission
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => {
+              setSelectedAppraisalForForm(null);
+              setIsCatholicFormModalOpen(true);
+            }}
+            className="flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-rose-600 hover:from-amber-400 hover:to-rose-500 px-4 py-2.5 text-xs font-bold text-slate-950 shadow-md transition active:scale-95"
+          >
+            <FileText className="h-4 w-4" /> Fill Catholic Health Appraisal Form
+          </button>
+
+          <button
+            onClick={() => setIsInitiateModalOpen(true)}
+            className="flex items-center justify-center gap-1.5 rounded-xl bg-slate-800 border border-slate-700 hover:bg-slate-700 px-3 py-2.5 text-xs font-bold text-slate-200 transition active:scale-95"
+          >
+            <Plus className="h-4 w-4 text-emerald-400" /> Quick Entry
+          </button>
+        </div>
       </div>
 
       {/* Main Table View */}
@@ -518,8 +533,19 @@ export const AutomatedAppraisalWorkflow: React.FC = () => {
                       <td className="p-4 text-right">
                         <div className="flex items-center justify-end gap-1.5">
                           <button
+                            onClick={() => {
+                              setSelectedAppraisalForForm(appraisal);
+                              setIsCatholicFormModalOpen(true);
+                            }}
+                            className="px-2.5 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 hover:bg-amber-500/20 font-bold text-xs flex items-center gap-1 transition"
+                            title="Open Official Catholic Health Service Trust Appraisal Form (Sections A to F)"
+                          >
+                            <FileText className="h-3.5 w-3.5 text-amber-400" /> Official Form
+                          </button>
+
+                          <button
                             onClick={() => setSelectedAppraisal(appraisal)}
-                            className="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-200 hover:bg-slate-700 font-semibold text-xs flex items-center gap-1 transition"
+                            className="px-2.5 py-1.5 rounded-lg bg-slate-800 text-slate-200 hover:bg-slate-700 font-semibold text-xs flex items-center gap-1 transition"
                           >
                             <Eye className="h-3.5 w-3.5 text-emerald-400" /> View / Endorse
                           </button>
@@ -531,7 +557,7 @@ export const AutomatedAppraisalWorkflow: React.FC = () => {
                                 setActionModal({ appraisal, action: 'Approved' });
                                 setActionComment('');
                               }}
-                              className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1 shadow-sm transition"
+                              className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1 shadow-sm transition"
                               title="Advance Workflow to Next Stage"
                             >
                               <Check className="h-3.5 w-3.5" /> Advance
@@ -780,6 +806,33 @@ export const AutomatedAppraisalWorkflow: React.FC = () => {
               </div>
             </div>
 
+            {/* Catholic Health Service Trust Ghana Appraisal Form Action Banner */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-2xl bg-gradient-to-r from-amber-950/40 via-slate-950 to-emerald-950/40 border border-amber-500/40">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                  <FileText className="h-5 w-5" />
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold uppercase text-amber-400 tracking-wider block">
+                    Catholic Health Service Trust, Ghana
+                  </span>
+                  <h4 className="text-xs font-bold text-white">Annual Performance Appraisal Form (Sections A to F)</h4>
+                  <p className="text-[11px] text-slate-400">
+                    Official evaluation form with scoring metrics, objectives review, and countersigning endorsement.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setSelectedAppraisalForForm(selectedAppraisal);
+                  setIsCatholicFormModalOpen(true);
+                }}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow transition active:scale-95 shrink-0"
+              >
+                <FileText className="h-4 w-4" /> Open Official Form
+              </button>
+            </div>
+
             {/* Appraisal Objectives & Strengths */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="p-4 rounded-2xl bg-slate-950/70 border border-slate-800 space-y-1">
@@ -998,6 +1051,16 @@ export const AutomatedAppraisalWorkflow: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* CATHOLIC HEALTH SERVICE TRUST OFFICIAL APPRAISAL FORM MODAL */}
+      <CatholicHealthAppraisalFormModal
+        isOpen={isCatholicFormModalOpen}
+        onClose={() => {
+          setIsCatholicFormModalOpen(false);
+          setSelectedAppraisalForForm(null);
+        }}
+        appraisal={selectedAppraisalForForm}
+      />
     </div>
   );
 };

@@ -17,6 +17,8 @@ import {
   ArrowLeft,
   SlidersHorizontal,
   ShieldAlert,
+  MessageSquare,
+  Smartphone,
 } from 'lucide-react';
 import { useHrms } from '../../context/HrmsContext';
 import { StaffQuery, DisciplinaryHearing } from '../../types/hrms';
@@ -31,6 +33,7 @@ import {
   RecordVerdictModal,
   QueryLetterMemoModal,
 } from './DisciplinaryModals';
+import { WhatsAppSmsGatewayModal } from '../notifications/WhatsAppSmsGatewayModal';
 
 export const DisciplinaryBoardManager: React.FC = () => {
   const {
@@ -51,6 +54,7 @@ export const DisciplinaryBoardManager: React.FC = () => {
   const [isAddMemberModalOpen, setIsAddMemberModalOpen] = useState<boolean>(false);
   const [isScheduleHearingModalOpen, setIsScheduleHearingModalOpen] = useState<boolean>(false);
   const [selectedQueryForSchedule, setSelectedQueryForSchedule] = useState<StaffQuery | null>(null);
+  const [isWhatsAppAlertsModalOpen, setIsWhatsAppAlertsModalOpen] = useState<boolean>(false);
 
   const [responseModalQuery, setResponseModalQuery] = useState<StaffQuery | null>(null);
   const [memoModalQuery, setMemoModalQuery] = useState<StaffQuery | null>(null);
@@ -148,6 +152,14 @@ export const DisciplinaryBoardManager: React.FC = () => {
 
           {/* Quick Action Buttons */}
           <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={() => setIsWhatsAppAlertsModalOpen(true)}
+              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white font-black text-xs shadow-md transition border border-amber-400/30 active:scale-95"
+              title="Transmit Disciplinary Query Alerts via WhatsApp and Cellular GSM SMS"
+            >
+              <MessageSquare className="h-4 w-4" />
+              WhatsApp & SMS Alerts
+            </button>
             {isAuthorizedToQuery && (
               <button
                 onClick={() => setIsIssueQueryModalOpen(true)}
@@ -409,6 +421,13 @@ export const DisciplinaryBoardManager: React.FC = () => {
         isOpen={Boolean(memoModalQuery)}
         onClose={() => setMemoModalQuery(null)}
         query={memoModalQuery}
+      />
+
+      {/* WhatsApp & SMS Gateway Modal for Query Notices */}
+      <WhatsAppSmsGatewayModal
+        isOpen={isWhatsAppAlertsModalOpen}
+        onClose={() => setIsWhatsAppAlertsModalOpen(false)}
+        defaultTab="query_alerts"
       />
     </div>
   );

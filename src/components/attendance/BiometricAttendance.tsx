@@ -14,11 +14,15 @@ import {
   Building2,
   Lock,
   UserCheck,
+  TrendingUp,
 } from 'lucide-react';
 import { useHrms } from '../../context/HrmsContext';
 import { AttendanceRecord } from '../../types/hrms';
 import { AttendanceReport } from './AttendanceReport';
 import { MobileGeofenceFacialClockIn } from './MobileGeofenceFacialClockIn';
+import { AttritionAbsenteeismHeatmap } from '../analytics/AttritionAbsenteeismHeatmap';
+import { WeeklyAttendanceInsights } from './WeeklyAttendanceInsights';
+import { Flame } from 'lucide-react';
 
 export const BiometricAttendance: React.FC = () => {
   const {
@@ -31,7 +35,9 @@ export const BiometricAttendance: React.FC = () => {
     selectedHospital,
   } = useHrms();
 
-  const [activeSubTab, setActiveSubTab] = useState<'mobile_geofence' | 'report' | 'terminal'>('mobile_geofence');
+  const [activeSubTab, setActiveSubTab] = useState<
+    'weekly_insights' | 'mobile_geofence' | 'report' | 'attrition_heatmap' | 'terminal'
+  >('weekly_insights');
 
   // Check if current user is a global hospital executive / HR admin
   const isGlobalAdmin = useMemo(() => {
@@ -160,6 +166,21 @@ export const BiometricAttendance: React.FC = () => {
 
         <div className="flex flex-wrap items-center gap-1.5 bg-slate-200/60 p-1.5 rounded-2xl dark:bg-slate-900 border border-slate-300/50 dark:border-slate-800">
           <button
+            onClick={() => setActiveSubTab('weekly_insights')}
+            className={`flex items-center gap-2 px-3.5 py-2 text-xs font-black rounded-xl transition shadow-sm ${
+              activeSubTab === 'weekly_insights'
+                ? 'bg-gradient-to-r from-emerald-600 to-teal-500 text-white shadow-emerald-600/30'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            <TrendingUp className="h-4 w-4" />
+            <span>Weekly Trend & Daily Audits</span>
+            <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-400/20 text-emerald-300 border border-emerald-400/40">
+              10m Grace
+            </span>
+          </button>
+
+          <button
             onClick={() => setActiveSubTab('mobile_geofence')}
             className={`flex items-center gap-2 px-3.5 py-2 text-xs font-black rounded-xl transition shadow-sm ${
               activeSubTab === 'mobile_geofence'
@@ -167,10 +188,10 @@ export const BiometricAttendance: React.FC = () => {
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
-            <Camera className="h-4 w-4" />
-            <span>Mobile Geofence & Facial Clock-In</span>
+            <Fingerprint className="h-4 w-4" />
+            <span>Phone Fingerprint & Geofence</span>
             <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-400/20 text-emerald-300 border border-emerald-400/40">
-              Option B
+              Zero Buddy-Punch
             </span>
           </button>
 
@@ -186,6 +207,21 @@ export const BiometricAttendance: React.FC = () => {
           </button>
 
           <button
+            onClick={() => setActiveSubTab('attrition_heatmap')}
+            className={`flex items-center gap-2 px-3.5 py-2 text-xs font-bold rounded-xl transition ${
+              activeSubTab === 'attrition_heatmap'
+                ? 'bg-gradient-to-r from-rose-600 to-amber-600 text-white shadow-rose-600/30 font-black'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            <Flame className="h-4 w-4 text-rose-500" />
+            <span>Attrition & Absenteeism Heatmap</span>
+            <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-rose-500/20 text-rose-300 font-black border border-rose-500/30">
+              Live AI
+            </span>
+          </button>
+
+          <button
             onClick={() => setActiveSubTab('terminal')}
             className={`flex items-center gap-2 px-3.5 py-2 text-xs font-bold rounded-xl transition ${
               activeSubTab === 'terminal'
@@ -198,62 +234,65 @@ export const BiometricAttendance: React.FC = () => {
         </div>
       </div>
 
+      {/* SUB-TAB: WEEKLY ATTENDANCE TREND & DAILY AUDITS (RECHARTS + 10-MIN GRACE) */}
+      {activeSubTab === 'weekly_insights' && <WeeklyAttendanceInsights />}
+
       {/* SUB-TAB 1: MOBILE GEOFENCE & FACIAL CLOCK-IN (OPTION B) */}
       {activeSubTab === 'mobile_geofence' && <MobileGeofenceFacialClockIn />}
 
-      {/* Department Scoping Security Banner for other tabs */}
-      {activeSubTab !== 'mobile_geofence' && (
-        <div className={`p-3.5 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs ${
-          !isGlobalAdmin
-            ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-950 dark:text-emerald-200'
-            : 'bg-slate-900 border-slate-800 text-slate-200'
-        }`}>
-          <div className="flex items-center gap-2.5">
-            <div className={`p-2 rounded-xl shrink-0 ${!isGlobalAdmin ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400' : 'bg-slate-800 text-emerald-400'}`}>
-              <ShieldCheck className="h-5 w-5" />
-            </div>
-            <div>
-              <div className="font-extrabold flex items-center gap-2">
-                <span>{isGlobalAdmin ? 'Hospital Global Attendance Console' : 'Department-Scoped Attendance & Biometric Access'}</span>
-                {!isGlobalAdmin && (
-                  <span className="text-[10px] px-2 py-0.5 rounded-full font-black bg-emerald-500/20 text-emerald-800 dark:text-emerald-200 border border-emerald-500/40">
-                    {userDepartment}
-                  </span>
-                )}
-              </div>
-              <p className="text-[11px] opacity-80 mt-0.5">
-                {!isGlobalAdmin
-                  ? `In accordance with hospital policy, your attendance logs, terminal kiosk, and biometric timesheets are strictly confined to the ${userDepartment} team (${scopedEmployees.length} personnel).`
-                  : `Executive / HR Authority: Accessing workforce attendance for ${selectedHospital.name}. You may filter by specific departments below.`}
-              </p>
-            </div>
-          </div>
-
-          {isGlobalAdmin && (
-            <div className="flex items-center gap-2 shrink-0">
-              <span className="text-[11px] font-bold text-slate-400">Filter Department:</span>
-              <select
-                value={selectedDeptFilter}
-                onChange={(e) => setSelectedDeptFilter(e.target.value)}
-                className="rounded-xl bg-slate-950 border border-slate-700 px-3 py-1.5 text-xs text-white font-bold focus:border-emerald-500 focus:outline-none"
-              >
-                {allDepartments.map((dept) => (
-                  <option key={dept} value={dept}>
-                    {dept === 'All' ? 'All Hospital Departments' : dept}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* SUB-TAB 1: ATTENDANCE REPORT (HR / DEPT / ADMIN) */}
+      {/* SUB-TAB 2: ATTENDANCE REPORT (HR / DEPT / ADMIN) */}
       {activeSubTab === 'report' && <AttendanceReport />}
 
-      {/* SUB-TAB 2: BIOMETRIC TERMINAL & DAILY LOGS */}
+      {/* SUB-TAB 3: ATTRITION & ABSENTEEISM HEATMAP */}
+      {activeSubTab === 'attrition_heatmap' && <AttritionAbsenteeismHeatmap />}
+
+      {/* SUB-TAB 4: BIOMETRIC TERMINAL & DAILY LOGS */}
       {activeSubTab === 'terminal' && (
         <div className="space-y-6">
+          {/* Department Scoping Security Banner for terminal */}
+          <div className={`p-3.5 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs ${
+            !isGlobalAdmin
+              ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-950 dark:text-emerald-200'
+              : 'bg-slate-900 border-slate-800 text-slate-200'
+          }`}>
+            <div className="flex items-center gap-2.5">
+              <div className={`p-2 rounded-xl shrink-0 ${!isGlobalAdmin ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400' : 'bg-slate-800 text-emerald-400'}`}>
+                <ShieldCheck className="h-5 w-5" />
+              </div>
+              <div>
+                <div className="font-extrabold flex items-center gap-2">
+                  <span>{isGlobalAdmin ? 'Hospital Global Attendance Console' : 'Department-Scoped Attendance & Biometric Access'}</span>
+                  {!isGlobalAdmin && (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full font-black bg-emerald-500/20 text-emerald-800 dark:text-emerald-200 border border-emerald-500/40">
+                      {userDepartment}
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] opacity-80 mt-0.5">
+                  {!isGlobalAdmin
+                    ? `In accordance with hospital policy, your attendance logs, terminal kiosk, and biometric timesheets are strictly confined to the ${userDepartment} team (${scopedEmployees.length} personnel).`
+                    : `Executive / HR Authority: Accessing workforce attendance for ${selectedHospital.name}. You may filter by specific departments below.`}
+                </p>
+              </div>
+            </div>
+
+            {isGlobalAdmin && (
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="text-[11px] font-bold text-slate-400">Filter Department:</span>
+                <select
+                  value={selectedDeptFilter}
+                  onChange={(e) => setSelectedDeptFilter(e.target.value)}
+                  className="rounded-xl bg-slate-950 border border-slate-700 px-3 py-1.5 text-xs text-white font-bold focus:border-emerald-500 focus:outline-none"
+                >
+                  {allDepartments.map((dept) => (
+                    <option key={dept} value={dept}>
+                      {dept === 'All' ? 'All Hospital Departments' : dept}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
           {/* Clock-in Terminal Simulator Box */}
           <div className="rounded-3xl border border-slate-800 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-900 p-6 text-white shadow-xl">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-4 mb-4">

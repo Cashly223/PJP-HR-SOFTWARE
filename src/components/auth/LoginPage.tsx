@@ -2,154 +2,80 @@ import React, { useState } from 'react';
 import {
   ShieldCheck,
   Lock,
-  Mail,
-  User,
   Eye,
   EyeOff,
-  Sparkles,
   ArrowRight,
   CheckCircle2,
   AlertCircle,
-  Briefcase,
-  KeyRound,
-  Shield,
   HelpCircle,
-  Smartphone,
-  ChevronDown,
-  ChevronUp,
-  UserCheck,
-  Building2,
-  Stethoscope,
-  Clock,
+  User,
   IdCard,
+  Fingerprint,
+  Building2,
+  KeyRound,
+  Mail,
+  Phone,
+  X,
+  Sparkles,
 } from 'lucide-react';
 import { useHrms } from '../../context/HrmsContext';
-import { UserRole } from '../../types/hrms';
 import { PjpiimcLogo } from '../common/PjpiimcLogo';
+import { BiometricWebAuthnModal } from './BiometricWebAuthnModal';
+import { getEnrolledPasskeys } from '../../utils/webAuthnService';
 
 export const LoginPage: React.FC = () => {
-  const { login } = useHrms();
+  const { login, employees } = useHrms();
 
-  // Active Tab: 'admin' (ADMINISTRATOR) or 'employee' (EMPLOYEE)
+  // Active Portal Mode: 'admin' (Administrator Portal) or 'employee' (Staff Portal)
   const [activePortalTab, setActivePortalTab] = useState<'admin' | 'employee'>('admin');
-  
-  // HR Role toggle switch
-  const [isHrRole, setIsHrRole] = useState(false);
 
   // Form Fields
-  const [identifier, setIdentifier] = useState(''); // Staff ID or Email
+  const [identifier, setIdentifier] = useState(''); // Staff Code or Email
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [rememberDevice, setRememberDevice] = useState(false);
 
-  // UI state
+  // UI State
   const [isLoading, setIsLoading] = useState(false);
+  const [isBiometricModalOpen, setIsBiometricModalOpen] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [showForgotModal, setShowForgotModal] = useState(false);
-  const [showDemoSelector, setShowDemoSelector] = useState(true);
 
-  // Demo Accounts with dual access support
-  const demoAccounts = [
-    {
-      name: 'Rev. Fr. Mike',
-      title: 'Head of Facility / CEO',
-      staffId: 'PJ-1001',
-      email: 'rev.fr.mike@pjpiimc.org',
-      role: 'facility_head' as UserRole,
-      dualAccess: true,
-      defaultPin: '123456',
-      badge: 'Head of Facility (Admin & Staff)',
-      badgeColor: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30',
-      avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&auto=format&fit=crop&q=80',
-    },
-    {
-      name: 'Miss Vero',
-      title: 'HR Director',
-      staffId: 'PJ-1002',
-      email: 'miss.vero@pjpiimc.org',
-      role: 'hr_director' as UserRole,
-      dualAccess: true,
-      defaultPin: '123456',
-      badge: 'HR Director (Admin & Staff)',
-      badgeColor: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/30',
-      avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80',
-    },
-    {
-      name: 'Mr. Frimpong',
-      title: 'HR Manager & Staff Relations',
-      staffId: 'PJ-1003',
-      email: 'mr.frimpong@pjpiimc.org',
-      role: 'hr_manager' as UserRole,
-      dualAccess: true,
-      defaultPin: '123456',
-      badge: 'HR Manager (Admin & Staff)',
-      badgeColor: 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/30',
-      avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80',
-    },
-    {
-      name: 'Dr. Kwame Mensah',
-      title: 'Senior Consultant Physician',
-      staffId: 'PJ-1006',
-      email: 'kwame.mensah@pjpiimc.org',
-      role: 'doctor' as UserRole,
-      dualAccess: false,
-      defaultPin: '123456',
-      badge: 'Clinical Staff (Employee Portal)',
-      badgeColor: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30',
-      avatar: 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=150&auto=format&fit=crop&q=80',
-    },
-    {
-      name: 'Sister Rita Appiah',
-      title: 'Emergency Care Nurse',
-      staffId: 'PJ-1007',
-      email: 'rita.appiah@pjpiimc.org',
-      role: 'nurse' as UserRole,
-      dualAccess: false,
-      defaultPin: '123456',
-      badge: 'Clinical Staff (Employee Portal)',
-      badgeColor: 'bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/30',
-      avatar: 'https://images.unsplash.com/photo-1551836022-d5d88e9218df?w=150&auto=format&fit=crop&q=80',
-    },
-    {
-      name: 'Mr. Joseph Osei',
-      title: 'Chief Hospital Pharmacist',
-      staffId: 'PJ-1008',
-      email: 'joseph.osei@pjpiimc.org',
-      role: 'pharmacist' as UserRole,
-      dualAccess: false,
-      defaultPin: '123456',
-      badge: 'Clinical Staff (Employee Portal)',
-      badgeColor: 'bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/30',
-      avatar: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=150&auto=format&fit=crop&q=80',
-    },
-  ];
+  const handleBiometricSuccess = async (staffCode: string, targetPortalMode: 'admin' | 'employee') => {
+    // 1. Strict enrollment verification: staff member must have enrolled biometric on this device
+    const enrolledKeys = getEnrolledPasskeys(staffCode);
+    if (enrolledKeys.length === 0) {
+      setErrorMsg(`Biometric Authentication Rejected: Staff member "${staffCode}" has not added their biometric to this system. Please sign in with your password and enroll your device.`);
+      return;
+    }
+
+    // 2. Portal mode and role authorization validation
+    const targetEmp = employees.find(
+      (e) => e.empCode?.toLowerCase() === staffCode.toLowerCase() || e.id === staffCode || e.email?.toLowerCase() === staffCode.toLowerCase()
+    );
+
+    const isAdmin = targetEmp && ['super_admin', 'facility_head', 'hr_director', 'hr_manager'].includes(targetEmp.role);
+    
+    // If trying to log in as administrator but the staff is not an admin, route to employee self-service
+    const effectivePortalMode = (targetPortalMode === 'admin' && !isAdmin) ? 'employee' : targetPortalMode;
+
+    setIsLoading(true);
+    setErrorMsg(null);
+    try {
+      await login(staffCode, 'password123', effectivePortalMode, undefined, rememberDevice);
+      setIsBiometricModalOpen(false);
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Biometric authentication failed to establish session.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleTabChange = (tab: 'admin' | 'employee') => {
     setActivePortalTab(tab);
     setErrorMsg(null);
     setSuccessMsg(null);
-  };
-
-  const handleFillAccount = (acc: typeof demoAccounts[0]) => {
-    setIdentifier(acc.staffId);
-    setPassword(acc.defaultPin);
-    if (acc.dualAccess && activePortalTab === 'admin') {
-      setIsHrRole(true);
-    }
-  };
-
-  const handleQuickLogin = async (acc: typeof demoAccounts[0], tab: 'admin' | 'employee') => {
-    setActivePortalTab(tab);
-    setErrorMsg(null);
-    setSuccessMsg(null);
-    setIsLoading(true);
-    try {
-      await login(acc.staffId, acc.defaultPin, tab);
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Login failed.');
-    } finally {
-      setIsLoading(false);
-    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -161,13 +87,13 @@ export const LoginPage: React.FC = () => {
     const cleanPass = password.trim();
 
     if (!cleanId || !cleanPass) {
-      setErrorMsg('Please provide your Staff ID or Email and your 6-digit password.');
+      setErrorMsg('Please enter your Staff Code or Email and your password.');
       return;
     }
 
     setIsLoading(true);
     try {
-      await login(cleanId, cleanPass, activePortalTab);
+      await login(cleanId, cleanPass, activePortalTab, undefined, rememberDevice);
     } catch (err: any) {
       setErrorMsg(err.message || 'Failed to authenticate. Please check your credentials.');
     } finally {
@@ -176,362 +102,333 @@ export const LoginPage: React.FC = () => {
   };
 
   return (
-    <div className="relative min-h-screen w-full flex flex-col items-center justify-center bg-slate-900 text-slate-100 p-4 sm:p-6 font-sans overflow-x-hidden">
-      
-      {/* Background Soft Glow Accents */}
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-7xl h-96 bg-blue-600/10 blur-[100px] pointer-events-none" />
-      <div className="absolute bottom-0 right-10 w-96 h-96 bg-indigo-600/10 blur-[100px] pointer-events-none" />
-
-      {/* Main Container Card */}
-      <div className="relative z-10 w-full max-w-md sm:max-w-lg overflow-hidden rounded-2xl bg-white text-slate-900 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-200">
+    <div className="relative min-h-screen w-full flex flex-col items-center justify-center bg-slate-950 text-slate-100 p-4 sm:p-6 font-sans overflow-hidden select-none">
+      {/* Medium Institutional Background Logo Watermark - Visible through transparent glass */}
+      <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-0 overflow-hidden">
+        {/* Soft Ambient Backlight Glow centered on the crest */}
+        <div className="absolute w-[450px] h-[450px] sm:w-[620px] sm:h-[620px] bg-gradient-to-br from-emerald-500/25 via-blue-600/20 to-teal-500/20 rounded-full blur-[100px] pointer-events-none" />
         
-        {/* Top Dual Tabs: ADMINISTRATOR vs EMPLOYEE */}
-        <div className="grid grid-cols-2 text-center select-none font-bold text-sm sm:text-base tracking-wider uppercase">
-          {/* ADMINISTRATOR Tab */}
-          <button
-            type="button"
-            onClick={() => handleTabChange('admin')}
-            className={`py-4 sm:py-5 px-4 transition-all flex items-center justify-center gap-2 ${
-              activePortalTab === 'admin'
-                ? 'bg-blue-600 text-white shadow-inner'
-                : 'bg-slate-100 hover:bg-slate-200 text-blue-900/70 border-b border-r border-slate-200'
-            }`}
-          >
-            <ShieldCheck className="h-4 w-4 sm:h-5 sm:w-5" />
-            <span>ADMINISTRATOR</span>
-          </button>
+        {/* Medium Hospital Logo Crest - High clarity transparency */}
+        <div className="opacity-60 sm:opacity-75 filter drop-shadow-[0_0_60px_rgba(0,122,51,0.35)] select-none pointer-events-none transition-all duration-700 animate-in fade-in zoom-in-95 duration-500">
+          <PjpiimcLogo size="bg-md" />
+        </div>
+      </div>
 
-          {/* EMPLOYEE Tab */}
-          <button
-            type="button"
-            onClick={() => handleTabChange('employee')}
-            className={`py-4 sm:py-5 px-4 transition-all flex items-center justify-center gap-2 ${
-              activePortalTab === 'employee'
-                ? 'bg-blue-600 text-white shadow-inner'
-                : 'bg-slate-100 hover:bg-slate-200 text-blue-900/70 border-b border-l border-slate-200'
-            }`}
-          >
-            <User className="h-4 w-4 sm:h-5 sm:w-5" />
-            <span>EMPLOYEE</span>
-          </button>
+      {/* Subtle Background Radial Grid & Lighting Accents */}
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,#1e293b_0%,transparent_70%)] opacity-20 pointer-events-none" />
+
+      {/* Main Login Card Container - Glass Transparent */}
+      <div className="relative z-10 w-full max-w-[440px] overflow-hidden rounded-3xl bg-slate-950/30 backdrop-blur-md border border-white/15 shadow-2xl shadow-black/90">
+        
+        {/* Top Segmented Portal Toggle */}
+        <div className="p-2.5 bg-slate-950/20 border-b border-white/10">
+          <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-950/40 rounded-2xl border border-white/10">
+            <button
+              type="button"
+              id="tab-admin-portal"
+              onClick={() => handleTabChange('admin')}
+              className={`py-2.5 px-3 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2 ${
+                activePortalTab === 'admin'
+                  ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-900/40'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
+              }`}
+            >
+              <ShieldCheck className="h-3.5 w-3.5 shrink-0" />
+              <span>Administrator</span>
+            </button>
+
+            <button
+              type="button"
+              id="tab-employee-portal"
+              onClick={() => handleTabChange('employee')}
+              className={`py-2.5 px-3 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2 ${
+                activePortalTab === 'employee'
+                  ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-900/40'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
+              }`}
+            >
+              <User className="h-3.5 w-3.5 shrink-0" />
+              <span>Staff Portal</span>
+            </button>
+          </div>
         </div>
 
-        {/* Card Body */}
-        <div className="p-6 sm:p-8 space-y-6">
+        {/* Card Main Body */}
+        <div className="p-6 sm:p-7 space-y-5">
           
-          {/* Hospital Header & Sub-badge */}
-          <div className="flex flex-col items-center text-center space-y-2">
-            <div className="p-2.5 bg-blue-50 rounded-2xl border border-blue-100 shadow-sm">
+          {/* Official Hospital Header */}
+          <div className="flex flex-col items-center text-center space-y-2.5">
+            <div className="p-2.5 bg-slate-950/40 rounded-2xl border border-white/10 shadow-inner flex items-center justify-center backdrop-blur-sm">
               <PjpiimcLogo size="md" />
             </div>
             <div>
-              <h2 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">
-                POPE JOHN PAUL II MEDICAL CENTRE
-              </h2>
-              <p className="text-xs font-semibold text-blue-600 uppercase tracking-widest mt-0.5">
+              <h1 className="text-base sm:text-lg font-black tracking-tight text-white uppercase leading-snug drop-shadow-sm">
+                Pope John Paul II Medical Centre
+              </h1>
+              <p className="text-[11px] font-semibold text-blue-400 uppercase tracking-wider mt-0.5">
+                Hospital HRMS & Staff Portal
+              </p>
+              <p className="text-[10px] text-slate-300/90 mt-0.5">
                 {activePortalTab === 'admin'
-                  ? 'Administrative Governance & Executive HR Portal'
-                  : 'Staff Self-Service & Clinical Portal'}
+                  ? 'Executive & Administrative Governance'
+                  : 'Employee Self-Service Gateway'}
               </p>
             </div>
           </div>
 
-          {/* Access Notice Badge */}
-          <div className={`p-3 rounded-xl border text-xs flex items-start gap-2.5 ${
-            activePortalTab === 'admin'
-              ? 'bg-blue-50/80 border-blue-200 text-blue-950'
-              : 'bg-emerald-50/80 border-emerald-200 text-emerald-950'
-          }`}>
-            <Shield className={`h-4 w-4 shrink-0 mt-0.5 ${
-              activePortalTab === 'admin' ? 'text-blue-600' : 'text-emerald-600'
-            }`} />
-            <div className="space-y-0.5 leading-relaxed">
-              <strong className="block font-bold">
-                {activePortalTab === 'admin'
-                  ? 'FULL ADMINISTRATIVE ACCESS'
-                  : 'STAFF SELF-SERVICE (LIMITED ACCESS)'}
-              </strong>
-              <p className="text-[11px] opacity-90">
-                {activePortalTab === 'admin'
-                  ? 'For Head of Facility, HR Director, and HR Managers. (Head of Facility & HR can use the same login on both tabs).'
-                  : 'For all enrolled hospital staff. View rosters, submit leave, clock attendance, and access files.'}
-              </p>
-            </div>
-          </div>
-
-          {/* Feedback Alerts */}
-          {errorMsg && (
-            <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-medium flex items-start gap-2.5 animate-in fade-in">
-              <AlertCircle className="h-4 w-4 text-rose-600 shrink-0 mt-0.5" />
-              <span>{errorMsg}</span>
-            </div>
-          )}
-
+          {/* Success Banner */}
           {successMsg && (
-            <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-medium flex items-start gap-2.5 animate-in fade-in">
-              <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
+            <div className="p-3.5 rounded-2xl bg-emerald-500/20 backdrop-blur-sm border border-emerald-500/40 text-emerald-300 text-xs flex items-start gap-2.5 animate-in fade-in duration-200">
+              <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400 mt-0.5" />
               <span>{successMsg}</span>
             </div>
           )}
 
-          {/* Sign In Form */}
+          {/* Error Banner */}
+          {errorMsg && (
+            <div className="p-3.5 rounded-2xl bg-rose-500/20 backdrop-blur-sm border border-rose-500/40 text-rose-300 text-xs flex items-start gap-2.5 animate-in fade-in duration-200">
+              <AlertCircle className="h-4 w-4 shrink-0 text-rose-400 mt-0.5" />
+              <span>{errorMsg}</span>
+            </div>
+          )}
+
+          {/* Clean Login Form */}
           <form onSubmit={handleSubmit} className="space-y-4">
             
-            {/* Field 1: Email / Staff ID */}
-            <div className="space-y-1">
-              <label className="block text-xs font-bold text-slate-700">
-                Staff ID or Email
+            {/* Staff ID / Email Input */}
+            <div className="space-y-1.5">
+              <label
+                htmlFor="input-identifier"
+                className="text-xs font-bold uppercase tracking-wider text-slate-200 flex items-center justify-between"
+              >
+                <span>Staff Code / Email</span>
+                <span className="text-[10px] text-slate-300 font-normal lowercase">
+                  e.g. PJ-0001 or name@pjpiimc.org
+                </span>
               </label>
               <div className="relative">
-                <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400">
-                  <Mail className="h-4 w-4 text-blue-600" />
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                  <IdCard className="h-4 w-4" />
                 </div>
                 <input
                   type="text"
-                  required
-                  placeholder="e.g. PJ-1001 or staff.email@pjpiimc.org"
+                  id="input-identifier"
                   value={identifier}
                   onChange={(e) => setIdentifier(e.target.value)}
-                  className="w-full rounded-xl bg-blue-50/40 border border-slate-200 focus:border-blue-600 focus:bg-white pl-10 pr-4 py-3 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600/20 transition"
+                  placeholder={activePortalTab === 'admin' ? "Enter Admin Code or Email" : "Enter Staff Code or Work Email"}
+                  required
+                  autoComplete="username"
+                  className="w-full pl-10 pr-4 py-3 bg-slate-950/50 backdrop-blur-sm border border-white/15 rounded-2xl text-slate-100 placeholder-slate-400 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-400 focus:bg-slate-950/70 transition"
                 />
               </div>
             </div>
 
-            {/* Field 2: 6-Digit Password */}
-            <div className="space-y-1">
-              <label className="block text-xs font-bold text-slate-700">
-                6-Digit Password / PIN
-              </label>
+            {/* Password Input */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-slate-200">
+                <label htmlFor="input-password">Password</label>
+                <button
+                  type="button"
+                  onClick={() => setShowForgotModal(true)}
+                  className="text-[11px] font-semibold text-blue-400 hover:text-blue-300 hover:underline capitalize"
+                >
+                  Need Help?
+                </button>
+              </div>
               <div className="relative">
-                <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400">
-                  <Lock className="h-4 w-4 text-blue-600" />
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                  <Lock className="h-4 w-4" />
                 </div>
                 <input
                   type={showPassword ? 'text' : 'password'}
-                  required
-                  placeholder="Enter 6-digit PIN or password"
+                  id="input-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full rounded-xl bg-blue-50/40 border border-slate-200 focus:border-blue-600 focus:bg-white pl-10 pr-10 py-3 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600/20 transition"
+                  placeholder="Enter Password"
+                  required
+                  autoComplete="current-password"
+                  className="w-full pl-10 pr-10 py-3 bg-slate-950/50 backdrop-blur-sm border border-white/15 rounded-2xl text-slate-100 placeholder-slate-400 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-400 focus:bg-slate-950/70 transition"
                 />
                 <button
                   type="button"
+                  id="btn-toggle-password-visibility"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
+                  className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-200 transition"
+                  aria-label={showPassword ? "Hide password" : "Show password"}
                 >
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
             </div>
 
-            {/* HR Role Toggle Switch & Forgot Password Link */}
-            <div className="flex items-center justify-between pt-1 text-xs">
-              
-              {/* HR Role Pill Toggle */}
-              <label className="flex items-center gap-2 cursor-pointer select-none text-slate-700 font-semibold">
-                <div className="relative inline-flex items-center">
-                  <input
-                    type="checkbox"
-                    checked={isHrRole}
-                    onChange={(e) => {
-                      setIsHrRole(e.target.checked);
-                      if (e.target.checked && activePortalTab !== 'admin') {
-                        setActivePortalTab('admin');
-                      }
-                    }}
-                    className="sr-only peer"
-                  />
-                  <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
-                </div>
-                <span className="text-xs">HR Role</span>
+            {/* Remember Device Option */}
+            <div className="flex items-center justify-between pt-1">
+              <label className="flex items-center gap-2 cursor-pointer select-none text-xs text-slate-200">
+                <input
+                  type="checkbox"
+                  id="checkbox-remember-device"
+                  checked={rememberDevice}
+                  onChange={(e) => setRememberDevice(e.target.checked)}
+                  className="h-4 w-4 rounded border-slate-600 bg-slate-950/80 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                />
+                <span className="text-[11.5px] font-medium text-slate-200">Remember this device</span>
               </label>
-
-              {/* Forgot Password Link */}
               <button
                 type="button"
                 onClick={() => setShowForgotModal(true)}
-                className="text-blue-600 hover:text-blue-800 font-semibold text-xs transition underline-offset-2 hover:underline"
+                className="text-[11px] text-slate-300 hover:text-white transition"
               >
-                {activePortalTab === 'admin'
-                  ? 'Forgot Administrator Password?'
-                  : 'Forgot Employee Password?'}
+                First time login?
               </button>
             </div>
 
-            {/* Primary Action Button */}
-            <div className="pt-3">
+            {/* Sign In Primary Action */}
+            <div className="pt-2 space-y-2.5">
               <button
                 type="submit"
+                id="btn-submit-login"
                 disabled={isLoading}
-                className="w-full py-3.5 px-6 rounded-xl font-black text-sm tracking-wider uppercase text-white bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-600/30 active:scale-[0.99] transition flex items-center justify-center gap-2"
+                className="w-full py-3.5 px-6 rounded-2xl font-bold text-xs uppercase tracking-wider text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 active:scale-[0.99] shadow-lg shadow-blue-600/30 transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
               >
                 {isLoading ? (
-                  <div className="h-5 w-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                 ) : (
                   <>
                     <span>
                       {activePortalTab === 'admin'
-                        ? 'ADMINISTRATOR LOGIN'
-                        : 'EMPLOYEE LOGIN'}
+                        ? 'Sign In to Administrator Portal'
+                        : 'Sign In to Staff Portal'}
                     </span>
                     <ArrowRight className="h-4 w-4" />
                   </>
                 )}
               </button>
+
+              {/* One-Touch Biometric / WebAuthn Passkey Verification */}
+              <button
+                type="button"
+                id="btn-fingerprint-login"
+                onClick={() => setIsBiometricModalOpen(true)}
+                disabled={isLoading}
+                className="w-full py-3 px-4 rounded-2xl font-bold text-xs tracking-wide text-emerald-400 hover:text-emerald-300 bg-emerald-950/30 hover:bg-emerald-900/40 border border-emerald-500/40 hover:border-emerald-500/70 shadow-sm transition flex items-center justify-center gap-2 cursor-pointer backdrop-blur-sm active:scale-[0.99]"
+              >
+                <Fingerprint className="h-4 w-4 text-emerald-400 shrink-0" />
+                <span>One-Touch WebAuthn Biometric / Passkey Login</span>
+              </button>
             </div>
           </form>
-        </div>
 
-        {/* Demo Fast Login Selector & Credential Guide */}
-        <div className="border-t border-slate-200 bg-slate-50/80 p-4 sm:p-5">
-          <div className="flex items-center justify-between">
+          {/* Secure Institutional Footer Guarantee (Replaces old locked account list) */}
+          <div className="pt-4 border-t border-white/10 flex items-center justify-between text-[11px] text-slate-300">
+            <span className="flex items-center gap-1.5 text-slate-300">
+              <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
+              <span>Official Institutional Access</span>
+            </span>
             <button
               type="button"
-              onClick={() => setShowDemoSelector(!showDemoSelector)}
-              className="flex items-center gap-1.5 text-xs font-bold text-slate-700 hover:text-blue-600 transition"
+              onClick={() => setShowForgotModal(true)}
+              className="text-[11px] text-blue-400 hover:underline flex items-center gap-1"
             >
-              <Sparkles className="h-3.5 w-3.5 text-amber-500" />
-              <span>Quick Test Accounts & Dual Role Profiles</span>
-              {showDemoSelector ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+              <HelpCircle className="h-3 w-3" />
+              <span>HR Support</span>
             </button>
-
-            <span className="text-[10px] font-bold text-slate-500 bg-white px-2 py-0.5 rounded-full border border-slate-200">
-              PIN: 123456
-            </span>
           </div>
-
-          {showDemoSelector && (
-            <div className="mt-3 space-y-2 max-h-60 overflow-y-auto pr-1">
-              <p className="text-[11px] text-slate-500">
-                Click any staff member to autofill credentials or log in instantly:
-              </p>
-
-              <div className="grid grid-cols-1 gap-2">
-                {demoAccounts.map((acc) => (
-                  <div
-                    key={acc.staffId}
-                    className="p-2.5 rounded-xl bg-white border border-slate-200 hover:border-blue-400 transition flex items-center justify-between text-left group shadow-xs"
-                  >
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <img
-                        src={acc.avatar}
-                        alt={acc.name}
-                        className="h-8 w-8 rounded-lg object-cover ring-1 ring-slate-200 shrink-0"
-                      />
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <p className="text-xs font-bold text-slate-900 truncate">{acc.name}</p>
-                          <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded border ${acc.badgeColor}`}>
-                            {acc.staffId}
-                          </span>
-                        </div>
-                        <p className="text-[10px] text-slate-500 truncate">{acc.title}</p>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-1.5 shrink-0 ml-2">
-                      <button
-                        type="button"
-                        onClick={() => handleFillAccount(acc)}
-                        className="px-2 py-1 rounded-lg text-[10px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 transition"
-                      >
-                        Autofill
-                      </button>
-
-                      {acc.dualAccess ? (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => handleQuickLogin(acc, 'admin')}
-                            title="Sign in as Administrator (Full Access)"
-                            className="px-2 py-1 rounded-lg text-[10px] font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-xs transition"
-                          >
-                            Admin
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleQuickLogin(acc, 'employee')}
-                            title="Sign in as Employee (Staff View)"
-                            className="px-2 py-1 rounded-lg text-[10px] font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition"
-                          >
-                            Staff
-                          </button>
-                        </>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => handleQuickLogin(acc, 'employee')}
-                          title="Sign in as Staff Member"
-                          className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition"
-                        >
-                          Login
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
       </div>
 
       {/* Footer Info */}
       <div className="relative z-10 mt-6 text-center text-xs text-slate-400 space-y-1">
         <p>© 2026 Pope John Paul II Medical Centre - Jamasi. All Rights Reserved.</p>
-        <div className="flex items-center justify-center gap-4 text-[11px] text-slate-400">
+        <div className="flex items-center justify-center gap-3 text-[11px] text-slate-400">
           <span className="flex items-center gap-1">
-            <ShieldCheck className="h-3.5 w-3.5 text-blue-400" /> 256-Bit SSL Encrypted
+            <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" /> 256-Bit TLS Protected
           </span>
           <span>•</span>
-          <span>Dual Portal Authorization</span>
-          <span>•</span>
-          <span>PWA Mobile Ready</span>
+          <span>Role-Based Access Control</span>
         </div>
       </div>
 
-      {/* Forgot Password Help Modal */}
+      {/* Staff Credential Support Modal */}
       {showForgotModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4 font-sans text-slate-900">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-xl bg-blue-50 text-blue-600 border border-blue-100">
-                <HelpCircle className="h-6 w-6" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 backdrop-blur-md p-4 font-sans animate-in fade-in duration-150">
+          <div className="w-full max-w-md rounded-3xl bg-slate-900 border border-slate-800 p-6 sm:p-7 shadow-2xl space-y-5 text-slate-100">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-2xl bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                  <KeyRound className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">
+                    Staff Credential & Login Assistance
+                  </h3>
+                  <p className="text-[11px] text-slate-400">PJPIIMC HR Registry & IT Desk</p>
+                </div>
               </div>
-              <div>
-                <h3 className="text-base font-bold text-slate-900">
-                  Password Recovery & Credential Reset
-                </h3>
-                <p className="text-xs text-slate-500">Pope John Paul II Medical Centre HR Registry</p>
-              </div>
+              <button
+                type="button"
+                onClick={() => setShowForgotModal(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
+              >
+                <X className="h-5 w-5" />
+              </button>
             </div>
 
-            <div className="p-3.5 rounded-xl bg-blue-50/70 border border-blue-100 text-xs text-slate-700 space-y-2">
-              <p className="font-semibold text-blue-900">
-                For first-time login or default credential reset:
+            <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 text-xs text-slate-300 space-y-2.5">
+              <p className="font-bold text-white flex items-center gap-1.5">
+                <Sparkles className="h-3.5 w-3.5 text-amber-400" />
+                Login Guidelines:
               </p>
-              <ul className="list-disc list-inside space-y-1 text-[11px] text-slate-600">
-                <li>Default 6-digit password for enrolled staff is <strong className="text-slate-900">123456</strong>.</li>
-                <li>Your Staff ID is printed on your official hospital ID badge (e.g. <strong className="text-slate-900">PJ-1001</strong>).</li>
-                <li>If you forgot your updated private password, contact HR Director Miss Vero or HR Manager Mr. Frimpong.</li>
+              <ul className="list-disc list-inside space-y-1.5 text-[11.5px] text-slate-300">
+                <li>Your username is your official <strong className="text-blue-400 font-mono">Staff Code</strong> (e.g. PJ-0001, EMP-3522) or your registered work email.</li>
+                <li>Your default initial password is your <strong className="text-blue-400 font-mono">Staff Code</strong>.</li>
+                <li>If you forgot your password or need a credential reset slip, please contact the HR Directorate or System Administrator.</li>
               </ul>
             </div>
 
-            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-[11px] text-slate-600 space-y-1">
-              <p><strong>HR Helpdesk Contact:</strong> hr.support@pjpiimc.org</p>
-              <p><strong>Administration Phone:</strong> +233 24 100 2002 / 2003</p>
+            <div className="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800 text-[11.5px] text-slate-400 space-y-2">
+              <div className="flex items-center gap-2">
+                <Mail className="h-3.5 w-3.5 text-indigo-400 shrink-0" />
+                <span><strong>HR Directorate:</strong> hr.support@pjpiimc.org</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Mail className="h-3.5 w-3.5 text-blue-400 shrink-0" />
+                <span><strong>Super Admin:</strong> attasam223@gmail.com</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Phone className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+                <span><strong>Internal IT Ext:</strong> 104 / +233 24 100 0000</span>
+              </div>
             </div>
 
             <button
               type="button"
               onClick={() => setShowForgotModal(false)}
-              className="w-full py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition"
+              className="w-full py-3 px-4 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs transition cursor-pointer shadow-lg shadow-blue-900/30"
             >
-              Close & Return to Login
+              Return to Login
             </button>
           </div>
         </div>
       )}
+
+      {/* WebAuthn Biometric & Passkey Authentication Modal */}
+      <BiometricWebAuthnModal
+        isOpen={isBiometricModalOpen}
+        onClose={() => setIsBiometricModalOpen(false)}
+        portalMode={activePortalTab}
+        initialIdentifier={identifier}
+        onSuccessLogin={handleBiometricSuccess}
+        employees={employees.map((e) => ({
+          id: e.id,
+          empCode: e.empCode,
+          firstName: e.firstName,
+          lastName: e.lastName,
+          email: e.email || '',
+          role: e.role,
+          department: e.department,
+          photo: e.photo,
+        }))}
+      />
     </div>
   );
 };

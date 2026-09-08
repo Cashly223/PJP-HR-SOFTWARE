@@ -51,6 +51,7 @@ import {
 } from 'lucide-react';
 import { useHrms } from '../../context/HrmsContext';
 import { AttendanceRecord, Employee, OfficialDocument } from '../../types/hrms';
+import { StaffLeaveAndAttendantReportModal } from '../leave/StaffLeaveAndAttendantReportModal';
 
 export type PeriodType = 'this_week' | 'last_week' | 'this_month' | 'last_month' | 'all_time';
 export type SyncRangePreset = 'today' | 'yesterday' | 'this_week' | 'last_week' | 'this_month' | 'last_month' | 'custom';
@@ -103,6 +104,9 @@ export const AttendanceReport: React.FC = () => {
   const [syncEndDate, setSyncEndDate] = useState<string>('2026-08-07');
   const [syncFilterCategory, setSyncFilterCategory] = useState<'all' | 'exceptions' | 'late' | 'absent' | 'excused' | 'ontime' | 'off'>('all');
   const [actionSuccessMsg, setActionSuccessMsg] = useState<string | null>(null);
+  const [isLeaveAttendantModalOpen, setIsLeaveAttendantModalOpen] = useState(false);
+  const [selectedDossierStaffId, setSelectedDossierStaffId] = useState<string>('');
+  const [dossierMode, setDossierMode] = useState<'master' | 'individual'>('master');
 
   // Filter States
   const [period, setPeriod] = useState<PeriodType>('this_week');
@@ -1052,7 +1056,18 @@ Directorate of Human Resources, PJPIIMC`;
           </button>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => {
+              setDossierMode('master');
+              setIsLeaveAttendantModalOpen(true);
+            }}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-700 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-black transition shadow-md shadow-purple-950/40 active:scale-95"
+            title="Generate comprehensive Staff Leave and Attendant Report with individual staff dossiers"
+          >
+            <Sparkles className="h-3.5 w-3.5 text-amber-300" />
+            <span>Staff Leave & Attendant Report</span>
+          </button>
           <button
             onClick={handlePrint}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition border border-slate-700"
@@ -2857,6 +2872,15 @@ Directorate of Human Resources, PJPIIMC`;
           </div>
         </div>
       )}
+
+      {/* Staff Leave & Attendant Master Report and Individual Dossier Modal */}
+      <StaffLeaveAndAttendantReportModal
+        isOpen={isLeaveAttendantModalOpen}
+        onClose={() => setIsLeaveAttendantModalOpen(false)}
+        defaultDepartment={selectedDept === 'All' ? undefined : selectedDept}
+        initialStaffId={selectedDossierStaffId}
+        initialMode={dossierMode}
+      />
     </div>
   );
 };

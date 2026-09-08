@@ -2,7 +2,7 @@ import React from 'react';
 
 interface PjpiimcLogoProps {
   className?: string;
-  size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | 'hero';
+  size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | 'hero' | 'giant' | 'watermark' | 'bg' | 'bg-md';
   showText?: boolean;
   variant?: 'light' | 'dark' | 'full';
 }
@@ -13,13 +13,17 @@ export const PjpiimcLogo: React.FC<PjpiimcLogoProps> = ({
   showText = false,
   variant = 'full',
 }) => {
-  const sizeMap = {
+  const sizeMap: Record<string, string> = {
     sm: 'h-8 w-8',
     md: 'h-12 w-12',
     lg: 'h-16 w-16',
     xl: 'h-24 w-24',
     '2xl': 'h-36 w-36',
     hero: 'h-52 w-52',
+    giant: 'h-80 w-80 sm:h-96 sm:w-96',
+    'bg-md': 'h-[480px] w-[480px] sm:h-[620px] sm:w-[620px] lg:h-[680px] lg:w-[680px]',
+    watermark: 'h-[460px] w-[460px] sm:h-[620px] sm:w-[620px] lg:h-[720px] lg:w-[720px]',
+    bg: 'h-[550px] w-[550px] sm:h-[750px] sm:w-[750px] lg:h-[880px] lg:w-[880px]',
   };
 
   const dim = sizeMap[size] || sizeMap.md;

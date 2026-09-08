@@ -7,30 +7,101 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // Employees collection
+    function isSuperAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.email == 'attasam223@gmail.com' ||
+        request.auth.token.email == 'admin@pjpiimc.org' ||
+        request.auth.token.admin == true
+      );
+    }
+
+    function isValidEmployee() {
+      return request.resource.data.firstName is string &&
+             request.resource.data.lastName is string &&
+             request.resource.data.email is string;
+    }
+
+    // Employees Collection: Staff Profiles, Credentials & Accounts
     match /employees/{employeeId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow create, update: if isValidEmployee();
+      allow delete: if isAuthenticated();
     }
 
-    // Staff Files collection
-    match /staff_files/{fileId} {
-      allow read, write: if true;
-    }
-
-    // Audit logs collection
+    // Audit Logs: Strictly Append-Only / Immutable WORM Log
     match /audit_logs/{logId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow create: if request.resource.data.action is string;
+      // Updates and deletions are strictly forbidden to ensure healthcare compliance
+      allow update, delete: if false;
     }
 
-    // Test connection collection
-    match /test/{docId} {
-      allow read, write: if true;
+    // Staff Files: Uploaded Medical Licenses, Certificates, IDs
+    match /staff_files/{fileId} {
+      allow read: if true;
+      allow create: if request.resource.data.fileName is string;
+      allow update: if true;
+      allow delete: if isAuthenticated();
     }
 
-    // Fallback for all other collections
+    // Departments & Clinical Units
+    match /departments/{deptId} {
+      allow read: if true;
+      allow create, update: if request.resource.data.name is string;
+      allow delete: if isAuthenticated();
+    }
+
+    // Leaves Management Workflow
+    match /leaves/{leaveId} {
+      allow read: if true;
+      allow create: if request.resource.data.employeeId is string && request.resource.data.leaveType is string;
+      allow update: if request.resource.data.employeeId is string;
+      allow delete: if true;
+    }
+
+    // Attendance & Biometric Clocking Records
+    match /attendance/{recordId} {
+      allow read: if true;
+      allow create: if request.resource.data.employeeId is string && request.resource.data.date is string;
+      allow update: if request.resource.data.employeeId is string;
+      allow delete: if isAuthenticated();
+    }
+
+    // Unit Shift & Leave Rosters
+    match /monthly_unit_roasters/{rosterId} {
+      allow read: if true;
+      allow create, update: if request.resource.data.department is string;
+      allow delete: if isAuthenticated();
+    }
+
+    match /annual_unit_leave_roasters/{rosterId} {
+      allow read: if true;
+      allow create, update: if request.resource.data.department is string;
+      allow delete: if isAuthenticated();
+    }
+
+    // Performance Appraisals & Disciplinary Records
+    match /performance_appraisals/{appraisalId} {
+      allow read: if true;
+      allow create, update: if request.resource.data.employeeId is string;
+      allow delete: if isAuthenticated();
+    }
+
+    match /staff_queries/{queryId} {
+      allow read: if true;
+      allow create, update: if request.resource.data.employeeId is string;
+      allow delete: if isAuthenticated();
+    }
+
+    match /disciplinary_hearings/{hearingId} {
+      allow read: if true;
+      allow create, update: if request.resource.data.employeeId is string;
+      allow delete: if isAuthenticated();
+    }
+
+    // Explicit Default Fallback: Block all unmapped collections
     match /{document=**} {
-      allow read, write: if true;
+      allow read, write: if false;
     }
   }
 }
-

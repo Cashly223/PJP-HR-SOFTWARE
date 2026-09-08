@@ -42,7 +42,7 @@ interface SidebarProps {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, onCloseMobile }) => {
-  const { activeTab, setActiveTab, t, selectedHospital, activeRole, currentUser, logout, hasModuleAccess, staffPermissions } = useHrms();
+  const { activeTab, setActiveTab, t, selectedHospital, activeRole, currentUser, logout, hasModuleAccess, staffPermissions, portalMode, setPortalMode } = useHrms();
 
   const isHRorAdmin = ['super_admin', 'facility_head', 'hr_director', 'hr_manager'].includes(activeRole);
 
@@ -95,11 +95,20 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, onCloseMobile })
 
   const renderNavContent = () => (
     <>
-      {/* Role Badge Indicator */}
-      <div className="mx-4 mt-3 rounded-xl bg-slate-800/80 p-2.5 text-xs border border-slate-800">
-        <span className="text-[10px] uppercase tracking-wider text-slate-400 font-medium">Active RBAC Mode</span>
+      {/* Portal & Role Badge Indicator */}
+      <div className="mx-4 mt-3 rounded-xl bg-slate-800/90 p-2.5 text-xs border border-slate-700/60 shadow-xs">
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Portal Mode</span>
+          <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded ${
+            portalMode === 'admin'
+              ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+              : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+          }`}>
+            {portalMode === 'admin' ? 'Administrator' : 'Staff Self-Service'}
+          </span>
+        </div>
         <div className="mt-0.5 font-semibold text-emerald-400 capitalize flex items-center justify-between">
-          <span className="truncate">{activeRole.replace('_', ' ')}</span>
+          <span className="truncate text-slate-200 text-xs">{activeRole.replace('_', ' ')}</span>
           <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-400 animate-pulse"></span>
         </div>
       </div>
@@ -219,10 +228,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, onCloseMobile })
             aria-hidden="true"
           />
 
-          {/* Slide-in Drawer Container */}
-          <aside className="relative flex w-72 sm:w-80 max-w-[85vw] flex-col bg-slate-900 text-slate-100 dark:bg-slate-950 border-r border-slate-800 shadow-2xl z-10 h-full animate-in slide-in-from-left duration-200">
+          {/* Slide-in Drawer Container with iOS Safe Area Insets */}
+          <aside className="relative flex w-72 sm:w-80 max-w-[85vw] flex-col bg-slate-900 text-slate-100 dark:bg-slate-950 border-r border-slate-800 shadow-2xl z-10 h-full animate-in slide-in-from-left duration-200 pt-safe pb-safe">
             {/* Mobile Header with Logo & Close Button */}
-            <div className="flex h-16 items-center justify-between border-b border-slate-800 px-4">
+            <div className="flex h-16 items-center justify-between border-b border-slate-800 px-4 shrink-0">
               <div className="flex items-center gap-2.5 min-w-0">
                 <div className="p-1 rounded-xl bg-slate-950 border border-slate-800 shadow-md shrink-0">
                   <PjpiimcLogo size="sm" />

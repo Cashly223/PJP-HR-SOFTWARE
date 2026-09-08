@@ -76,6 +76,10 @@ import { OrgHierarchyView } from './OrgHierarchyView';
 import { CreateStaffAccountModal } from './CreateStaffAccountModal';
 import { PromotionTrackingDashboard } from './PromotionTrackingDashboard';
 import { StaffTransferRegistry } from './StaffTransferRegistry';
+import { EditEmployeeModal } from './EditEmployeeModal';
+import { DigitalStaffFileModal } from './DigitalStaffFileModal';
+import { EmployeePhotoModal } from '../common/EmployeePhotoModal';
+import { EmployeePhotoUploader } from '../common/EmployeePhotoUploader';
 
 export const EmployeeDirectory: React.FC = () => {
   const {
@@ -83,7 +87,11 @@ export const EmployeeDirectory: React.FC = () => {
     formatCurrency,
     addEmployee,
     updateEmployee,
+    updateEmployeePhoto,
     deleteEmployee,
+    clearAllEmployees,
+    enrollHeadOfFacility,
+    enrollHrLeader,
     selectedHospital,
     createEmployeePortalAccount,
     batchCreateAndInvitePortalAccounts,
@@ -94,19 +102,67 @@ export const EmployeeDirectory: React.FC = () => {
     deleteStaffFile,
     toggleStaffFilePermission,
     recordStaffMovement,
+    activeRole,
+    currentUser,
+    departmentLeadership,
+    clearAllDepartments,
+    lastStaffAction,
+    clearLastStaffAction,
   } = useHrms();
 
   // Active Main View: 'directory' (Cards/Profiles) | 'portal_accounts' (Logins & Portal Invites) | 'leadership' (HOD/HOU Governance) | 'hierarchy' (Interactive Org Chart) | 'promotions' (Staff Promotions & Forecasting) | 'transfers' (Staff Transfers & Movement Registry)
   const [activeView, setActiveView] = useState<'directory' | 'portal_accounts' | 'leadership' | 'hierarchy' | 'promotions' | 'transfers'>('directory');
 
+  // Staff Deletion & Reset Confirmation Modals
+  const [staffToDelete, setStaffToDelete] = useState<Employee | null>(null);
+  const [isDeleteAllStaffModalOpen, setIsDeleteAllStaffModalOpen] = useState(false);
+  const [isClearingAll, setIsClearingAll] = useState(false);
+  const [isDeletingSingle, setIsDeletingSingle] = useState(false);
+
+  // Permission Check: only executives / HR leadership or empty database can enroll Head/HR leadership
+  const canEnrollLeadership =
+    activeRole === 'super_admin' ||
+    activeRole === 'facility_head' ||
+    activeRole === 'hr_director' ||
+    activeRole === 'hr_manager' ||
+    (employees || []).length === 0;
+
   const [searchTerm, setSearchTerm] = useState('');
   const [deptFilter, setDeptFilter] = useState('All');
+  const [mechanisationFilter, setMechanisationFilter] = useState<string>('All');
   const [inviteStatusFilter, setInviteStatusFilter] = useState('All');
   const [sourceFilter, setSourceFilter] = useState<string>('All');
   const [transferTypeFilter, setTransferTypeFilter] = useState<string>('All');
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isCreateHrAccountModalOpen, setIsCreateHrAccountModalOpen] = useState(false);
+  const [isEnrollHeadModalOpen, setIsEnrollHeadModalOpen] = useState(false);
+  const [isEnrollingHead, setIsEnrollingHead] = useState(false);
+  const [isEnrollHrModalOpen, setIsEnrollHrModalOpen] = useState(false);
+  const [isEnrollingHr, setIsEnrollingHr] = useState(false);
+
+  const [enrollHeadForm, setEnrollHeadForm] = useState({
+    firstName: 'Rev. Fr. Michael',
+    lastName: 'Afoakwah',
+    gender: 'Male' as 'Male' | 'Female' | 'Other',
+    empCode: 'EMP-3522',
+    email: 'rev.fr.michael@pjpiimc.org',
+    phone: '+233 24 222 1000',
+    password: 'EMP-3522',
+    jobTitle: 'Head of Facility / Chief Executive Officer',
+  });
+
+  const [enrollHrForm, setEnrollHrForm] = useState({
+    firstName: 'Mr. Kwabena',
+    lastName: 'Antwi',
+    gender: 'Male' as 'Male' | 'Female' | 'Other',
+    role: 'hr_director' as 'hr_director' | 'hr_manager',
+    empCode: 'EMP-1976',
+    email: 'kwabena.antwi@pjpiimc.org',
+    phone: '+233 24 555 2000',
+    password: 'EMP-1976',
+    jobTitle: 'Director of Human Resources',
+  });
 
   // EDIT EMPLOYEE STATE
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
@@ -335,20 +391,42 @@ export const EmployeeDirectory: React.FC = () => {
   // Single Portal Account Manager Modal State
   const [portalAccountModalEmp, setPortalAccountModalEmp] = useState<Employee | null>(null);
   const [singleUsernameType, setSingleUsernameType] = useState<'email' | 'empCode'>('email');
-  const [singlePasswordType, setSinglePasswordType] = useState<'empCode' | 'email' | 'custom'>('empCode');
+  const [singlePasswordType, setSinglePasswordType] = useState<'empCode' | 'email' | 'custom'>('custom');
   const [singleCustomPassword, setSingleCustomPassword] = useState('');
+  const [showSingleCustomPassword, setShowSingleCustomPassword] = useState(false);
+  const [singleRequireChangeOnLogin, setSingleRequireChangeOnLogin] = useState(true);
+  const [singleSendEmailNotification, setSingleSendEmailNotification] = useState(true);
+  const [singleSendSmsNotification, setSingleSendSmsNotification] = useState(false);
   const [showPasswordMap, setShowPasswordMap] = useState<Record<string, boolean>>({});
+
+  const handleGenerateRandomPassword = () => {
+    const prefixes = ['Hospital', 'StJude', 'PJPIIMC', 'Health', 'GhanaMed', 'Care'];
+    const prefix = prefixes[Math.floor(Math.random() * prefixes.length)];
+    const year = '2026';
+    const special = ['!', '#', '@', '$'][Math.floor(Math.random() * 4)];
+    const num = Math.floor(100 + Math.random() * 900);
+    const pass = `${prefix}${year}${special}${num}`;
+    setSingleCustomPassword(pass);
+    setSinglePasswordType('custom');
+    setShowSingleCustomPassword(true);
+  };
+
+  // Standalone Photo Upload Modal State
+  const [photoModalEmp, setPhotoModalEmp] = useState<Employee | null>(null);
 
   // New employee form state
   const [newEmp, setNewEmp] = useState({
     firstName: '',
     lastName: '',
+    gender: 'Female' as 'Male' | 'Female' | 'Other',
+    photo: '',
     email: '',
     phone: '',
     jobTitle: 'Staff Nurse',
-    department: 'Intensive Care Unit (ICU)',
+    department: departmentLeadership[0]?.departmentName || 'Intensive Care Unit (ICU)',
     salary: 7500,
     role: 'nurse',
+    mechanisationStatus: 'Mechanised' as 'Mechanised' | 'Non-Mechanised',
     usernameType: 'email' as 'email' | 'empCode',
     passwordType: 'empCode' as 'empCode' | 'email',
     sendInviteNow: true,
@@ -357,12 +435,14 @@ export const EmployeeDirectory: React.FC = () => {
   const filteredEmployees = (employees || []).filter((e) => {
     if (!e) return false;
     const matchesSearch =
-      `${e.firstName || ''} ${e.lastName || ''} ${e.empCode || ''} ${e.email || ''} ${e.jobTitle || ''} ${e.previousOrganisation || ''} ${e.previousPosition || ''} ${e.previousDepartment || ''} ${e.transferReferenceNumber || ''}`
+      `${e.firstName || ''} ${e.lastName || ''} ${e.empCode || ''} ${e.email || ''} ${e.jobTitle || ''} ${e.gender || ''} ${e.previousOrganisation || ''} ${e.previousPosition || ''} ${e.previousDepartment || ''} ${e.transferReferenceNumber || ''}`
         .toLowerCase()
         .includes(searchTerm.toLowerCase());
     const matchesDept = deptFilter === 'All' || e.department === deptFilter;
     const matchesSource = sourceFilter === 'All' || e.employmentSource === sourceFilter;
     const matchesTransferType = transferTypeFilter === 'All' || e.transferType === transferTypeFilter;
+    const empMech = e.mechanisationStatus || (e.employmentType === 'Contract' || (e.employmentType as any) === 'Locum' ? 'Non-Mechanised' : 'Mechanised');
+    const matchesMechanisation = mechanisationFilter === 'All' || empMech === mechanisationFilter;
 
     let matchesInvite = true;
     if (inviteStatusFilter === 'Sent') {
@@ -373,22 +453,31 @@ export const EmployeeDirectory: React.FC = () => {
       matchesInvite = !e.portalAccess || e.portalAccess?.inviteStatus === 'Not Invited';
     }
 
-    return matchesSearch && matchesDept && matchesSource && matchesTransferType && matchesInvite;
+    return matchesSearch && matchesDept && matchesSource && matchesTransferType && matchesInvite && matchesMechanisation;
   });
 
   const handleCreateEmployee = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newEmp.firstName || !newEmp.lastName) return;
 
+    const defaultPhoto =
+      newEmp.photo ||
+      (newEmp.gender === 'Female'
+        ? 'https://images.unsplash.com/photo-1594824813566-78a9327d3b5b?w=400&auto=format&fit=crop&q=80'
+        : 'https://images.unsplash.com/photo-1537368910025-700350fe46c7?w=400&auto=format&fit=crop&q=80');
+
     const createdEmp = addEmployee({
       firstName: newEmp.firstName,
       lastName: newEmp.lastName,
+      gender: newEmp.gender,
+      photo: defaultPhoto,
       email: newEmp.email,
       phone: newEmp.phone,
       jobTitle: newEmp.jobTitle,
       department: newEmp.department,
       salary: Number(newEmp.salary),
       role: newEmp.role as any,
+      mechanisationStatus: newEmp.mechanisationStatus,
       medicalLicenses: [
         {
           id: `lic-new-${Date.now()}`,
@@ -423,12 +512,15 @@ export const EmployeeDirectory: React.FC = () => {
     setNewEmp({
       firstName: '',
       lastName: '',
+      gender: 'Female',
+      photo: '',
       email: '',
       phone: '',
       jobTitle: 'Staff Nurse',
-      department: 'Intensive Care Unit (ICU)',
+      department: departmentLeadership[0]?.departmentName || 'Intensive Care Unit (ICU)',
       salary: 7500,
       role: 'nurse',
+      mechanisationStatus: 'Mechanised',
       usernameType: 'email',
       passwordType: 'empCode',
       sendInviteNow: true,
@@ -867,22 +959,35 @@ export const EmployeeDirectory: React.FC = () => {
     e.preventDefault();
     if (!portalAccountModalEmp) return;
 
+    if (singlePasswordType === 'custom' && !singleCustomPassword.trim()) {
+      showToast('error', 'Missing Password', 'Please enter a custom password or click Generate Strong Password.');
+      return;
+    }
+
     const empId = portalAccountModalEmp.id;
+    const empName = `${portalAccountModalEmp.firstName} ${portalAccountModalEmp.lastName}`;
+    const targetEmpObj = portalAccountModalEmp;
     setPortalAccountModalEmp(null);
 
     const result = await createEmployeePortalAccount(empId, {
       usernameType: singleUsernameType,
       passwordType: singlePasswordType,
-      customPassword: singleCustomPassword,
-      sendInviteEmail: true,
+      customPassword: singleCustomPassword.trim(),
+      sendInviteEmail: singleSendEmailNotification,
+      mustChangePassword: singleRequireChangeOnLogin,
     });
+
+    if (singleSendSmsNotification && targetEmpObj.phone) {
+      sendPortalInviteSms(empId).catch((err) => console.warn('SMS dispatch error:', err));
+    }
 
     if (result.success) {
       setEmailDispatchModal(result);
       setEmailDispatchLog((prev) => [result, ...prev]);
-      showToast('success', 'Account Created & Email Sent', `Portal credentials emailed to ${result.recipientEmail}`);
+      showToast('success', 'Portal Password Updated', `Portal login password successfully assigned to ${empName}.`);
     } else {
-      showToast('error', 'Account Created (Email Warning)', result.error || 'Created credentials without email.');
+      showToast('success', 'Password Updated (Offline Slip)', `Password updated for ${empName}. Credential slip generated.`);
+      setEmailDispatchModal(result);
     }
   };
 
@@ -937,8 +1042,142 @@ export const EmployeeDirectory: React.FC = () => {
     setShowPasswordMap((prev) => ({ ...prev, [empId]: !prev[empId] }));
   };
 
+  const handleEnrollHeadSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!enrollHeadForm.firstName.trim() || !enrollHeadForm.lastName.trim()) {
+      showToast('error', 'Missing Information', 'Please provide both First Name and Last Name.');
+      return;
+    }
+    setIsEnrollingHead(true);
+    try {
+      const created = await enrollHeadOfFacility({
+        firstName: enrollHeadForm.firstName.trim(),
+        lastName: enrollHeadForm.lastName.trim(),
+        gender: enrollHeadForm.gender,
+        empCode: enrollHeadForm.empCode.trim() || 'EMP-3522',
+        email: enrollHeadForm.email.trim() || `${enrollHeadForm.firstName.trim().toLowerCase()}.${enrollHeadForm.lastName.trim().toLowerCase()}@pjpiimc.org`,
+        phone: enrollHeadForm.phone.trim(),
+        password: enrollHeadForm.password.trim() || enrollHeadForm.empCode.trim() || 'EMP-3522',
+        jobTitle: enrollHeadForm.jobTitle.trim() || 'Head of Facility / Chief Executive Officer',
+        department: 'Executive Administration',
+      });
+      setIsEnrollHeadModalOpen(false);
+      showToast('success', 'Enrolled Head of Facility', `Successfully enrolled ${created.firstName} ${created.lastName} (${created.empCode}) as Head of Facility.`);
+    } catch (err: any) {
+      showToast('error', 'Enrollment Failed', err.message || 'Failed to enroll Head of Facility.');
+    } finally {
+      setIsEnrollingHead(false);
+    }
+  };
+
+  const handleEnrollHrSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!enrollHrForm.firstName.trim() || !enrollHrForm.lastName.trim()) {
+      showToast('error', 'Missing Information', 'Please provide both First Name and Last Name.');
+      return;
+    }
+    setIsEnrollingHr(true);
+    try {
+      const code = enrollHrForm.empCode.trim() || (enrollHrForm.role === 'hr_director' ? 'EMP-1976' : 'EMP-2044');
+      const pass = enrollHrForm.password.trim() || code;
+      const email = enrollHrForm.email.trim() || `${enrollHrForm.firstName.trim().toLowerCase()}.${enrollHrForm.lastName.trim().toLowerCase()}@pjpiimc.org`;
+      const title = enrollHrForm.jobTitle.trim() || (enrollHrForm.role === 'hr_director' ? 'Director of Human Resources' : 'Hospital HR Operations Manager');
+
+      const created = await enrollHrLeader({
+        firstName: enrollHrForm.firstName.trim(),
+        lastName: enrollHrForm.lastName.trim(),
+        gender: enrollHrForm.gender,
+        role: enrollHrForm.role,
+        empCode: code,
+        email: email,
+        phone: enrollHrForm.phone.trim(),
+        password: pass,
+        jobTitle: title,
+        department: 'Human Resources',
+      });
+      setIsEnrollHrModalOpen(false);
+      showToast('success', 'Enrolled HR Leader', `Successfully enrolled ${created.firstName} ${created.lastName} (${created.empCode}) as ${created.role === 'hr_director' ? 'HR Director' : 'HR Manager'}.`);
+    } catch (err: any) {
+      showToast('error', 'Enrollment Failed', err.message || 'Failed to enroll HR Leader.');
+    } finally {
+      setIsEnrollingHr(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
+      {/* Live Staff Action / Deletion / Addition Real-Time Feedback Banner */}
+      {lastStaffAction && (
+        <div
+          id="banner-last-staff-action"
+          className={`rounded-2xl p-4 border shadow-xl flex items-center justify-between gap-4 transition-all duration-300 ${
+            lastStaffAction.type === 'added'
+              ? 'bg-gradient-to-r from-emerald-950 via-slate-900 to-emerald-900/40 border-emerald-500/50 text-emerald-100'
+              : lastStaffAction.type === 'deleted'
+              ? 'bg-gradient-to-r from-rose-950 via-slate-900 to-rose-900/40 border-rose-500/50 text-rose-100'
+              : 'bg-gradient-to-r from-amber-950 via-slate-900 to-amber-900/40 border-amber-500/50 text-amber-100'
+          }`}
+        >
+          <div className="flex items-center gap-3.5">
+            <div
+              className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border shadow-inner ${
+                lastStaffAction.type === 'added'
+                  ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
+                  : lastStaffAction.type === 'deleted'
+                  ? 'bg-rose-500/20 text-rose-400 border-rose-500/40'
+                  : 'bg-amber-500/20 text-amber-400 border-amber-500/40'
+              }`}
+            >
+              {lastStaffAction.type === 'added' ? (
+                <CheckCircle2 className="h-6 w-6" />
+              ) : lastStaffAction.type === 'deleted' ? (
+                <Trash2 className="h-6 w-6" />
+              ) : (
+                <AlertCircle className="h-6 w-6" />
+              )}
+            </div>
+
+            <div>
+              <div className="flex items-center gap-2">
+                <span
+                  className={`text-[11px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border ${
+                    lastStaffAction.type === 'added'
+                      ? 'bg-emerald-500/30 text-emerald-300 border-emerald-400/50'
+                      : lastStaffAction.type === 'deleted'
+                      ? 'bg-rose-500/30 text-rose-300 border-rose-400/50'
+                      : 'bg-amber-500/30 text-amber-300 border-amber-400/50'
+                  }`}
+                >
+                  {lastStaffAction.type === 'added'
+                    ? 'Staff Successfully Added'
+                    : lastStaffAction.type === 'deleted'
+                    ? 'Staff Successfully Deleted'
+                    : 'Staff Registry Reset'}
+                </span>
+                <span className="text-[10px] text-slate-400 font-mono">
+                  {new Date(lastStaffAction.timestamp).toLocaleTimeString()}
+                </span>
+                <span className="text-[10px] text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-800/60 font-semibold flex items-center gap-1">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-ping" />
+                  Cloud Synced
+                </span>
+              </div>
+              <p className="text-sm font-medium mt-1 text-slate-200">
+                {lastStaffAction.message}
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={clearLastStaffAction}
+            className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800/60 transition shrink-0"
+            title="Dismiss Notification"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
       {/* Header Bar */}
       <div className="rounded-2xl bg-gradient-to-r from-slate-900 via-slate-900 to-indigo-950 p-6 border border-slate-800 text-white shadow-xl space-y-5">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
@@ -956,21 +1195,26 @@ export const EmployeeDirectory: React.FC = () => {
                 </span>
               </div>
               <p className="mt-1 text-xs text-slate-400 max-w-3xl">
-                HR administrators have full access to edit employee personal details, job titles, departments, salaries, medical licenses, compliance files, movement history, and portal credentials.
+                HR administrators have full access to add, edit, or delete staff members, manage departments, update medical licenses, and synchronize records automatically in real-time across the hospital system.
               </p>
             </div>
           </div>
 
-          {/* Quick Metrics Badge */}
-          <div className="flex items-center gap-3 self-start lg:self-auto bg-slate-950/80 px-4 py-2 rounded-xl border border-slate-800 text-xs">
+          {/* Quick Metrics Badge & Cloud Sync Status */}
+          <div className="flex flex-wrap items-center gap-3 self-start lg:self-auto bg-slate-950/80 px-4 py-2 rounded-xl border border-slate-800 text-xs">
             <div className="flex items-center gap-1.5 text-slate-300">
               <span className="text-slate-500">Total Staff:</span>
               <strong className="text-white font-bold">{employees.length}</strong>
             </div>
             <span className="text-slate-700">|</span>
-            <div className="flex items-center gap-1.5 text-emerald-400">
+            <div className="flex items-center gap-1.5 text-slate-300">
+              <span className="text-slate-500">Departments:</span>
+              <strong className="text-amber-300 font-bold">{departmentLeadership.length}</strong>
+            </div>
+            <span className="text-slate-700">|</span>
+            <div className="flex items-center gap-1.5 text-emerald-400" title="Automated Real-Time Cloud Synchronization active">
               <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse"></span>
-              <span className="font-semibold">{selectedHospital?.name || 'Main Hospital'}</span>
+              <span className="font-semibold">Cloud Synced</span>
             </div>
           </div>
         </div>
@@ -1063,22 +1307,34 @@ export const EmployeeDirectory: React.FC = () => {
             <button
               id="btn-add-department"
               onClick={() => setActiveView('leadership')}
-              className="flex items-center gap-2 rounded-xl bg-amber-600 hover:bg-amber-500 px-3.5 py-2 text-xs font-bold text-white shadow transition active:scale-95 border border-amber-400/30 whitespace-nowrap"
+              className="flex items-center gap-2 rounded-xl bg-slate-800 hover:bg-slate-700 px-3.5 py-2 text-xs font-bold text-white shadow transition active:scale-95 border border-slate-700 whitespace-nowrap"
               title="Open Department & Unit Leadership to manage or add departments"
             >
-              <Building2 className="h-4 w-4 text-amber-200" />
+              <Building2 className="h-4 w-4 text-amber-300" />
               <span>(ADD DEPARTMENT)</span>
             </button>
 
             <button
               id="btn-provision-staff-account"
               onClick={() => setIsCreateHrAccountModalOpen(true)}
-              className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 px-3.5 py-2 text-xs font-bold text-white shadow transition active:scale-95 border border-indigo-400/30 whitespace-nowrap"
+              className="flex items-center gap-2 rounded-xl bg-slate-800 hover:bg-slate-700 px-3.5 py-2 text-xs font-bold text-slate-200 shadow transition active:scale-95 border border-slate-700 whitespace-nowrap"
               title="Provision staff self-service portal credentials with HR controls"
             >
-              <UserPlus className="h-4 w-4 text-indigo-200" />
-              <span>Provision Staff Account (HR)</span>
+              <Key className="h-4 w-4 text-emerald-400" />
+              <span>Provision Staff Portal</span>
             </button>
+
+            {employees.length > 0 && canEnrollLeadership && (
+              <button
+                id="btn-delete-all-staff-modal"
+                onClick={() => setIsDeleteAllStaffModalOpen(true)}
+                className="flex items-center gap-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 px-3.5 py-2 text-xs font-bold shadow transition active:scale-95 whitespace-nowrap"
+                title="Delete all staff members to start fresh"
+              >
+                <Trash2 className="h-4 w-4" />
+                <span>Delete All Staff</span>
+              </button>
+            )}
 
             <button
               id="btn-add-staff-profile"
@@ -1242,15 +1498,38 @@ export const EmployeeDirectory: React.FC = () => {
                         </td>
                         <td className="p-4">
                           <div className="flex items-center gap-3">
-                            <img
-                              src={emp.photo}
-                              alt={emp.firstName}
-                              className="h-10 w-10 rounded-xl object-cover border border-slate-700"
-                            />
+                            <button
+                              type="button"
+                              onClick={() => setPhotoModalEmp(emp)}
+                              className="relative group focus:outline-none shrink-0"
+                              title="Click to update staff photo"
+                            >
+                              <img
+                                src={emp.photo}
+                                alt={emp.firstName}
+                                className="h-10 w-10 rounded-xl object-cover border border-slate-700 transition group-hover:opacity-75"
+                              />
+                              <span className="absolute inset-0 flex items-center justify-center rounded-xl bg-black/60 opacity-0 group-hover:opacity-100 transition">
+                                <Camera className="h-4 w-4 text-emerald-400" />
+                              </span>
+                            </button>
                             <div>
-                              <p className="font-bold text-white">
-                                {emp.firstName} {emp.lastName}
-                              </p>
+                              <div className="flex items-center gap-2">
+                                <p className="font-bold text-white">
+                                  {emp.firstName} {emp.lastName}
+                                </p>
+                                {emp.gender && (
+                                  <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded border ${
+                                    emp.gender === 'Female'
+                                      ? 'bg-rose-500/20 text-rose-300 border-rose-500/30'
+                                      : emp.gender === 'Male'
+                                      ? 'bg-blue-500/20 text-blue-300 border-blue-500/30'
+                                      : 'bg-purple-500/20 text-purple-300 border-purple-500/30'
+                                  }`}>
+                                    {emp.gender === 'Female' ? '♀ Female' : emp.gender === 'Male' ? '♂ Male' : '⚧ Other'}
+                                  </span>
+                                )}
+                              </div>
                               <p className="text-[10px] text-slate-400">
                                 {emp.jobTitle} • {emp.department}
                               </p>
@@ -1295,6 +1574,23 @@ export const EmployeeDirectory: React.FC = () => {
                             >
                               {showPass ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
                             </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPortalAccountModalEmp(emp);
+                                setSingleUsernameType(emp.portalAccess?.usernameType || 'email');
+                                setSinglePasswordType(emp.customPassword || emp.portalAccess?.customPassword ? 'custom' : 'empCode');
+                                setSingleCustomPassword(emp.customPassword || emp.portalAccess?.customPassword || '');
+                                setShowSingleCustomPassword(false);
+                                setSingleRequireChangeOnLogin(emp.portalAccess?.mustChangePassword ?? true);
+                                setSingleSendEmailNotification(!!emp.email);
+                                setSingleSendSmsNotification(!!emp.phone);
+                              }}
+                              className="text-amber-400 hover:text-amber-300 p-1 transition"
+                              title="Change / Set New Password"
+                            >
+                              <Key className="h-3.5 w-3.5" />
+                            </button>
                           </div>
                         </td>
 
@@ -1315,6 +1611,23 @@ export const EmployeeDirectory: React.FC = () => {
 
                         <td className="p-4 text-right">
                           <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              onClick={() => {
+                                setPortalAccountModalEmp(emp);
+                                setSingleUsernameType(emp.portalAccess?.usernameType || 'email');
+                                setSinglePasswordType(emp.customPassword || emp.portalAccess?.customPassword ? 'custom' : 'empCode');
+                                setSingleCustomPassword(emp.customPassword || emp.portalAccess?.customPassword || '');
+                                setShowSingleCustomPassword(false);
+                                setSingleRequireChangeOnLogin(emp.portalAccess?.mustChangePassword ?? true);
+                                setSingleSendEmailNotification(!!emp.email);
+                                setSingleSendSmsNotification(!!emp.phone);
+                              }}
+                              className="px-2.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-bold text-[11px] transition flex items-center gap-1 shadow-sm"
+                              title="Set or Change Staff Portal Password"
+                            >
+                              <Key className="h-3 w-3" /> Change Password
+                            </button>
+
                             <button
                               onClick={() => handleOpenEditModal(emp)}
                               className="px-2.5 py-1.5 rounded-lg bg-emerald-600/80 text-white font-bold text-[11px] hover:bg-emerald-500 transition flex items-center gap-1"
@@ -1349,6 +1662,14 @@ export const EmployeeDirectory: React.FC = () => {
                               ) : (
                                 <Copy className="h-4 w-4" />
                               )}
+                            </button>
+
+                            <button
+                              onClick={() => setStaffToDelete(emp)}
+                              className="p-1.5 rounded-lg bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 transition border border-rose-500/20"
+                              title="Delete Staff Member from System"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
                             </button>
                           </div>
                         </td>
@@ -1406,12 +1727,11 @@ export const EmployeeDirectory: React.FC = () => {
                   className="rounded-xl border border-slate-200 px-3 py-2 text-xs text-slate-700 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
                 >
                   <option value="All">All Departments</option>
-                  <option value="Cardiology & Intensive Care">Cardiology & ICU</option>
-                  <option value="Intensive Care Unit (ICU)">Intensive Care Unit (ICU)</option>
-                  <option value="Emergency & Trauma">Emergency & Trauma</option>
-                  <option value="Human Resources & Workforce">Human Resources</option>
-                  <option value="Surgical Services & OT">Surgical Services</option>
-                  <option value="Pharmacy & Clinical Pharmacology">Pharmacy</option>
+                  {(departmentLeadership || []).map((dept) => (
+                    <option key={dept.departmentName} value={dept.departmentName}>
+                      {dept.departmentName}
+                    </option>
+                  ))}
                 </select>
               </div>
 
@@ -1440,6 +1760,17 @@ export const EmployeeDirectory: React.FC = () => {
                 <option value="Internal Transfer">Internal Transfer</option>
                 <option value="External Transfer">External Transfer</option>
                 <option value="Departmental Redeployment">Redeployment</option>
+              </select>
+
+              <select
+                value={mechanisationFilter}
+                onChange={(e) => setMechanisationFilter(e.target.value)}
+                className="rounded-xl border border-slate-200 px-3 py-2 text-xs text-slate-700 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 font-bold"
+                title="Filter by Payroll Mechanisation Group (GoG vs Hospital IGF)"
+              >
+                <option value="All">All Payroll Groups</option>
+                <option value="Mechanised">🇬🇭 Mechanised (GoG Paid)</option>
+                <option value="Non-Mechanised">🏥 Non-Mechanised (Hospital Paid)</option>
               </select>
 
               <select
@@ -1472,11 +1803,21 @@ export const EmployeeDirectory: React.FC = () => {
                   <div>
                     <div className="flex items-start justify-between">
                       <div className="flex items-center gap-3">
-                        <img
-                          src={emp.photo}
-                          alt={emp.firstName}
-                          className="h-12 w-12 rounded-2xl object-cover border-2 border-emerald-500/20"
-                        />
+                        <button
+                          type="button"
+                          onClick={() => setPhotoModalEmp(emp)}
+                          className="relative group focus:outline-none shrink-0"
+                          title="Click to update staff photo"
+                        >
+                          <img
+                            src={emp.photo}
+                            alt={emp.firstName}
+                            className="h-12 w-12 rounded-2xl object-cover border-2 border-emerald-500/20 transition group-hover:opacity-75"
+                          />
+                          <span className="absolute inset-0 flex items-center justify-center rounded-2xl bg-black/60 opacity-0 group-hover:opacity-100 transition">
+                            <Camera className="h-4 w-4 text-emerald-400" />
+                          </span>
+                        </button>
                         <div>
                           <h3 className="font-bold text-slate-900 dark:text-slate-100 text-sm">
                             {emp.firstName} {emp.lastName}
@@ -1491,6 +1832,17 @@ export const EmployeeDirectory: React.FC = () => {
                         <span className="rounded-lg bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
                           {emp.empCode}
                         </span>
+                        {emp.gender && (
+                          <span className={`rounded-lg px-2 py-0.5 text-[9px] font-bold border ${
+                            emp.gender === 'Female'
+                              ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20'
+                              : emp.gender === 'Male'
+                              ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20'
+                              : 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20'
+                          }`}>
+                            {emp.gender === 'Female' ? '♀ Female' : emp.gender === 'Male' ? '♂ Male' : '⚧ Other'}
+                          </span>
+                        )}
                         {emp.employmentSource === 'Transfer' ? (
                           <span className="rounded-lg bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
                             <ArrowRightLeft className="h-3 w-3" /> {emp.transferType || 'Transfer'}
@@ -1500,6 +1852,29 @@ export const EmployeeDirectory: React.FC = () => {
                             {emp.employmentSource}
                           </span>
                         ) : null}
+
+                        {/* Mechanisation Status Group Badge */}
+                        <span
+                          className={`rounded-lg px-2 py-0.5 text-[9px] font-bold border flex items-center gap-1 ${
+                            (emp.mechanisationStatus || (emp.employmentType === 'Contract' || (emp.employmentType as any) === 'Locum' ? 'Non-Mechanised' : 'Mechanised')) === 'Mechanised'
+                              ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
+                              : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20'
+                          }`}
+                          title={
+                            (emp.mechanisationStatus || (emp.employmentType === 'Contract' || (emp.employmentType as any) === 'Locum' ? 'Non-Mechanised' : 'Mechanised')) === 'Mechanised'
+                              ? 'Ghana Government Mechanised Payroll (CAGD Subvention)'
+                              : 'Hospital Paid (Direct IGF Liability)'
+                          }
+                        >
+                          <span>
+                            {(emp.mechanisationStatus || (emp.employmentType === 'Contract' || (emp.employmentType as any) === 'Locum' ? 'Non-Mechanised' : 'Mechanised')) === 'Mechanised'
+                              ? '🇬🇭'
+                              : '🏥'}
+                          </span>
+                          {(emp.mechanisationStatus || (emp.employmentType === 'Contract' || (emp.employmentType as any) === 'Locum' ? 'Non-Mechanised' : 'Mechanised')) === 'Mechanised'
+                            ? 'Mechanised (GoG)'
+                            : 'Non-Mechanised (IGF)'}
+                        </span>
                       </div>
                     </div>
 
@@ -1575,6 +1950,23 @@ export const EmployeeDirectory: React.FC = () => {
                       </button>
 
                       <button
+                        onClick={() => {
+                          setPortalAccountModalEmp(emp);
+                          setSingleUsernameType(emp.portalAccess?.usernameType || 'email');
+                          setSinglePasswordType(emp.customPassword || emp.portalAccess?.customPassword ? 'custom' : 'empCode');
+                          setSingleCustomPassword(emp.customPassword || emp.portalAccess?.customPassword || '');
+                          setShowSingleCustomPassword(false);
+                          setSingleRequireChangeOnLogin(emp.portalAccess?.mustChangePassword ?? true);
+                          setSingleSendEmailNotification(!!emp.email);
+                          setSingleSendSmsNotification(!!emp.phone);
+                        }}
+                        className="p-1.5 rounded-lg bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/50 transition border border-amber-500/30"
+                        title="Set or Change Staff Portal Password"
+                      >
+                        <Key className="h-3.5 w-3.5" />
+                      </button>
+
+                      <button
                         onClick={() => handleTriggerSendInvite(emp.id)}
                         className="p-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-100 transition"
                         title="Resend Portal Login Invite"
@@ -1583,9 +1975,10 @@ export const EmployeeDirectory: React.FC = () => {
                       </button>
 
                       <button
-                        onClick={() => deleteEmployee(emp.id)}
-                        title="Remove Employee"
-                        className="p-1 text-slate-400 hover:text-rose-500"
+                        onClick={() => setStaffToDelete(emp)}
+                        title="Remove Staff from System"
+                        id={`btn-delete-staff-${emp.id}`}
+                        className="p-1.5 rounded-lg bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 transition border border-rose-500/20"
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
@@ -1595,2683 +1988,106 @@ export const EmployeeDirectory: React.FC = () => {
               );
             })}
           </div>
+
+          {/* Empty State when no employees found / database cleared */}
+          {filteredEmployees.length === 0 && (
+            <div className="rounded-3xl border-2 border-dashed border-slate-800 bg-slate-900/60 p-8 sm:p-12 text-center space-y-4">
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-500/10 text-amber-400 border border-amber-500/30">
+                <Crown className="h-8 w-8" />
+              </div>
+              <div className="max-w-md mx-auto space-y-1.5">
+                <h3 className="text-base font-bold text-white">
+                  Staff Registry is Fresh & Ready
+                </h3>
+                <p className="text-xs text-slate-400">
+                  No staff members currently in the directory. You can self-enroll as the Head of Facility to establish executive governance, or add staff profiles.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+                <button
+                  type="button"
+                  id="btn-enroll-head-empty-state"
+                  onClick={() => setIsEnrollHeadModalOpen(true)}
+                  className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs shadow-lg shadow-amber-500/20 transition flex items-center gap-2"
+                >
+                  <Crown className="h-4 w-4" />
+                  <span>Enroll as Head of Facility</span>
+                </button>
+                <button
+                  type="button"
+                  id="btn-add-staff-empty-state"
+                  onClick={() => setIsAddModalOpen(true)}
+                  className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow transition flex items-center gap-2"
+                >
+                  <Plus className="h-4 w-4" />
+                  <span>Add Staff Profile</span>
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
       {/* MODAL: EDIT EMPLOYEE DETAILS & DIGITAL FILE (CRITICAL HR EDIT ACCESS) */}
       {editingEmployee && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4">
-          <div className="relative w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-3xl bg-slate-900 border border-slate-800 text-white shadow-2xl flex flex-col">
-            {/* Modal Header */}
-            <div className="sticky top-0 z-10 flex items-center justify-between bg-slate-950/90 backdrop-blur border-b border-slate-800 p-5">
-              <div className="flex items-center gap-3">
-                <img
-                  src={editingEmployee.photo}
-                  alt={editingEmployee.firstName}
-                  className="h-11 w-11 rounded-2xl object-cover border-2 border-emerald-500"
-                />
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-base font-bold text-white">
-                      Edit Employee Details & Digital File
-                    </h3>
-                    <span className="font-mono text-[10px] bg-slate-800 text-emerald-400 px-2 py-0.5 rounded font-bold">
-                      {editingEmployee.empCode}
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-400">
-                    {editingEmployee.firstName} {editingEmployee.lastName} • {editingEmployee.jobTitle}
-                  </p>
-                </div>
-              </div>
-
-              <button
-                onClick={() => setEditingEmployee(null)}
-                className="p-2 rounded-xl text-slate-400 hover:bg-slate-800 hover:text-white transition"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            {/* Success Toast */}
-            {saveSuccessMsg && (
-              <div className="m-4 p-3 bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 rounded-xl text-xs font-bold flex items-center gap-2">
-                <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-                {saveSuccessMsg}
-              </div>
-            )}
-
-            {/* Tab Navigation */}
-            <div className="flex items-center border-b border-slate-800 bg-slate-950/40 px-5 pt-2 text-xs font-bold gap-1 overflow-x-auto">
-              <button
-                type="button"
-                onClick={() => setEditActiveTab('general')}
-                className={`pb-3 pt-2 px-3 border-b-2 flex items-center gap-1.5 whitespace-nowrap transition ${
-                  editActiveTab === 'general'
-                    ? 'border-emerald-500 text-emerald-400 font-extrabold'
-                    : 'border-transparent text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                <User className="h-4 w-4" /> Personal & Ghana Card
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setEditActiveTab('documents')}
-                className={`pb-3 pt-2 px-3 border-b-2 flex items-center gap-1.5 whitespace-nowrap transition ${
-                  editActiveTab === 'documents'
-                    ? 'border-emerald-500 text-emerald-400 font-extrabold'
-                    : 'border-transparent text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                <FileText className="h-4 w-4 text-cyan-400" /> Official Letters & HR Files
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setEditActiveTab('education')}
-                className={`pb-3 pt-2 px-3 border-b-2 flex items-center gap-1.5 whitespace-nowrap transition ${
-                  editActiveTab === 'education'
-                    ? 'border-emerald-500 text-emerald-400 font-extrabold'
-                    : 'border-transparent text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                <GraduationCap className="h-4 w-4 text-indigo-400" /> Education Background
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setEditActiveTab('contacts')}
-                className={`pb-3 pt-2 px-3 border-b-2 flex items-center gap-1.5 whitespace-nowrap transition ${
-                  editActiveTab === 'contacts'
-                    ? 'border-emerald-500 text-emerald-400 font-extrabold'
-                    : 'border-transparent text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                <PhoneCall className="h-4 w-4 text-amber-400" /> Emergency Contacts
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setEditActiveTab('employment')}
-                className={`pb-3 pt-2 px-3 border-b-2 flex items-center gap-1.5 whitespace-nowrap transition ${
-                  editActiveTab === 'employment'
-                    ? 'border-emerald-500 text-emerald-400 font-extrabold'
-                    : 'border-transparent text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                <Briefcase className="h-4 w-4" /> Position & Employment Info
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setEditActiveTab('movements')}
-                className={`pb-3 pt-2 px-3 border-b-2 flex items-center gap-1.5 whitespace-nowrap transition ${
-                  editActiveTab === 'movements'
-                    ? 'border-emerald-500 text-emerald-400 font-extrabold'
-                    : 'border-transparent text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                <ArrowRightLeft className="h-4 w-4 text-emerald-400" /> Transfers & Movements ({editingEmployee.movementHistory?.length || 0})
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setEditActiveTab('licenses')}
-                className={`pb-3 pt-2 px-3 border-b-2 flex items-center gap-1.5 whitespace-nowrap transition ${
-                  editActiveTab === 'licenses'
-                    ? 'border-emerald-500 text-emerald-400 font-extrabold'
-                    : 'border-transparent text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                <Award className="h-4 w-4 text-amber-400" /> Medical Licenses ({editingEmployee.medicalLicenses?.length || 0})
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setEditActiveTab('health')}
-                className={`pb-3 pt-2 px-3 border-b-2 flex items-center gap-1.5 whitespace-nowrap transition ${
-                  editActiveTab === 'health'
-                    ? 'border-emerald-500 text-emerald-400 font-extrabold'
-                    : 'border-transparent text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                <Stethoscope className="h-4 w-4 text-rose-400" /> Health & Signature
-              </button>
-            </div>
-
-            {/* Form Body */}
-            <form onSubmit={handleSaveEmployeeEdits} className="p-6 space-y-5 text-xs flex-1">
-              {/* TAB 1: PERSONAL & GHANA CARD DETAILS */}
-              {editActiveTab === 'general' && (
-                <div className="space-y-5">
-                  {/* Staff Photo Upload Section */}
-                  <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 flex items-center gap-4">
-                    <div className="relative">
-                      <img
-                        src={editingEmployee.photo || 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&q=80&w=200'}
-                        alt={editingEmployee.firstName}
-                        className="h-16 w-16 rounded-2xl object-cover border-2 border-emerald-500 shadow-md"
-                      />
-                      <label className="absolute -bottom-1 -right-1 flex h-6 w-6 cursor-pointer items-center justify-center rounded-full bg-emerald-600 text-white shadow-md hover:bg-emerald-500 transition">
-                        <Camera className="h-3.5 w-3.5" />
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={handlePhotoFileUpload}
-                          className="hidden"
-                        />
-                      </label>
-                    </div>
-
-                    <div className="flex-1 space-y-1">
-                      <h4 className="font-bold text-white text-xs flex items-center gap-1.5">
-                        Staff Profile Photo
-                        <span className="text-[10px] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded font-mono">
-                          Live Reader
-                        </span>
-                      </h4>
-                      <p className="text-[11px] text-slate-400">
-                        Upload official HR passport photograph or high-resolution ID portrait.
-                      </p>
-                      <div className="flex items-center gap-2 pt-1">
-                        <label className="cursor-pointer px-3 py-1 rounded-lg bg-emerald-600 text-white font-bold text-[11px] hover:bg-emerald-500 transition flex items-center gap-1.5">
-                          <Upload className="h-3 w-3" /> Upload Photo File
-                          <input
-                            type="file"
-                            accept="image/*"
-                            onChange={handlePhotoFileUpload}
-                            className="hidden"
-                          />
-                        </label>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Basic Info Fields */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-slate-300 font-semibold mb-1">First Name</label>
-                      <input
-                        type="text"
-                        required
-                        value={editingEmployee.firstName}
-                        onChange={(e) =>
-                          setEditingEmployee({ ...editingEmployee, firstName: e.target.value })
-                        }
-                        className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-slate-200 focus:border-emerald-500 focus:outline-none font-medium"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-slate-300 font-semibold mb-1">Last Name</label>
-                      <input
-                        type="text"
-                        required
-                        value={editingEmployee.lastName}
-                        onChange={(e) =>
-                          setEditingEmployee({ ...editingEmployee, lastName: e.target.value })
-                        }
-                        className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-slate-200 focus:border-emerald-500 focus:outline-none font-medium"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-slate-300 font-semibold mb-1">Email Address (Portal Username)</label>
-                      <input
-                        type="email"
-                        required
-                        value={editingEmployee.email}
-                        onChange={(e) =>
-                          setEditingEmployee({ ...editingEmployee, email: e.target.value })
-                        }
-                        className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-slate-200 focus:border-emerald-500 focus:outline-none font-medium"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-slate-300 font-semibold mb-1">Primary Phone Number</label>
-                      <input
-                        type="text"
-                        required
-                        value={editingEmployee.phone}
-                        onChange={(e) =>
-                          setEditingEmployee({ ...editingEmployee, phone: e.target.value })
-                        }
-                        className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-slate-200 focus:border-emerald-500 focus:outline-none font-medium"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-slate-300 font-semibold mb-1">Passport Number</label>
-                      <input
-                        type="text"
-                        value={editingEmployee.passportNo || ''}
-                        onChange={(e) =>
-                          setEditingEmployee({ ...editingEmployee, passportNo: e.target.value })
-                        }
-                        className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-slate-200 focus:border-emerald-500 focus:outline-none font-mono"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-slate-300 font-semibold mb-1">General Identification ID</label>
-                      <input
-                        type="text"
-                        value={editingEmployee.nationalId || ''}
-                        onChange={(e) =>
-                          setEditingEmployee({ ...editingEmployee, nationalId: e.target.value })
-                        }
-                        className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-slate-200 focus:border-emerald-500 focus:outline-none font-mono"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Ghana Card Identification Section */}
-                  <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-950/30 via-slate-950 to-amber-950/20 border border-amber-500/30 space-y-4">
-                    <div className="flex items-center justify-between border-b border-amber-500/20 pb-2">
-                      <div className="flex items-center gap-2">
-                        <CreditCard className="h-5 w-5 text-amber-400" />
-                        <div>
-                          <h4 className="font-bold text-amber-200 text-xs">
-                            Ghana Card Info (National Identification Authority - NIA)
-                          </h4>
-                          <p className="text-[10px] text-slate-400">
-                            Ghana Card PIN registration, verification & ID scan attachments
-                          </p>
-                        </div>
-                      </div>
-
-                      <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
-                        editingEmployee.ghanaCardInfo?.verificationStatus === 'Verified'
-                          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
-                          : 'bg-amber-500/10 text-amber-400 border-amber-500/30'
-                      }`}>
-                        {editingEmployee.ghanaCardInfo?.verificationStatus || 'Pending Verification'}
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      <div>
-                        <label className="block text-slate-300 font-semibold text-[11px] mb-1">
-                          Ghana Card PIN (GHA-XXXXXXXXX-X)
-                        </label>
-                        <input
-                          type="text"
-                          value={editingEmployee.ghanaCardInfo?.cardPin || editingEmployee.nationalId || ''}
-                          onChange={(e) => {
-                            const pin = e.target.value;
-                            const currGhana = editingEmployee.ghanaCardInfo || {
-                              cardPin: pin,
-                              verificationStatus: 'Verified',
-                            };
-                            setEditingEmployee({
-                              ...editingEmployee,
-                              nationalId: pin,
-                              ghanaCardInfo: { ...currGhana, cardPin: pin },
-                            });
-                          }}
-                          placeholder="GHA-719302841-0"
-                          className="w-full rounded-xl bg-slate-900 border border-amber-500/40 p-2.5 text-amber-300 font-mono font-bold focus:border-amber-400 focus:outline-none"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-slate-300 font-semibold text-[11px] mb-1">
-                          Card Issue Date
-                        </label>
-                        <input
-                          type="date"
-                          value={editingEmployee.ghanaCardInfo?.issueDate || ''}
-                          onChange={(e) => {
-                            const date = e.target.value;
-                            const currGhana = editingEmployee.ghanaCardInfo || {
-                              cardPin: editingEmployee.nationalId || 'GHA-000000000-0',
-                              verificationStatus: 'Verified',
-                            };
-                            setEditingEmployee({
-                              ...editingEmployee,
-                              ghanaCardInfo: { ...currGhana, issueDate: date },
-                            });
-                          }}
-                          className="w-full rounded-xl bg-slate-900 border border-slate-800 p-2.5 text-slate-200 focus:border-amber-400 focus:outline-none"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-slate-300 font-semibold text-[11px] mb-1">
-                          Card Expiry Date
-                        </label>
-                        <input
-                          type="date"
-                          value={editingEmployee.ghanaCardInfo?.expiryDate || ''}
-                          onChange={(e) => {
-                            const date = e.target.value;
-                            const currGhana = editingEmployee.ghanaCardInfo || {
-                              cardPin: editingEmployee.nationalId || 'GHA-000000000-0',
-                              verificationStatus: 'Verified',
-                            };
-                            setEditingEmployee({
-                              ...editingEmployee,
-                              ghanaCardInfo: { ...currGhana, expiryDate: date },
-                            });
-                          }}
-                          className="w-full rounded-xl bg-slate-900 border border-slate-800 p-2.5 text-slate-200 focus:border-amber-400 focus:outline-none"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                      {/* Front Scan */}
-                      <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="font-bold text-slate-300 text-[11px] flex items-center gap-1">
-                            <BadgeCheck className="h-3.5 w-3.5 text-emerald-400" /> Front Scan Copy
-                          </span>
-                          {editingEmployee.ghanaCardInfo?.frontCopyUrl && (
-                            <span className="text-[10px] text-emerald-400 font-semibold">
-                              Attached
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-[10px] font-mono text-slate-400 truncate">
-                          {editingEmployee.ghanaCardInfo?.frontCopyName || 'No front scan uploaded'}
-                        </p>
-                        <label className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold text-[11px] transition">
-                          <Upload className="h-3.5 w-3.5" /> Upload Front Scan
-                          <input
-                            type="file"
-                            accept="image/*,.pdf"
-                            onChange={handleGhanaCardFrontUpload}
-                            className="hidden"
-                          />
-                        </label>
-                      </div>
-
-                      {/* Back Scan */}
-                      <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="font-bold text-slate-300 text-[11px] flex items-center gap-1">
-                            <BadgeCheck className="h-3.5 w-3.5 text-emerald-400" /> Back Scan Copy
-                          </span>
-                          {editingEmployee.ghanaCardInfo?.backCopyUrl && (
-                            <span className="text-[10px] text-emerald-400 font-semibold">
-                              Attached
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-[10px] font-mono text-slate-400 truncate">
-                          {editingEmployee.ghanaCardInfo?.backCopyName || 'No back scan uploaded'}
-                        </p>
-                        <label className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold text-[11px] transition">
-                          <Upload className="h-3.5 w-3.5" /> Upload Back Scan
-                          <input
-                            type="file"
-                            accept="image/*,.pdf"
-                            onChange={handleGhanaCardBackUpload}
-                            className="hidden"
-                          />
-                        </label>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* TAB 2: OFFICIAL HR LETTERS & DOCUMENTS */}
-              {editActiveTab === 'documents' && (
-                <div className="space-y-5">
-                  <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800">
-                    <h4 className="font-bold text-white text-xs mb-1 flex items-center gap-2">
-                      <FileUp className="h-4 w-4 text-cyan-400" /> Mandatory Official Employment Documents
-                    </h4>
-                    <p className="text-[11px] text-slate-400">
-                      HR staff file attachment vault for Appointment Letters, Assumption of Duty Letters, and Transfer Documents.
-                    </p>
-                  </div>
-
-                  {/* 3 Main Required Documents Cards */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    {/* Appointment Letter */}
-                    <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-3 flex flex-col justify-between">
-                      <div>
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="font-extrabold text-cyan-300 text-xs flex items-center gap-1.5">
-                            <FileText className="h-4 w-4 text-cyan-400" /> Appointment Letter
-                          </span>
-                          <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${
-                            editingEmployee.appointmentLetterUrl
-                              ? 'bg-emerald-500/20 text-emerald-300'
-                              : 'bg-rose-500/20 text-rose-300'
-                          }`}>
-                            {editingEmployee.appointmentLetterUrl ? 'Uploaded' : 'Missing'}
-                          </span>
-                        </div>
-                        <p className="text-[10px] text-slate-400">
-                          Official facility engagement contract & terms
-                        </p>
-                        <p className="text-[10px] font-mono text-slate-300 mt-2 truncate">
-                          {editingEmployee.appointmentLetterName || 'No document uploaded'}
-                        </p>
-                      </div>
-
-                      <div className="pt-2 border-t border-slate-800 flex items-center gap-2">
-                        <label className="cursor-pointer flex-1 py-1.5 px-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-[11px] text-center transition flex items-center justify-center gap-1">
-                          <Upload className="h-3 w-3" /> Upload
-                          <input
-                            type="file"
-                            accept=".pdf,.doc,.docx,image/*"
-                            onChange={handleAppointmentLetterUpload}
-                            className="hidden"
-                          />
-                        </label>
-                        {editingEmployee.appointmentLetterUrl && (
-                          <a
-                            href={editingEmployee.appointmentLetterUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="p-1.5 rounded-lg bg-slate-800 text-cyan-300 hover:bg-slate-700 transition"
-                            title="View / Download Appointment Letter"
-                          >
-                            <Download className="h-4 w-4" />
-                          </a>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Assumption of Duty Letter */}
-                    <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-3 flex flex-col justify-between">
-                      <div>
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="font-extrabold text-emerald-300 text-xs flex items-center gap-1.5">
-                            <FileCheck className="h-4 w-4 text-emerald-400" /> Assumption of Duty
-                          </span>
-                          <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${
-                            editingEmployee.assumptionOfDutyUrl
-                              ? 'bg-emerald-500/20 text-emerald-300'
-                              : 'bg-rose-500/20 text-rose-300'
-                          }`}>
-                            {editingEmployee.assumptionOfDutyUrl ? 'Uploaded' : 'Missing'}
-                          </span>
-                        </div>
-                        <p className="text-[10px] text-slate-400">
-                          Formal confirmation of duty commencement at facility
-                        </p>
-                        <p className="text-[10px] font-mono text-slate-300 mt-2 truncate">
-                          {editingEmployee.assumptionOfDutyName || 'No document uploaded'}
-                        </p>
-                      </div>
-
-                      <div className="pt-2 border-t border-slate-800 flex items-center gap-2">
-                        <label className="cursor-pointer flex-1 py-1.5 px-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] text-center transition flex items-center justify-center gap-1">
-                          <Upload className="h-3 w-3" /> Upload
-                          <input
-                            type="file"
-                            accept=".pdf,.doc,.docx,image/*"
-                            onChange={handleAssumptionOfDutyUpload}
-                            className="hidden"
-                          />
-                        </label>
-                        {editingEmployee.assumptionOfDutyUrl && (
-                          <a
-                            href={editingEmployee.assumptionOfDutyUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="p-1.5 rounded-lg bg-slate-800 text-emerald-300 hover:bg-slate-700 transition"
-                            title="View / Download Assumption of Duty Letter"
-                          >
-                            <Download className="h-4 w-4" />
-                          </a>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Transfer Documents */}
-                    <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-3 flex flex-col justify-between">
-                      <div>
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="font-extrabold text-indigo-300 text-xs flex items-center gap-1.5">
-                            <GitFork className="h-4 w-4 text-indigo-400" /> Transfer / Posting
-                          </span>
-                          <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${
-                            editingEmployee.transferDocumentUrl
-                              ? 'bg-emerald-500/20 text-emerald-300'
-                              : 'bg-amber-500/20 text-amber-300'
-                          }`}>
-                            {editingEmployee.transferDocumentUrl ? 'Uploaded' : 'Optional'}
-                          </span>
-                        </div>
-                        <p className="text-[10px] text-slate-400">
-                          Posting, inter-hospital transfer, or redeployment records
-                        </p>
-                        <p className="text-[10px] font-mono text-slate-300 mt-2 truncate">
-                          {editingEmployee.transferDocumentName || 'No transfer doc attached'}
-                        </p>
-                      </div>
-
-                      <div className="pt-2 border-t border-slate-800 flex items-center gap-2">
-                        <label className="cursor-pointer flex-1 py-1.5 px-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-[11px] text-center transition flex items-center justify-center gap-1">
-                          <Upload className="h-3 w-3" /> Upload
-                          <input
-                            type="file"
-                            accept=".pdf,.doc,.docx,image/*"
-                            onChange={handleTransferDocUpload}
-                            className="hidden"
-                          />
-                        </label>
-                        {editingEmployee.transferDocumentUrl && (
-                          <a
-                            href={editingEmployee.transferDocumentUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="p-1.5 rounded-lg bg-slate-800 text-indigo-300 hover:bg-slate-700 transition"
-                            title="View / Download Transfer Document"
-                          >
-                            <Download className="h-4 w-4" />
-                          </a>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Add Custom Official Document Form */}
-                  <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-3">
-                    <h4 className="font-bold text-white text-xs flex items-center gap-2">
-                      <Plus className="h-4 w-4 text-emerald-400" /> Add Custom Official Staff Document
-                    </h4>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      <div>
-                        <label className="block text-slate-300 font-semibold text-[10px] mb-1">
-                          Document Title
-                        </label>
-                        <input
-                          type="text"
-                          value={newDocTitle}
-                          onChange={(e) => setNewDocTitle(e.target.value)}
-                          placeholder="e.g. Promotion Letter 2026"
-                          className="w-full rounded-xl bg-slate-900 border border-slate-800 p-2 text-slate-200 focus:border-emerald-500 focus:outline-none"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-slate-300 font-semibold text-[10px] mb-1">
-                          Category / Type
-                        </label>
-                        <select
-                          value={newDocType}
-                          onChange={(e) => setNewDocType(e.target.value as any)}
-                          className="w-full rounded-xl bg-slate-900 border border-slate-800 p-2 text-slate-200 focus:border-emerald-500 focus:outline-none"
-                        >
-                          <option value="Appointment Letter">Appointment Letter</option>
-                          <option value="Assumption of Duty Letter">Assumption of Duty Letter</option>
-                          <option value="Transfer Document">Transfer Document</option>
-                          <option value="Promotion Letter">Promotion Letter</option>
-                          <option value="Demotion / Disciplinary Letter">Demotion / Disciplinary</option>
-                          <option value="Leave Document">Leave Document</option>
-                          <option value="Other">Other Document</option>
-                        </select>
-                      </div>
-
-                      <div>
-                        <label className="block text-slate-300 font-semibold text-[10px] mb-1">
-                          File Attachment
-                        </label>
-                        <label className="cursor-pointer flex items-center justify-between rounded-xl bg-slate-900 border border-slate-800 p-2 text-slate-300 hover:border-emerald-500 transition">
-                          <span className="truncate text-[10px]">
-                            {newDocFileName || 'Choose PDF / Doc File'}
-                          </span>
-                          <Paperclip className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                          <input
-                            type="file"
-                            onChange={handleNewDocFileUpload}
-                            className="hidden"
-                          />
-                        </label>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between pt-1">
-                      <input
-                        type="text"
-                        value={newDocNotes}
-                        onChange={(e) => setNewDocNotes(e.target.value)}
-                        placeholder="Optional remarks or document tracking reference code..."
-                        className="flex-1 mr-3 rounded-xl bg-slate-900 border border-slate-800 p-2 text-slate-200 focus:border-emerald-500 focus:outline-none text-[11px]"
-                      />
-                      <button
-                        type="button"
-                        onClick={handleAddOfficialDocSubmit}
-                        disabled={!newDocTitle || !newDocFileName}
-                        className="px-4 py-2 rounded-xl bg-emerald-600 text-white font-bold text-[11px] hover:bg-emerald-500 transition disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
-                      >
-                        Save Document to File
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* List of Uploaded Official Documents */}
-                  <div className="space-y-2">
-                    <h5 className="font-bold text-slate-300 text-xs">
-                      All Registered Official Files ({editingEmployee.officialDocuments?.length || 0})
-                    </h5>
-
-                    {(!editingEmployee.officialDocuments || editingEmployee.officialDocuments.length === 0) ? (
-                      <p className="text-slate-500 text-xs italic p-3 rounded-xl bg-slate-950 border border-slate-800 text-center">
-                        No additional official documents registered yet.
-                      </p>
-                    ) : (
-                      <div className="space-y-2">
-                        {editingEmployee.officialDocuments.map((doc) => (
-                          <div
-                            key={doc.id}
-                            className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between gap-3"
-                          >
-                            <div className="flex items-center gap-2.5">
-                              <div className="p-2 rounded-lg bg-slate-900 text-cyan-400">
-                                <FileText className="h-4 w-4" />
-                              </div>
-                              <div>
-                                <h6 className="font-bold text-white text-xs">{doc.title}</h6>
-                                <p className="text-[10px] text-slate-400">
-                                  Category: {doc.type} • Uploaded {doc.uploadedAt} by {doc.uploadedBy}
-                                </p>
-                              </div>
-                            </div>
-
-                            <div className="flex items-center gap-2">
-                              {doc.fileUrl && (
-                                <a
-                                  href={doc.fileUrl}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="px-2.5 py-1 rounded-lg bg-slate-800 text-cyan-300 hover:bg-slate-700 transition text-[10px] font-bold flex items-center gap-1"
-                                >
-                                  <Download className="h-3 w-3" /> View / Download
-                                </a>
-                              )}
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveOfficialDoc(doc.id)}
-                                className="p-1.5 rounded-lg text-rose-400 hover:bg-rose-500/10 transition"
-                                title="Delete Document"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* TAB 3: STAFF EDUCATION BACKGROUND */}
-              {editActiveTab === 'education' && (
-                <div className="space-y-5">
-                  {/* Form to add Education Item */}
-                  <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-3">
-                    <h4 className="font-bold text-white text-xs flex items-center gap-2">
-                      <GraduationCap className="h-4 w-4 text-indigo-400" /> Add Staff Educational Background
-                    </h4>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-slate-300 font-semibold text-[10px] mb-1">
-                          Institution / University
-                        </label>
-                        <input
-                          type="text"
-                          value={newEduInst}
-                          onChange={(e) => setNewEduInst(e.target.value)}
-                          placeholder="e.g. University of Ghana / Korle Bu Nursing College"
-                          className="w-full rounded-xl bg-slate-900 border border-slate-800 p-2 text-slate-200 focus:border-indigo-500 focus:outline-none"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-slate-300 font-semibold text-[10px] mb-1">
-                          Degree / Qualification
-                        </label>
-                        <input
-                          type="text"
-                          value={newEduQual}
-                          onChange={(e) => setNewEduQual(e.target.value)}
-                          placeholder="e.g. Bachelor of Science in Nursing (BSc)"
-                          className="w-full rounded-xl bg-slate-900 border border-slate-800 p-2 text-slate-200 focus:border-indigo-500 focus:outline-none"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      <div>
-                        <label className="block text-slate-300 font-semibold text-[10px] mb-1">
-                          Field of Study / Specialization
-                        </label>
-                        <input
-                          type="text"
-                          value={newEduField}
-                          onChange={(e) => setNewEduField(e.target.value)}
-                          placeholder="e.g. Critical Care Nursing"
-                          className="w-full rounded-xl bg-slate-900 border border-slate-800 p-2 text-slate-200 focus:border-indigo-500 focus:outline-none"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-slate-300 font-semibold text-[10px] mb-1">
-                          Years Attended (Start - Grad)
-                        </label>
-                        <div className="grid grid-cols-2 gap-1">
-                          <input
-                            type="text"
-                            value={newEduStartYear}
-                            onChange={(e) => setNewEduStartYear(e.target.value)}
-                            placeholder="2018"
-                            className="rounded-xl bg-slate-900 border border-slate-800 p-2 text-slate-200 focus:border-indigo-500 focus:outline-none text-center"
-                          />
-                          <input
-                            type="text"
-                            value={newEduGradYear}
-                            onChange={(e) => setNewEduGradYear(e.target.value)}
-                            placeholder="2022"
-                            className="rounded-xl bg-slate-900 border border-slate-800 p-2 text-slate-200 focus:border-indigo-500 focus:outline-none text-center"
-                          />
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="block text-slate-300 font-semibold text-[10px] mb-1">
-                          Certificate Scan Upload
-                        </label>
-                        <label className="cursor-pointer flex items-center justify-between rounded-xl bg-slate-900 border border-slate-800 p-2 text-slate-300 hover:border-indigo-500 transition">
-                          <span className="truncate text-[10px]">
-                            {newEduCertName || 'Choose Certificate File'}
-                          </span>
-                          <Upload className="h-3.5 w-3.5 text-indigo-400 shrink-0" />
-                          <input
-                            type="file"
-                            accept=".pdf,image/*"
-                            onChange={handleEduCertFileUpload}
-                            className="hidden"
-                          />
-                        </label>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-end pt-2">
-                      <button
-                        type="button"
-                        onClick={handleAddEducationSubmit}
-                        disabled={!newEduInst || !newEduQual}
-                        className="px-4 py-2 rounded-xl bg-indigo-600 text-white font-bold text-[11px] hover:bg-indigo-500 transition disabled:opacity-50 disabled:cursor-not-allowed shadow"
-                      >
-                        + Add Qualification to File
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* List of Added Educational Backgrounds */}
-                  <div className="space-y-3">
-                    <h5 className="font-bold text-slate-300 text-xs">
-                      Educational Qualifications ({editingEmployee.educationList?.length || 0})
-                    </h5>
-
-                    {(!editingEmployee.educationList || editingEmployee.educationList.length === 0) ? (
-                      <p className="text-slate-500 text-xs italic p-3 rounded-xl bg-slate-950 border border-slate-800 text-center">
-                        No detailed educational history recorded.
-                      </p>
-                    ) : (
-                      <div className="space-y-3">
-                        {editingEmployee.educationList.map((edu) => (
-                          <div
-                            key={edu.id}
-                            className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-2"
-                          >
-                            <div className="flex items-center justify-between">
-                              <div>
-                                <h6 className="font-extrabold text-indigo-300 text-xs">
-                                  {edu.qualification}
-                                </h6>
-                                <p className="text-[11px] text-slate-200 font-medium">
-                                  {edu.institution} • {edu.fieldOfStudy}
-                                </p>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveEducation(edu.id)}
-                                className="text-rose-400 hover:text-rose-300 text-[11px] font-bold p-1 rounded hover:bg-rose-500/10 transition"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </button>
-                            </div>
-
-                            <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1 border-t border-slate-800">
-                              <span>Graduation Year: {edu.graduationYear || 'N/A'}</span>
-                              {edu.certificateUrl && (
-                                <a
-                                  href={edu.certificateUrl}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="text-indigo-400 font-bold hover:underline flex items-center gap-1"
-                                >
-                                  <Download className="h-3 w-3" /> Certificate Attached
-                                </a>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* TAB 4: EMERGENCY CONTACTS */}
-              {editActiveTab === 'contacts' && (
-                <div className="space-y-5">
-                  {/* Form to add Emergency Contact */}
-                  <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-3">
-                    <h4 className="font-bold text-white text-xs flex items-center gap-2">
-                      <PhoneCall className="h-4 w-4 text-amber-400" /> Add Emergency Contact
-                    </h4>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      <div>
-                        <label className="block text-slate-300 font-semibold text-[10px] mb-1">
-                          Contact Person Full Name
-                        </label>
-                        <input
-                          type="text"
-                          value={newContactName}
-                          onChange={(e) => setNewContactName(e.target.value)}
-                          placeholder="e.g. Mary Kingsley"
-                          className="w-full rounded-xl bg-slate-900 border border-slate-800 p-2 text-slate-200 focus:border-amber-500 focus:outline-none"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-slate-300 font-semibold text-[10px] mb-1">
-                          Relationship to Staff
-                        </label>
-                        <select
-                          value={newContactRel}
-                          onChange={(e) => setNewContactRel(e.target.value)}
-                          className="w-full rounded-xl bg-slate-900 border border-slate-800 p-2 text-slate-200 focus:border-amber-500 focus:outline-none"
-                        >
-                          <option value="Spouse">Spouse</option>
-                          <option value="Parent / Mother">Parent / Mother</option>
-                          <option value="Parent / Father">Parent / Father</option>
-                          <option value="Sibling / Brother">Sibling / Brother</option>
-                          <option value="Sibling / Sister">Sibling / Sister</option>
-                          <option value="Next of Kin">Next of Kin</option>
-                          <option value="Guardian / Other">Guardian / Other</option>
-                        </select>
-                      </div>
-
-                      <div>
-                        <label className="block text-slate-300 font-semibold text-[10px] mb-1">
-                          Primary Phone Number
-                        </label>
-                        <input
-                          type="text"
-                          value={newContactPhone}
-                          onChange={(e) => setNewContactPhone(e.target.value)}
-                          placeholder="+233 24 123 4567"
-                          className="w-full rounded-xl bg-slate-900 border border-slate-800 p-2 text-slate-200 focus:border-amber-500 focus:outline-none"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-slate-300 font-semibold text-[10px] mb-1">
-                          Secondary Phone (Optional)
-                        </label>
-                        <input
-                          type="text"
-                          value={newContactAltPhone}
-                          onChange={(e) => setNewContactAltPhone(e.target.value)}
-                          placeholder="+233 20 987 6543"
-                          className="w-full rounded-xl bg-slate-900 border border-slate-800 p-2 text-slate-200 focus:border-amber-500 focus:outline-none"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-slate-300 font-semibold text-[10px] mb-1">
-                          Residential Address
-                        </label>
-                        <input
-                          type="text"
-                          value={newContactAddress}
-                          onChange={(e) => setNewContactAddress(e.target.value)}
-                          placeholder="Plot 14 East Legon, Accra"
-                          className="w-full rounded-xl bg-slate-900 border border-slate-800 p-2 text-slate-200 focus:border-amber-500 focus:outline-none"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-end pt-1">
-                      <button
-                        type="button"
-                        onClick={handleAddEmergencyContactSubmit}
-                        disabled={!newContactName || !newContactPhone}
-                        className="px-4 py-2 rounded-xl bg-amber-600 text-white font-bold text-[11px] hover:bg-amber-500 transition disabled:opacity-50 disabled:cursor-not-allowed shadow"
-                      >
-                        + Add Emergency Contact
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* List of Registered Emergency Contacts */}
-                  <div className="space-y-3">
-                    <h5 className="font-bold text-slate-300 text-xs">
-                      Registered Emergency Contacts ({editingEmployee.emergencyContacts?.length || 0})
-                    </h5>
-
-                    {(!editingEmployee.emergencyContacts || editingEmployee.emergencyContacts.length === 0) ? (
-                      <p className="text-slate-500 text-xs italic p-3 rounded-xl bg-slate-950 border border-slate-800 text-center">
-                        No emergency contacts registered yet.
-                      </p>
-                    ) : (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        {editingEmployee.emergencyContacts.map((contact, idx) => (
-                          <div
-                            key={contact.id || idx}
-                            className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-2 relative"
-                          >
-                            <div className="flex items-center justify-between">
-                              <span className="font-bold text-amber-300 text-xs">
-                                {contact.name}
-                              </span>
-                              <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
-                                {contact.relation}
-                              </span>
-                            </div>
-
-                            <p className="text-[11px] text-slate-200 font-mono flex items-center gap-1.5">
-                              <Phone className="h-3 w-3 text-emerald-400" /> {contact.phone}
-                              {contact.altPhone && <span className="text-slate-500">/ {contact.altPhone}</span>}
-                            </p>
-
-                            {contact.address && (
-                              <p className="text-[10px] text-slate-400 flex items-center gap-1.5">
-                                <MapPin className="h-3 w-3 text-rose-400 shrink-0" /> {contact.address}
-                              </p>
-                            )}
-
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveEmergencyContact(idx)}
-                              className="absolute top-3 right-3 text-rose-400 hover:text-rose-300 p-1"
-                              title="Remove Contact"
-                            >
-                              <X className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* TAB 5: POSITION & EMPLOYMENT INFORMATION */}
-              {editActiveTab === 'employment' && (
-                <div className="space-y-5">
-                  <div className="rounded-2xl bg-slate-950/60 p-4 border border-slate-800 space-y-4">
-                    <div className="flex items-center justify-between border-b border-slate-800/80 pb-2">
-                      <h4 className="font-bold text-slate-200 text-xs flex items-center gap-2">
-                        <Briefcase className="h-4 w-4 text-emerald-400" />
-                        Current Position & Department Placement
-                      </h4>
-                      <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/60 border border-emerald-500/20 px-2 py-0.5 rounded">
-                        Active Assignment
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-slate-300 font-semibold mb-1">Current Position / Designation</label>
-                        <input
-                          type="text"
-                          required
-                          value={editingEmployee.currentPosition || editingEmployee.jobTitle}
-                          onChange={(e) =>
-                            setEditingEmployee({
-                              ...editingEmployee,
-                              jobTitle: e.target.value,
-                              currentPosition: e.target.value,
-                            })
-                          }
-                          className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-slate-200 focus:border-emerald-500 focus:outline-none font-semibold text-emerald-400"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-slate-300 font-semibold mb-1">Current Department / Unit</label>
-                        <select
-                          value={editingEmployee.currentDepartment || editingEmployee.department}
-                          onChange={(e) =>
-                            setEditingEmployee({
-                              ...editingEmployee,
-                              department: e.target.value,
-                              currentDepartment: e.target.value,
-                            })
-                          }
-                          className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-slate-200 focus:border-emerald-500 focus:outline-none font-medium"
-                        >
-                          <option value="Intensive Care Unit (ICU)">Intensive Care Unit (ICU)</option>
-                          <option value="Cardiology & Intensive Care">Cardiology & ICU</option>
-                          <option value="Emergency & Trauma">Emergency & Trauma</option>
-                          <option value="Human Resources & Workforce">Human Resources & Workforce</option>
-                          <option value="Surgical Services & OT">Surgical Services & OT</option>
-                          <option value="Pharmacy & Clinical Pharmacology">Pharmacy & Pharmacology</option>
-                          <option value="Internal Medicine & Subspecialties">Internal Medicine</option>
-                          <option value="Pediatrics & Child Health">Pediatrics & Child Health</option>
-                          <option value="Obstetrics & Gynaecology">Obstetrics & Gynaecology</option>
-                          <option value="Laboratory & Pathology">Laboratory & Pathology</option>
-                          <option value="Radiology & Medical Imaging">Radiology & Medical Imaging</option>
-                          <option value="Finance & Accounts">Finance & Accounts</option>
-                          <option value="Estates & Facilities">Estates & Facilities</option>
-                        </select>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Employment Induction & Source */}
-                  <div className="rounded-2xl bg-slate-950/60 p-4 border border-slate-800 space-y-4">
-                    <div className="flex items-center justify-between border-b border-slate-800/80 pb-2">
-                      <h4 className="font-bold text-slate-200 text-xs flex items-center gap-2">
-                        <Tag className="h-4 w-4 text-indigo-400" />
-                        Employment Source & Transfer Classification
-                      </h4>
-                      <span className="text-[10px] text-slate-400">
-                        Governs appointment records & background history
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-slate-300 font-semibold mb-1">
-                          Employment Source <span className="text-rose-400">*</span>
-                        </label>
-                        <select
-                          value={editingEmployee.employmentSource || 'New Hire'}
-                          onChange={(e) => {
-                            const val = e.target.value as EmploymentSource;
-                            setEditingEmployee({
-                              ...editingEmployee,
-                              employmentSource: val,
-                              transferType: val === 'Transfer' ? (editingEmployee.transferType || 'Internal Transfer') : editingEmployee.transferType,
-                            });
-                          }}
-                          className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-slate-200 focus:border-emerald-500 focus:outline-none font-bold text-indigo-300"
-                        >
-                          <option value="New Hire">New Hire</option>
-                          <option value="Transfer">Transfer</option>
-                          <option value="Promotion">Promotion</option>
-                          <option value="Reappointment">Reappointment</option>
-                          <option value="National Service">National Service</option>
-                          <option value="Other">Other</option>
-                        </select>
-                      </div>
-
-                      <div>
-                        <label className="block text-slate-300 font-semibold mb-1">Transfer Type Classification</label>
-                        <select
-                          value={editingEmployee.transferType || 'Internal Transfer'}
-                          onChange={(e) =>
-                            setEditingEmployee({
-                              ...editingEmployee,
-                              transferType: e.target.value as TransferType,
-                            })
-                          }
-                          className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-slate-200 focus:border-emerald-500 focus:outline-none font-medium"
-                        >
-                          <option value="Internal Transfer">Internal Transfer</option>
-                          <option value="External Transfer">External Transfer</option>
-                          <option value="Departmental Redeployment">Departmental Redeployment</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    {/* DYNAMIC CONDITIONAL TRANSFER DETAILS - Auto shown if Employment Source is Transfer */}
-                    {editingEmployee.employmentSource === 'Transfer' && (
-                      <div className="mt-4 p-4 rounded-xl bg-emerald-950/20 border-2 border-emerald-500/40 space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <ArrowRightLeft className="h-4 w-4 text-emerald-400" />
-                            <span className="font-bold text-emerald-300 text-xs">
-                              Transfer & Previous Employment Information (Active Transfer Record)
-                            </span>
-                          </div>
-                          <span className="bg-emerald-500/20 text-emerald-300 text-[10px] font-bold px-2 py-0.5 rounded border border-emerald-500/30">
-                            Transfer Verified
-                          </span>
-                        </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                          <div>
-                            <label className="block text-slate-300 font-semibold mb-1">Previous Organisation</label>
-                            <input
-                              type="text"
-                              placeholder="e.g. Korle-Bu Teaching Hospital / 37 Military"
-                              value={editingEmployee.previousOrganisation || ''}
-                              onChange={(e) =>
-                                setEditingEmployee({ ...editingEmployee, previousOrganisation: e.target.value })
-                              }
-                              className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-slate-200 focus:border-emerald-500 focus:outline-none"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-slate-300 font-semibold mb-1">Previous Position</label>
-                            <input
-                              type="text"
-                              placeholder="e.g. Senior Medical Officer / Staff Nurse"
-                              value={editingEmployee.previousPosition || ''}
-                              onChange={(e) =>
-                                setEditingEmployee({ ...editingEmployee, previousPosition: e.target.value })
-                              }
-                              className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-slate-200 focus:border-emerald-500 focus:outline-none"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-slate-300 font-semibold mb-1">Previous Department / Unit</label>
-                            <input
-                              type="text"
-                              placeholder="e.g. Accident & Emergency / ICU"
-                              value={editingEmployee.previousDepartment || ''}
-                              onChange={(e) =>
-                                setEditingEmployee({ ...editingEmployee, previousDepartment: e.target.value })
-                              }
-                              className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-slate-200 focus:border-emerald-500 focus:outline-none"
-                            />
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          <div>
-                            <label className="block text-slate-300 font-semibold mb-1">Transfer Date</label>
-                            <input
-                              type="date"
-                              value={editingEmployee.transferDate || ''}
-                              onChange={(e) =>
-                                setEditingEmployee({ ...editingEmployee, transferDate: e.target.value })
-                              }
-                              className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-slate-200 focus:border-emerald-500 focus:outline-none"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-slate-300 font-semibold mb-1">
-                              Transfer / Appointment Reference Number
-                            </label>
-                            <input
-                              type="text"
-                              placeholder="e.g. TRF-2024-9182 / APPT-MOH-339"
-                              value={editingEmployee.transferReferenceNumber || ''}
-                              onChange={(e) =>
-                                setEditingEmployee({ ...editingEmployee, transferReferenceNumber: e.target.value })
-                              }
-                              className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-slate-200 focus:border-emerald-500 focus:outline-none font-mono text-emerald-400"
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Key Milestone Dates & Financials */}
-                  <div className="rounded-2xl bg-slate-950/60 p-4 border border-slate-800 space-y-4">
-                    <h4 className="font-bold text-slate-200 text-xs border-b border-slate-800/80 pb-2 flex items-center gap-2">
-                      <Calendar className="h-4 w-4 text-amber-400" />
-                      Tenure Dates & Financial Compensation
-                    </h4>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      <div>
-                        <label className="block text-slate-300 font-semibold mb-1">Date Joined PJPIIMC</label>
-                        <input
-                          type="date"
-                          value={editingEmployee.dateJoinedPjpiimc || editingEmployee.joinDate || ''}
-                          onChange={(e) =>
-                            setEditingEmployee({
-                              ...editingEmployee,
-                              joinDate: e.target.value,
-                              dateJoinedPjpiimc: e.target.value,
-                            })
-                          }
-                          className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-slate-200 focus:border-emerald-500 focus:outline-none font-medium"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-slate-300 font-semibold mb-1">Original Hire Date</label>
-                        <input
-                          type="date"
-                          value={editingEmployee.originalHireDate || editingEmployee.joinDate || ''}
-                          onChange={(e) =>
-                            setEditingEmployee({
-                              ...editingEmployee,
-                              originalHireDate: e.target.value,
-                            })
-                          }
-                          className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-slate-200 focus:border-emerald-500 focus:outline-none font-medium"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-slate-300 font-semibold mb-1">Monthly Base Salary ($)</label>
-                        <input
-                          type="number"
-                          required
-                          value={editingEmployee.salary}
-                          onChange={(e) =>
-                            setEditingEmployee({ ...editingEmployee, salary: Number(e.target.value) })
-                          }
-                          className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-slate-200 focus:border-emerald-500 focus:outline-none font-bold text-amber-300"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
-                      <div>
-                        <label className="block text-slate-300 font-semibold mb-1">Bank Account IBAN / Number</label>
-                        <input
-                          type="text"
-                          value={editingEmployee.bankAccount || ''}
-                          onChange={(e) =>
-                            setEditingEmployee({ ...editingEmployee, bankAccount: e.target.value })
-                          }
-                          className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-slate-200 focus:border-emerald-500 focus:outline-none font-mono"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-slate-300 font-semibold mb-1">Tax Registration ID</label>
-                        <input
-                          type="text"
-                          value={editingEmployee.taxId || ''}
-                          onChange={(e) =>
-                            setEditingEmployee({ ...editingEmployee, taxId: e.target.value })
-                          }
-                          className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-slate-200 focus:border-emerald-500 focus:outline-none font-mono"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* TAB 6: STAFF TRANSFERS / MOVEMENT HISTORY */}
-              {editActiveTab === 'movements' && (
-                <div className="space-y-5">
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-slate-950 p-4 rounded-2xl border border-slate-800">
-                    <div>
-                      <h4 className="font-bold text-slate-100 text-sm flex items-center gap-2">
-                        <History className="h-4 w-4 text-emerald-400" /> Staff Transfers & Internal Movement History
-                      </h4>
-                      <p className="text-xs text-slate-400 mt-0.5">
-                        Log and audit all historical departmental transfers, promotions, and external postings for {editingEmployee.firstName}.
-                      </p>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => setShowAddMovementFormInModal(!showAddMovementFormInModal)}
-                      className="flex items-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 px-3.5 py-2 text-xs font-bold text-white shadow transition active:scale-95 whitespace-nowrap"
-                    >
-                      <Plus className="h-4 w-4" />
-                      {showAddMovementFormInModal ? 'Close Form' : 'Record Movement / Transfer'}
-                    </button>
-                  </div>
-
-                  {/* ADD MOVEMENT INLINE FORM */}
-                  {showAddMovementFormInModal && (
-                    <div className="p-4 rounded-2xl bg-slate-950 border-2 border-emerald-500/40 space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
-                      <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                        <span className="font-bold text-emerald-400 text-xs flex items-center gap-2">
-                          <PlusCircle className="h-4 w-4" /> New Movement Log Entry
-                        </span>
-                        <span className="text-[10px] text-slate-400">Updates employee current department upon recording</span>
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        <div>
-                          <label className="block text-slate-300 font-semibold mb-1">Transfer Type</label>
-                          <select
-                            value={newMovementForm.transferType}
-                            onChange={(e) =>
-                              setNewMovementForm({ ...newMovementForm, transferType: e.target.value as TransferType })
-                            }
-                            className="w-full rounded-xl bg-slate-900 border border-slate-800 p-2 text-slate-200 focus:border-emerald-500"
-                          >
-                            <option value="Internal Transfer">Internal Transfer</option>
-                            <option value="External Transfer">External Transfer</option>
-                            <option value="Departmental Redeployment">Departmental Redeployment</option>
-                          </select>
-                        </div>
-
-                        <div>
-                          <label className="block text-slate-300 font-semibold mb-1">Previous Department</label>
-                          <input
-                            type="text"
-                            placeholder="e.g. ICU"
-                            value={newMovementForm.previousDepartment}
-                            onChange={(e) =>
-                              setNewMovementForm({ ...newMovementForm, previousDepartment: e.target.value })
-                            }
-                            className="w-full rounded-xl bg-slate-900 border border-slate-800 p-2 text-slate-200 focus:border-emerald-500"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-slate-300 font-semibold mb-1">New Department / Unit</label>
-                          <input
-                            type="text"
-                            required
-                            placeholder="e.g. Cardiology & ICU"
-                            value={newMovementForm.newDepartment}
-                            onChange={(e) =>
-                              setNewMovementForm({ ...newMovementForm, newDepartment: e.target.value })
-                            }
-                            className="w-full rounded-xl bg-slate-900 border border-slate-800 p-2 text-slate-200 focus:border-emerald-500 font-bold text-emerald-400"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        <div>
-                          <label className="block text-slate-300 font-semibold mb-1">Previous Position</label>
-                          <input
-                            type="text"
-                            placeholder="e.g. Staff Nurse"
-                            value={newMovementForm.previousPosition}
-                            onChange={(e) =>
-                              setNewMovementForm({ ...newMovementForm, previousPosition: e.target.value })
-                            }
-                            className="w-full rounded-xl bg-slate-900 border border-slate-800 p-2 text-slate-200 focus:border-emerald-500"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-slate-300 font-semibold mb-1">New Position</label>
-                          <input
-                            type="text"
-                            required
-                            placeholder="e.g. Senior Charge Nurse"
-                            value={newMovementForm.newPosition}
-                            onChange={(e) =>
-                              setNewMovementForm({ ...newMovementForm, newPosition: e.target.value })
-                            }
-                            className="w-full rounded-xl bg-slate-900 border border-slate-800 p-2 text-slate-200 focus:border-emerald-500 font-bold text-indigo-400"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-slate-300 font-semibold mb-1">Effective Date</label>
-                          <input
-                            type="date"
-                            required
-                            value={newMovementForm.effectiveDate}
-                            onChange={(e) =>
-                              setNewMovementForm({ ...newMovementForm, effectiveDate: e.target.value })
-                            }
-                            className="w-full rounded-xl bg-slate-900 border border-slate-800 p-2 text-slate-200 focus:border-emerald-500 font-medium"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div>
-                          <label className="block text-slate-300 font-semibold mb-1">Approving Authority</label>
-                          <input
-                            type="text"
-                            required
-                            placeholder="e.g. Dr. Kwame Boateng (CMO)"
-                            value={newMovementForm.approvingAuthority}
-                            onChange={(e) =>
-                              setNewMovementForm({ ...newMovementForm, approvingAuthority: e.target.value })
-                            }
-                            className="w-full rounded-xl bg-slate-900 border border-slate-800 p-2 text-slate-200 focus:border-emerald-500"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-slate-300 font-semibold mb-1">Reference / Circular Number</label>
-                          <input
-                            type="text"
-                            placeholder="e.g. TRF-2025-0912"
-                            value={newMovementForm.referenceNumber}
-                            onChange={(e) =>
-                              setNewMovementForm({ ...newMovementForm, referenceNumber: e.target.value })
-                            }
-                            className="w-full rounded-xl bg-slate-900 border border-slate-800 p-2 text-slate-200 focus:border-emerald-500 font-mono text-emerald-400"
-                          />
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="block text-slate-300 font-semibold mb-1">Reason for Movement / Notes</label>
-                        <textarea
-                          rows={2}
-                          placeholder="State operational grounds, transfer justification, or clinical duty realignment..."
-                          value={newMovementForm.reason}
-                          onChange={(e) =>
-                            setNewMovementForm({ ...newMovementForm, reason: e.target.value })
-                          }
-                          className="w-full rounded-xl bg-slate-900 border border-slate-800 p-2.5 text-slate-200 focus:border-emerald-500"
-                        />
-                      </div>
-
-                      <div className="flex justify-end gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setShowAddMovementFormInModal(false)}
-                          className="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 font-bold"
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          type="button"
-                          onClick={handleAddMovementInEditModal}
-                          className="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold shadow flex items-center gap-1.5"
-                        >
-                          <Save className="h-4 w-4" /> Save Movement Record
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* MOVEMENT HISTORY LOG TABLE */}
-                  {(!editingEmployee.movementHistory || editingEmployee.movementHistory.length === 0) ? (
-                    <div className="text-center py-10 bg-slate-950/40 rounded-2xl border border-dashed border-slate-800">
-                      <History className="h-10 w-10 text-slate-600 mx-auto mb-2" />
-                      <p className="font-bold text-slate-300 text-xs">No Movement History Recorded Yet</p>
-                      <p className="text-[11px] text-slate-500 max-w-sm mx-auto mt-1">
-                        Use the "Record Movement / Transfer" button above to log inter-departmental transfers, promotions, or reassignments.
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {editingEmployee.movementHistory.map((mov, idx) => (
-                        <div
-                          key={mov.id || idx}
-                          className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800/80 hover:border-slate-700 transition space-y-2.5"
-                        >
-                          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/60 pb-2">
-                            <div className="flex items-center gap-2">
-                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                                {mov.transferType}
-                              </span>
-                              <span className="font-mono text-[10px] text-slate-400">{mov.referenceNumber || 'N/A'}</span>
-                            </div>
-
-                            <div className="flex items-center gap-2">
-                              <span className="text-[11px] text-slate-400 flex items-center gap-1">
-                                <Calendar className="h-3 w-3 text-slate-500" /> {mov.effectiveDate}
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveMovementFromEdit(mov.id)}
-                                className="p-1 text-slate-500 hover:text-rose-400 transition"
-                                title="Remove movement entry"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </button>
-                            </div>
-                          </div>
-
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                            <div className="bg-slate-900/60 p-2.5 rounded-xl border border-slate-800">
-                              <span className="text-[10px] text-slate-400 font-semibold block">Origin Department & Role</span>
-                              <p className="font-bold text-slate-300 mt-0.5">{mov.previousDepartment || 'PJPIIMC General Pool'}</p>
-                              <p className="text-[11px] text-slate-400">{mov.previousPosition || 'Initial Appointment'}</p>
-                            </div>
-
-                            <div className="bg-emerald-950/20 p-2.5 rounded-xl border border-emerald-500/20">
-                              <span className="text-[10px] text-emerald-400 font-semibold block">Assigned Department & Role</span>
-                              <p className="font-bold text-emerald-300 mt-0.5">{mov.newDepartment}</p>
-                              <p className="text-[11px] text-emerald-400">{mov.newPosition}</p>
-                            </div>
-                          </div>
-
-                          <div className="flex flex-wrap items-center justify-between text-[11px] text-slate-400 pt-1">
-                            <span>
-                              Reason: <strong className="text-slate-300">{mov.reason}</strong>
-                            </span>
-                            <span>
-                              Approved By: <strong className="text-slate-300">{mov.approvingAuthority}</strong>
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* TAB 7: MEDICAL LICENSES & CERTIFICATIONS */}
-              {editActiveTab === 'licenses' && (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between bg-slate-950 p-3 rounded-xl border border-slate-800">
-                    <div>
-                      <h4 className="font-bold text-white text-xs">Medical Practice Licenses & Certs File</h4>
-                      <p className="text-[10px] text-slate-400">
-                        Update Medical Council, MOH, BLS, ACLS, and clinical licenses attached to this file.
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handleAddLicenseToEdit}
-                      className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white font-bold text-xs hover:bg-emerald-500 transition flex items-center gap-1 shadow"
-                    >
-                      <Plus className="h-3.5 w-3.5" /> Add License
-                    </button>
-                  </div>
-
-                  <div className="space-y-3">
-                    {editingEmployee.medicalLicenses.map((lic, index) => (
-                      <div
-                        key={lic.id || index}
-                        className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-3 relative group"
-                      >
-                        <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                          <span className="font-bold text-indigo-300 flex items-center gap-1.5">
-                            <Award className="h-4 w-4 text-amber-400" /> License #{index + 1}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveLicenseFromEdit(lic.id)}
-                            className="text-rose-400 hover:text-rose-300 text-[11px] font-bold flex items-center gap-1"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" /> Remove
-                          </button>
-                        </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          <div>
-                            <label className="block text-slate-400 font-medium text-[10px] mb-1">
-                              License / Cert Type
-                            </label>
-                            <input
-                              type="text"
-                              value={lic.licenseType}
-                              onChange={(e) => {
-                                const newLics = [...editingEmployee.medicalLicenses];
-                                newLics[index].licenseType = e.target.value;
-                                setEditingEmployee({ ...editingEmployee, medicalLicenses: newLics });
-                              }}
-                              className="w-full rounded-lg bg-slate-900 border border-slate-800 p-2 text-slate-200 focus:border-emerald-500 focus:outline-none"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-slate-400 font-medium text-[10px] mb-1">
-                              License Number
-                            </label>
-                            <input
-                              type="text"
-                              value={lic.licenseNumber}
-                              onChange={(e) => {
-                                const newLics = [...editingEmployee.medicalLicenses];
-                                newLics[index].licenseNumber = e.target.value;
-                                setEditingEmployee({ ...editingEmployee, medicalLicenses: newLics });
-                              }}
-                              className="w-full rounded-lg bg-slate-900 border border-slate-800 p-2 text-emerald-400 font-mono font-bold focus:border-emerald-500 focus:outline-none"
-                            />
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                          <div>
-                            <label className="block text-slate-400 font-medium text-[10px] mb-1">
-                              Issuing Authority
-                            </label>
-                            <input
-                              type="text"
-                              value={lic.issuingAuthority}
-                              onChange={(e) => {
-                                const newLics = [...editingEmployee.medicalLicenses];
-                                newLics[index].issuingAuthority = e.target.value;
-                                setEditingEmployee({ ...editingEmployee, medicalLicenses: newLics });
-                              }}
-                              className="w-full rounded-lg bg-slate-900 border border-slate-800 p-2 text-slate-200 focus:border-emerald-500 focus:outline-none"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-slate-400 font-medium text-[10px] mb-1">
-                              Expiry Date
-                            </label>
-                            <input
-                              type="date"
-                              value={lic.expiryDate}
-                              onChange={(e) => {
-                                const newLics = [...editingEmployee.medicalLicenses];
-                                newLics[index].expiryDate = e.target.value;
-                                setEditingEmployee({ ...editingEmployee, medicalLicenses: newLics });
-                              }}
-                              className="w-full rounded-lg bg-slate-900 border border-slate-800 p-2 text-slate-200 focus:border-emerald-500 focus:outline-none"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-slate-400 font-medium text-[10px] mb-1">
-                              License Status
-                            </label>
-                            <select
-                              value={lic.status}
-                              onChange={(e) => {
-                                const newLics = [...editingEmployee.medicalLicenses];
-                                newLics[index].status = e.target.value as any;
-                                setEditingEmployee({ ...editingEmployee, medicalLicenses: newLics });
-                              }}
-                              className="w-full rounded-lg bg-slate-900 border border-slate-800 p-2 text-slate-200 focus:border-emerald-500 focus:outline-none font-bold"
-                            >
-                              <option value="Active">Active</option>
-                              <option value="Expiring Soon">Expiring Soon</option>
-                              <option value="Expired">Expired</option>
-                              <option value="Suspended">Suspended</option>
-                            </select>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* TAB 7: HEALTH & DIGITAL SIGNATURE */}
-              {editActiveTab === 'health' && (
-                <div className="space-y-4">
-                  <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-3">
-                    <h4 className="font-bold text-white text-xs flex items-center gap-2">
-                      <Stethoscope className="h-4 w-4 text-emerald-400" /> Occupational Health & Duty Fitness
-                    </h4>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-slate-400 font-medium text-[10px] mb-1">
-                          Fitness for Duty Status
-                        </label>
-                        <select
-                          value={editingEmployee.occupationalHealth?.fitForDuty ? 'true' : 'false'}
-                          onChange={(e) =>
-                            setEditingEmployee({
-                              ...editingEmployee,
-                              occupationalHealth: {
-                                ...editingEmployee.occupationalHealth,
-                                fitForDuty: e.target.value === 'true',
-                              },
-                            })
-                          }
-                          className="w-full rounded-xl bg-slate-900 border border-slate-800 p-2.5 text-slate-200 font-bold focus:border-emerald-500 focus:outline-none"
-                        >
-                          <option value="true">✓ Certified Fit for Duty</option>
-                          <option value="false">⚠ Restricted / Unfit for Duty</option>
-                        </select>
-                      </div>
-
-                      <div>
-                        <label className="block text-slate-400 font-medium text-[10px] mb-1">
-                          Last Occupational Health Exam Date
-                        </label>
-                        <input
-                          type="date"
-                          value={editingEmployee.occupationalHealth?.lastExamDate || ''}
-                          onChange={(e) =>
-                            setEditingEmployee({
-                              ...editingEmployee,
-                              occupationalHealth: {
-                                ...editingEmployee.occupationalHealth,
-                                lastExamDate: e.target.value,
-                              },
-                            })
-                          }
-                          className="w-full rounded-xl bg-slate-900 border border-slate-800 p-2.5 text-slate-200 focus:border-emerald-500 focus:outline-none"
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="block text-slate-400 font-medium text-[10px] mb-1">
-                        Occupational Health Notes & Work Limitations
-                      </label>
-                      <textarea
-                        rows={2}
-                        value={editingEmployee.occupationalHealth?.notes || ''}
-                        onChange={(e) =>
-                          setEditingEmployee({
-                            ...editingEmployee,
-                            occupationalHealth: {
-                              ...editingEmployee.occupationalHealth,
-                              notes: e.target.value,
-                            },
-                          })
-                        }
-                        className="w-full rounded-xl bg-slate-900 border border-slate-800 p-2.5 text-slate-200 focus:border-emerald-500 focus:outline-none"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-2">
-                    <h4 className="font-bold text-white text-xs flex items-center gap-2">
-                      <FileCheck className="h-4 w-4 text-indigo-400" /> Digital Signature & Compliance Asset
-                    </h4>
-                    <div>
-                      <label className="block text-slate-400 font-medium text-[10px] mb-1">
-                        Digital Signature URL / Compliance Record
-                      </label>
-                      <input
-                        type="text"
-                        value={editingEmployee.digitalSignatureUrl || ''}
-                        onChange={(e) =>
-                          setEditingEmployee({
-                            ...editingEmployee,
-                            digitalSignatureUrl: e.target.value,
-                          })
-                        }
-                        placeholder="https://aurahr.health/signatures/emp-sig-101.png"
-                        className="w-full rounded-xl bg-slate-900 border border-slate-800 p-2.5 text-slate-200 focus:border-emerald-500 focus:outline-none font-mono text-[11px]"
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Action Buttons Footer */}
-              <div className="sticky bottom-0 bg-slate-900/90 backdrop-blur border-t border-slate-800 pt-3 flex items-center justify-between">
-                <span className="text-[11px] text-slate-400">
-                  HR Administrator Audit Trail Enabled
-                </span>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setEditingEmployee(null)}
-                    className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 font-semibold hover:bg-slate-700 transition"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-5 py-2 rounded-xl bg-emerald-600 text-white font-bold hover:bg-emerald-500 transition shadow-lg flex items-center gap-1.5"
-                  >
-                    <Save className="h-4 w-4" /> Save Employee File Updates
-                  </button>
-                </div>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL: SINGLE STAFF PORTAL ACCOUNT CONFIGURATION */}
-      {portalAccountModalEmp && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-          <div className="w-full max-w-md rounded-2xl bg-slate-900 border border-slate-800 p-6 shadow-2xl text-white space-y-5">
-            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
-              <div className="flex items-center gap-2">
-                <Key className="h-5 w-5 text-indigo-400" />
-                <h3 className="font-bold text-base">Configure Staff Portal Login</h3>
-              </div>
-              <button
-                onClick={() => setPortalAccountModalEmp(null)}
-                className="text-slate-400 hover:text-white"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 flex items-center gap-3">
-              <img
-                src={portalAccountModalEmp.photo}
-                alt={portalAccountModalEmp.firstName}
-                className="h-10 w-10 rounded-xl object-cover border border-slate-700"
-              />
-              <div>
-                <p className="font-bold text-slate-100 text-xs">
-                  {portalAccountModalEmp.firstName} {portalAccountModalEmp.lastName}
-                </p>
-                <p className="text-[10px] text-slate-400">
-                  Staff ID: {portalAccountModalEmp.empCode} • {portalAccountModalEmp.email}
-                </p>
-              </div>
-            </div>
-
-            <form onSubmit={handleSingleAccountCreateSubmit} className="space-y-4 text-xs">
-              <div>
-                <label className="block text-slate-300 font-semibold mb-1">Select Username Option</label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setSingleUsernameType('email')}
-                    className={`p-2.5 rounded-xl border text-center font-bold transition ${
-                      singleUsernameType === 'email'
-                        ? 'bg-indigo-600 text-white border-indigo-500'
-                        : 'bg-slate-950 text-slate-400 border-slate-800'
-                    }`}
-                  >
-                    Email Address
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSingleUsernameType('empCode')}
-                    className={`p-2.5 rounded-xl border text-center font-bold transition ${
-                      singleUsernameType === 'empCode'
-                        ? 'bg-indigo-600 text-white border-indigo-500'
-                        : 'bg-slate-950 text-slate-400 border-slate-800'
-                    }`}
-                  >
-                    Staff ID ({portalAccountModalEmp.empCode})
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-slate-300 font-semibold mb-1">Select Initial Password</label>
-                <div className="grid grid-cols-3 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setSinglePasswordType('empCode')}
-                    className={`p-2 rounded-xl border text-center text-[11px] font-bold transition ${
-                      singlePasswordType === 'empCode'
-                        ? 'bg-indigo-600 text-white border-indigo-500'
-                        : 'bg-slate-950 text-slate-400 border-slate-800'
-                    }`}
-                  >
-                    Staff ID
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSinglePasswordType('email')}
-                    className={`p-2 rounded-xl border text-center text-[11px] font-bold transition ${
-                      singlePasswordType === 'email'
-                        ? 'bg-indigo-600 text-white border-indigo-500'
-                        : 'bg-slate-950 text-slate-400 border-slate-800'
-                    }`}
-                  >
-                    Email
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSinglePasswordType('custom')}
-                    className={`p-2 rounded-xl border text-center text-[11px] font-bold transition ${
-                      singlePasswordType === 'custom'
-                        ? 'bg-indigo-600 text-white border-indigo-500'
-                        : 'bg-slate-950 text-slate-400 border-slate-800'
-                    }`}
-                  >
-                    Custom
-                  </button>
-                </div>
-              </div>
-
-              {singlePasswordType === 'custom' && (
-                <div>
-                  <label className="block text-slate-300 font-semibold mb-1">Custom Temporary Password</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. AuraPass2026!"
-                    value={singleCustomPassword}
-                    onChange={(e) => setSingleCustomPassword(e.target.value)}
-                    className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-slate-200 focus:border-indigo-500 focus:outline-none font-mono"
-                  />
-                </div>
-              )}
-
-              <div className="p-3 bg-indigo-950/40 rounded-xl border border-indigo-500/30 text-indigo-200 text-[11px] flex items-center gap-2">
-                <Send className="h-4 w-4 text-indigo-400 flex-shrink-0" />
-                <span>An email invitation with login instructions will be sent automatically.</span>
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => setPortalAccountModalEmp(null)}
-                  className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 rounded-xl bg-indigo-600 text-white font-bold hover:bg-indigo-500 transition shadow-lg"
-                >
-                  Save & Send Login Invite
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+        <EditEmployeeModal
+          employee={editingEmployee}
+          onClose={() => setEditingEmployee(null)}
+          onSave={(updated) => {
+            updateEmployee(updated.id, updated);
+            showToast("success", "Profile Updated", "Updated profile for " + updated.firstName + " " + updated.lastName);
+          }}
+          onDelete={(emp) => {
+            setEditingEmployee(null);
+            setStaffToDelete(emp);
+          }}
+          staffFiles={staffFiles}
+          uploadStaffFile={uploadStaffFile}
+          recordStaffMovement={recordStaffMovement}
+          formatCurrency={formatCurrency}
+        />
       )}
 
       {/* Digital Employee Profile File Modal */}
-      {selectedEmployee && (() => {
-        const empStaffFiles = (staffFiles || []).filter(
-          (f) =>
-            f.ownerEmail === selectedEmployee.email ||
-            f.ownerUid === selectedEmployee.id ||
-            f.ownerName.toLowerCase().includes(selectedEmployee.firstName.toLowerCase())
-        );
-        const totalDocsCount =
-          (selectedEmployee.officialDocuments || []).length +
-          empStaffFiles.length +
-          (selectedEmployee.appointmentLetterUrl ? 1 : 0) +
-          (selectedEmployee.assumptionOfDutyUrl ? 1 : 0) +
-          (selectedEmployee.transferDocumentUrl ? 1 : 0);
-
-        return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 p-4 backdrop-blur-md">
-            <div className="relative h-[88vh] w-full max-w-4xl overflow-y-auto rounded-3xl bg-slate-900 p-6 shadow-2xl border border-slate-800 text-slate-100 flex flex-col">
-              <button
-                onClick={() => setSelectedEmployee(null)}
-                className="absolute right-4 top-4 rounded-xl p-2 text-slate-400 hover:bg-slate-800 hover:text-white transition"
-              >
-                <X className="h-5 w-5" />
-              </button>
-
-              {/* Profile Banner */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-4 pr-10">
-                <div className="flex items-center gap-4">
-                  <img
-                    src={selectedEmployee.photo}
-                    alt={selectedEmployee.firstName}
-                    className="h-16 w-16 rounded-2xl object-cover border-2 border-emerald-500 shadow-md"
-                  />
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-xl font-bold text-white">
-                        {selectedEmployee.firstName} {selectedEmployee.lastName}
-                      </h3>
-                      <span className="font-mono text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded font-bold">
-                        {selectedEmployee.empCode}
-                      </span>
-                    </div>
-                    <p className="text-xs font-semibold text-emerald-400 mt-0.5">
-                      {selectedEmployee.jobTitle} • {selectedEmployee.department}
-                    </p>
-                    <p className="text-[11px] text-slate-400">
-                      Hospital ID: {selectedEmployee.hospitalId} • Joined {selectedEmployee.joinDate}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => {
-                      const empToEdit = selectedEmployee;
-                      setSelectedEmployee(null);
-                      handleOpenEditModal(empToEdit);
-                    }}
-                    className="px-4 py-2 rounded-xl bg-emerald-600 text-white font-bold text-xs hover:bg-emerald-500 transition shadow flex items-center gap-2"
-                  >
-                    <Pencil className="h-4 w-4" /> Edit Details & Files
-                  </button>
-                </div>
-              </div>
-
-              {/* Digital File Modal Inner Tabs */}
-              <div className="flex items-center gap-2 border-b border-slate-800 my-4 text-xs font-bold overflow-x-auto pb-1">
-                <button
-                  type="button"
-                  onClick={() => setDigitalFileActiveTab('documents')}
-                  className={`px-4 py-2 rounded-xl flex items-center gap-2 transition ${
-                    digitalFileActiveTab === 'documents'
-                      ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 font-extrabold'
-                      : 'text-slate-400 hover:text-white hover:bg-slate-800'
-                  }`}
-                >
-                  <FileText className="h-4 w-4 text-cyan-400" /> Digital File Vault & HR Documents
-                  <span className="ml-1 rounded-full bg-cyan-500/20 px-2 py-0.5 text-[10px] text-cyan-300 font-extrabold border border-cyan-500/30">
-                    {totalDocsCount}
-                  </span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setDigitalFileActiveTab('overview')}
-                  className={`px-4 py-2 rounded-xl flex items-center gap-2 transition ${
-                    digitalFileActiveTab === 'overview'
-                      ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 font-extrabold'
-                      : 'text-slate-400 hover:text-white hover:bg-slate-800'
-                  }`}
-                >
-                  <Key className="h-4 w-4 text-indigo-400" /> Portal Credentials & Employment Info
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setDigitalFileActiveTab('licenses')}
-                  className={`px-4 py-2 rounded-xl flex items-center gap-2 transition ${
-                    digitalFileActiveTab === 'licenses'
-                      ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 font-extrabold'
-                      : 'text-slate-400 hover:text-white hover:bg-slate-800'
-                  }`}
-                >
-                  <Award className="h-4 w-4 text-amber-400" /> Licenses, Certs & Health
-                  <span className="ml-1 rounded-full bg-slate-800 px-2 py-0.5 text-[10px] text-amber-300">
-                    {(selectedEmployee.medicalLicenses || []).length}
-                  </span>
-                </button>
-              </div>
-
-              {/* TAB CONTENT */}
-              <div className="flex-1 overflow-y-auto space-y-5 text-xs pr-1">
-                {/* TAB 1: DIGITAL FILE VAULT & HR DOCUMENTS */}
-                {digitalFileActiveTab === 'documents' && (
-                  <div className="space-y-5">
-                    {/* Security & Access Vault Banner */}
-                    <div className="rounded-2xl bg-slate-950 p-4 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <Lock className="h-4 w-4 text-emerald-400" />
-                          <h4 className="font-bold text-white text-sm">Staff File Vault Access Rules</h4>
-                        </div>
-                        <p className="text-[11px] text-slate-400 mt-0.5">
-                          Controls whether {selectedEmployee.firstName} can access and view their digital document vault in the mobile staff portal.
-                        </p>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const currentGranted = selectedEmployee.filePermissionGranted ?? true;
-                          toggleStaffFilePermission(selectedEmployee.id, !currentGranted);
-                          setSelectedEmployee({
-                            ...selectedEmployee,
-                            filePermissionGranted: !currentGranted,
-                          });
-                        }}
-                        className={`px-3.5 py-2 rounded-xl font-bold text-xs transition flex items-center gap-2 border ${
-                          (selectedEmployee.filePermissionGranted ?? true)
-                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/30'
-                            : 'bg-rose-500/20 text-rose-300 border-rose-500/40 hover:bg-rose-500/30'
-                        }`}
-                      >
-                        <ShieldCheck className="h-4 w-4" />
-                        {(selectedEmployee.filePermissionGranted ?? true) ? 'Access Granted (Click to Revoke)' : 'Access Restricted (Click to Grant)'}
-                      </button>
-                    </div>
-
-                    {/* Mandatory HR Employment Letters Grid */}
-                    <div className="space-y-2">
-                      <h4 className="font-bold text-slate-200 text-xs uppercase tracking-wider flex items-center gap-2">
-                        <FileCheck className="h-4 w-4 text-cyan-400" /> Mandatory Official Employment Records
-                      </h4>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        {/* Appointment Letter */}
-                        <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 flex flex-col justify-between space-y-3">
-                          <div>
-                            <div className="flex items-center justify-between mb-1">
-                              <span className="font-bold text-cyan-300 text-xs">Appointment Letter</span>
-                              <span className={`px-2 py-0.5 rounded text-[9px] font-extrabold ${
-                                selectedEmployee.appointmentLetterUrl ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-300'
-                              }`}>
-                                {selectedEmployee.appointmentLetterUrl ? 'Attached' : 'Missing'}
-                              </span>
-                            </div>
-                            <p className="text-[10px] text-slate-400">Formal facility employment terms</p>
-                            <p className="text-[10px] font-mono text-slate-300 mt-2 truncate">
-                              {selectedEmployee.appointmentLetterName || 'No document on file'}
-                            </p>
-                          </div>
-
-                          <div className="pt-2 border-t border-slate-800 flex items-center gap-2">
-                            <label className="cursor-pointer flex-1 py-1.5 px-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-[10px] text-center transition flex items-center justify-center gap-1">
-                              <Upload className="h-3 w-3" /> Upload
-                              <input
-                                type="file"
-                                accept=".pdf,.doc,.docx,image/*"
-                                onChange={(e) => {
-                                  if (e.target.files && e.target.files[0]) {
-                                    const file = e.target.files[0];
-                                    const reader = new FileReader();
-                                    reader.onload = () => {
-                                      const dataUrl = reader.result as string;
-                                      const newDoc: OfficialDocument = {
-                                        id: `doc-app-${Date.now()}`,
-                                        title: 'Appointment Letter',
-                                        type: 'Appointment Letter',
-                                        fileUrl: dataUrl,
-                                        fileName: file.name,
-                                        fileSize: file.size,
-                                        uploadedAt: new Date().toISOString().split('T')[0],
-                                        uploadedBy: 'HR Officer',
-                                      };
-                                      const updatedEmp = {
-                                        ...selectedEmployee,
-                                        appointmentLetterUrl: dataUrl,
-                                        appointmentLetterName: file.name,
-                                        officialDocuments: [newDoc, ...(selectedEmployee.officialDocuments || []).filter((d) => d.type !== 'Appointment Letter')],
-                                      };
-                                      updateEmployee(selectedEmployee.id, updatedEmp);
-                                      setSelectedEmployee(updatedEmp);
-                                      showToast('success', 'Appointment Letter Uploaded', `Saved ${file.name}`);
-                                    };
-                                    reader.readAsDataURL(file);
-                                  }
-                                }}
-                                className="hidden"
-                              />
-                            </label>
-
-                            {selectedEmployee.appointmentLetterUrl && (
-                              <a
-                                href={selectedEmployee.appointmentLetterUrl}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="p-1.5 rounded-lg bg-slate-800 text-cyan-300 hover:bg-slate-700 transition"
-                                title="View Appointment Letter"
-                              >
-                                <Eye className="h-4 w-4" />
-                              </a>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Assumption of Duty */}
-                        <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 flex flex-col justify-between space-y-3">
-                          <div>
-                            <div className="flex items-center justify-between mb-1">
-                              <span className="font-bold text-emerald-300 text-xs">Assumption of Duty</span>
-                              <span className={`px-2 py-0.5 rounded text-[9px] font-extrabold ${
-                                selectedEmployee.assumptionOfDutyUrl ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-300'
-                              }`}>
-                                {selectedEmployee.assumptionOfDutyUrl ? 'Attached' : 'Missing'}
-                              </span>
-                            </div>
-                            <p className="text-[10px] text-slate-400">Commencement of duty report</p>
-                            <p className="text-[10px] font-mono text-slate-300 mt-2 truncate">
-                              {selectedEmployee.assumptionOfDutyName || 'No document on file'}
-                            </p>
-                          </div>
-
-                          <div className="pt-2 border-t border-slate-800 flex items-center gap-2">
-                            <label className="cursor-pointer flex-1 py-1.5 px-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[10px] text-center transition flex items-center justify-center gap-1">
-                              <Upload className="h-3 w-3" /> Upload
-                              <input
-                                type="file"
-                                accept=".pdf,.doc,.docx,image/*"
-                                onChange={(e) => {
-                                  if (e.target.files && e.target.files[0]) {
-                                    const file = e.target.files[0];
-                                    const reader = new FileReader();
-                                    reader.onload = () => {
-                                      const dataUrl = reader.result as string;
-                                      const newDoc: OfficialDocument = {
-                                        id: `doc-ass-${Date.now()}`,
-                                        title: 'Assumption of Duty Letter',
-                                        type: 'Assumption of Duty Letter',
-                                        fileUrl: dataUrl,
-                                        fileName: file.name,
-                                        fileSize: file.size,
-                                        uploadedAt: new Date().toISOString().split('T')[0],
-                                        uploadedBy: 'HR Officer',
-                                      };
-                                      const updatedEmp = {
-                                        ...selectedEmployee,
-                                        assumptionOfDutyUrl: dataUrl,
-                                        assumptionOfDutyName: file.name,
-                                        officialDocuments: [newDoc, ...(selectedEmployee.officialDocuments || []).filter((d) => d.type !== 'Assumption of Duty Letter')],
-                                      };
-                                      updateEmployee(selectedEmployee.id, updatedEmp);
-                                      setSelectedEmployee(updatedEmp);
-                                      showToast('success', 'Assumption of Duty Uploaded', `Saved ${file.name}`);
-                                    };
-                                    reader.readAsDataURL(file);
-                                  }
-                                }}
-                                className="hidden"
-                              />
-                            </label>
-
-                            {selectedEmployee.assumptionOfDutyUrl && (
-                              <a
-                                href={selectedEmployee.assumptionOfDutyUrl}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="p-1.5 rounded-lg bg-slate-800 text-emerald-300 hover:bg-slate-700 transition"
-                                title="View Assumption of Duty Letter"
-                              >
-                                <Eye className="h-4 w-4" />
-                              </a>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Transfer Document */}
-                        <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 flex flex-col justify-between space-y-3">
-                          <div>
-                            <div className="flex items-center justify-between mb-1">
-                              <span className="font-bold text-indigo-300 text-xs">Transfer / Posting</span>
-                              <span className={`px-2 py-0.5 rounded text-[9px] font-extrabold ${
-                                selectedEmployee.transferDocumentUrl ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-800 text-slate-400'
-                              }`}>
-                                {selectedEmployee.transferDocumentUrl ? 'Attached' : 'Optional'}
-                              </span>
-                            </div>
-                            <p className="text-[10px] text-slate-400">Redeployment or transfer order</p>
-                            <p className="text-[10px] font-mono text-slate-300 mt-2 truncate">
-                              {selectedEmployee.transferDocumentName || 'No transfer doc'}
-                            </p>
-                          </div>
-
-                          <div className="pt-2 border-t border-slate-800 flex items-center gap-2">
-                            <label className="cursor-pointer flex-1 py-1.5 px-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-[10px] text-center transition flex items-center justify-center gap-1">
-                              <Upload className="h-3 w-3" /> Upload
-                              <input
-                                type="file"
-                                accept=".pdf,.doc,.docx,image/*"
-                                onChange={(e) => {
-                                  if (e.target.files && e.target.files[0]) {
-                                    const file = e.target.files[0];
-                                    const reader = new FileReader();
-                                    reader.onload = () => {
-                                      const dataUrl = reader.result as string;
-                                      const newDoc: OfficialDocument = {
-                                        id: `doc-trf-${Date.now()}`,
-                                        title: 'Transfer Document',
-                                        type: 'Transfer Document',
-                                        fileUrl: dataUrl,
-                                        fileName: file.name,
-                                        fileSize: file.size,
-                                        uploadedAt: new Date().toISOString().split('T')[0],
-                                        uploadedBy: 'HR Officer',
-                                      };
-                                      const updatedEmp = {
-                                        ...selectedEmployee,
-                                        transferDocumentUrl: dataUrl,
-                                        transferDocumentName: file.name,
-                                        officialDocuments: [newDoc, ...(selectedEmployee.officialDocuments || []).filter((d) => d.type !== 'Transfer Document')],
-                                      };
-                                      updateEmployee(selectedEmployee.id, updatedEmp);
-                                      setSelectedEmployee(updatedEmp);
-                                      showToast('success', 'Transfer Document Uploaded', `Saved ${file.name}`);
-                                    };
-                                    reader.readAsDataURL(file);
-                                  }
-                                }}
-                                className="hidden"
-                              />
-                            </label>
-
-                            {selectedEmployee.transferDocumentUrl && (
-                              <a
-                                href={selectedEmployee.transferDocumentUrl}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="p-1.5 rounded-lg bg-slate-800 text-indigo-300 hover:bg-slate-700 transition"
-                                title="View Transfer Document"
-                              >
-                                <Eye className="h-4 w-4" />
-                              </a>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Quick File Upload Form */}
-                    <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-3">
-                      <h4 className="font-bold text-white text-xs flex items-center gap-2">
-                        <Plus className="h-4 w-4 text-emerald-400" /> Upload New Digital Document to Staff File
-                      </h4>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        <div>
-                          <label className="block text-slate-300 font-semibold text-[10px] mb-1">
-                            Document Title *
-                          </label>
-                          <input
-                            type="text"
-                            value={quickDocTitle}
-                            onChange={(e) => setQuickDocTitle(e.target.value)}
-                            placeholder="e.g. Promotion Letter 2026"
-                            className="w-full rounded-xl bg-slate-900 border border-slate-800 p-2 text-slate-200 focus:border-emerald-500 focus:outline-none"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-slate-300 font-semibold text-[10px] mb-1">
-                            Document Category
-                          </label>
-                          <select
-                            value={quickDocCategory}
-                            onChange={(e) => setQuickDocCategory(e.target.value as any)}
-                            className="w-full rounded-xl bg-slate-900 border border-slate-800 p-2 text-slate-200 focus:border-emerald-500 focus:outline-none"
-                          >
-                            <option value="Appointment Letter">Appointment Letter</option>
-                            <option value="Assumption of Duty Letter">Assumption of Duty Letter</option>
-                            <option value="Transfer Document">Transfer Document</option>
-                            <option value="Promotion Letter">Promotion Letter</option>
-                            <option value="Demotion / Disciplinary Letter">Demotion / Disciplinary</option>
-                            <option value="Leave Document">Leave Document</option>
-                            <option value="Other">Other Document</option>
-                          </select>
-                        </div>
-
-                        <div>
-                          <label className="block text-slate-300 font-semibold text-[10px] mb-1">
-                            Choose File *
-                          </label>
-                          <label className="cursor-pointer flex items-center justify-between rounded-xl bg-slate-900 border border-slate-800 p-2 text-slate-300 hover:border-emerald-500 transition">
-                            <span className="truncate text-[10px]">
-                              {quickDocFileName || 'Select PDF / Doc / Image'}
-                            </span>
-                            <Paperclip className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                            <input
-                              type="file"
-                              accept=".pdf,.doc,.docx,image/*"
-                              onChange={handleDirectDocUploadInModal}
-                              className="hidden"
-                            />
-                          </label>
-                        </div>
-                      </div>
-
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
-                        <input
-                          type="text"
-                          value={quickDocNotes}
-                          onChange={(e) => setQuickDocNotes(e.target.value)}
-                          placeholder="Optional notes or tracking code..."
-                          className="flex-1 rounded-xl bg-slate-900 border border-slate-800 p-2 text-slate-200 focus:border-emerald-500 focus:outline-none text-[11px]"
-                        />
-                        <button
-                          type="button"
-                          onClick={handleSaveDirectDocInModal}
-                          disabled={!quickDocTitle || !quickDocFileUrl}
-                          className="px-4 py-2 rounded-xl bg-emerald-600 text-white font-bold text-xs hover:bg-emerald-500 transition disabled:opacity-50 disabled:cursor-not-allowed shrink-0 flex items-center gap-1.5 justify-center"
-                        >
-                          <Upload className="h-3.5 w-3.5" /> Attach to Digital File
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Official Uploaded Documents List */}
-                    <div className="space-y-3">
-                      <h4 className="font-bold text-slate-200 text-xs uppercase tracking-wider flex items-center gap-2">
-                        <FolderArchive className="h-4 w-4 text-emerald-400" />
-                        Registered Staff Official Files ({ (selectedEmployee.officialDocuments || []).length })
-                      </h4>
-
-                      {(!selectedEmployee.officialDocuments || selectedEmployee.officialDocuments.length === 0) ? (
-                        <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 text-center text-slate-500 text-xs italic">
-                          No official custom documents registered for this employee yet. Use the uploader above to add files.
-                        </div>
-                      ) : (
-                        <div className="grid grid-cols-1 gap-2">
-                          {selectedEmployee.officialDocuments.map((doc) => (
-                            <div
-                              key={doc.id}
-                              className="p-3 rounded-2xl bg-slate-950 border border-slate-800 flex items-center justify-between gap-3 hover:border-slate-700 transition"
-                            >
-                              <div className="flex items-center gap-3">
-                                <div className="p-2.5 rounded-xl bg-slate-900 text-cyan-400 border border-slate-800">
-                                  <FileText className="h-4 w-4" />
-                                </div>
-                                <div>
-                                  <span className="font-bold text-white text-xs block">{doc.title}</span>
-                                  <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-0.5">
-                                    <span className="bg-slate-800 text-cyan-300 px-2 py-0.5 rounded font-mono">
-                                      {doc.type}
-                                    </span>
-                                    <span>• Uploaded {doc.uploadedAt}</span>
-                                    {doc.notes && <span>• {doc.notes}</span>}
-                                  </div>
-                                </div>
-                              </div>
-
-                              <div className="flex items-center gap-2">
-                                <a
-                                  href={doc.fileUrl}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="px-3 py-1.5 rounded-xl bg-cyan-600/20 text-cyan-300 border border-cyan-500/30 hover:bg-cyan-600/30 font-bold text-xs flex items-center gap-1.5 transition"
-                                >
-                                  <Eye className="h-3.5 w-3.5" /> View
-                                </a>
-
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteOfficialDocInModal(doc.id)}
-                                  className="p-1.5 rounded-xl text-slate-500 hover:text-rose-400 hover:bg-slate-800 transition"
-                                  title="Delete Document"
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* HR Staff File Vault Storage Items */}
-                    {empStaffFiles.length > 0 && (
-                      <div className="space-y-3 pt-2 border-t border-slate-800">
-                        <h4 className="font-bold text-slate-200 text-xs uppercase tracking-wider flex items-center gap-2">
-                          <Paperclip className="h-4 w-4 text-indigo-400" />
-                          Vault Cloud Files ({empStaffFiles.length})
-                        </h4>
-
-                        <div className="grid grid-cols-1 gap-2">
-                          {empStaffFiles.map((sf) => (
-                            <div
-                              key={sf.id}
-                              className="p-3 rounded-2xl bg-slate-950 border border-slate-800 flex items-center justify-between gap-3"
-                            >
-                              <div className="flex items-center gap-3">
-                                <div className="p-2.5 rounded-xl bg-indigo-950/40 text-indigo-300 border border-indigo-500/30">
-                                  <FileText className="h-4 w-4" />
-                                </div>
-                                <div>
-                                  <span className="font-bold text-white text-xs block">{sf.fileName}</span>
-                                  <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-0.5">
-                                    <span className="bg-indigo-950 text-indigo-300 px-2 py-0.5 rounded font-mono">
-                                      {sf.category}
-                                    </span>
-                                    <span>• Uploaded {sf.uploadedAt}</span>
-                                    {sf.description && <span>• {sf.description}</span>}
-                                  </div>
-                                </div>
-                              </div>
-
-                              <div className="flex items-center gap-2">
-                                <a
-                                  href={sf.fileData}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="px-3 py-1.5 rounded-xl bg-indigo-600/20 text-indigo-300 border border-indigo-500/30 hover:bg-indigo-600/30 font-bold text-xs flex items-center gap-1.5 transition"
-                                >
-                                  <Download className="h-3.5 w-3.5" /> Download
-                                </a>
-
-                                <button
-                                  type="button"
-                                  onClick={() => deleteStaffFile(sf.id)}
-                                  className="p-1.5 rounded-xl text-slate-500 hover:text-rose-400 hover:bg-slate-800 transition"
-                                  title="Delete Vault File"
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* TAB 2: OVERVIEW & CREDENTIALS */}
-                {digitalFileActiveTab === 'overview' && (
-                  <div className="space-y-5">
-                    {/* Portal Access Credentials Card */}
-                    <div className="rounded-2xl bg-indigo-950/30 p-4 border border-indigo-500/30 space-y-3">
-                      <div className="flex items-center justify-between border-b border-indigo-500/20 pb-2">
-                        <h4 className="font-bold text-sm text-indigo-300 flex items-center gap-2">
-                          <Key className="h-4 w-4 text-indigo-400" /> Mobile Staff Portal Login Account
-                        </h4>
-                        <span className="rounded-full bg-emerald-500/20 px-2.5 py-0.5 text-[10px] font-bold text-emerald-300 border border-emerald-500/30">
-                          {selectedEmployee.portalAccess?.inviteStatus || 'Invitation Sent'}
-                        </span>
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-slate-300">
-                        <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
-                          <span className="text-[10px] text-slate-400 block font-bold">PORTAL USERNAME</span>
-                          <p className="font-mono text-emerald-400 font-bold text-xs mt-0.5">
-                            {selectedEmployee.portalAccess?.username || selectedEmployee.email}
-                          </p>
-                        </div>
-                        <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
-                          <span className="text-[10px] text-slate-400 block font-bold">PORTAL PASSWORD</span>
-                          <p className="font-mono text-xs mt-0.5 font-bold">
-                            {selectedEmployee.customPassword || selectedEmployee.portalAccess?.customPassword ? (
-                              <span className="text-emerald-400 flex items-center gap-1">
-                                <ShieldCheck className="h-3.5 w-3.5" /> Personal Password Set (Default Overridden)
-                              </span>
-                            ) : (
-                              <span className="text-amber-300">
-                                {selectedEmployee.portalAccess?.tempPassword || selectedEmployee.empCode}
-                              </span>
-                            )}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-                        <span className="text-[10px] text-slate-400">
-                          Supports Auth: SMS OTP / Staff ID / Work Email
-                        </span>
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => handleTriggerSendSmsInvite(selectedEmployee.id)}
-                            className="px-3.5 py-2 rounded-xl bg-emerald-600 text-white font-bold text-xs hover:bg-emerald-500 transition flex items-center gap-1.5"
-                          >
-                            <Phone className="h-3.5 w-3.5" /> Send Credentials via SMS
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleTriggerSendInvite(selectedEmployee.id)}
-                            className="px-3.5 py-2 rounded-xl bg-indigo-600 text-white font-bold text-xs hover:bg-indigo-500 transition flex items-center gap-1.5"
-                          >
-                            <Send className="h-3.5 w-3.5" /> Resend Email
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Personal & Financial Details */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 rounded-2xl bg-slate-950 p-4 border border-slate-800 text-slate-300">
-                      <div>
-                        <span className="text-[10px] uppercase font-bold text-slate-400">National ID / Passport</span>
-                        <p className="font-semibold text-white mt-0.5">{selectedEmployee.passportNo || '—'} / {selectedEmployee.nationalId || '—'}</p>
-                      </div>
-                      <div>
-                        <span className="text-[10px] uppercase font-bold text-slate-400">Bank & Tax Identification</span>
-                        <p className="font-semibold text-white mt-0.5">{selectedEmployee.bankAccount || '—'} (TIN: {selectedEmployee.taxId || '—'})</p>
-                      </div>
-                      <div>
-                        <span className="text-[10px] uppercase font-bold text-slate-400">Monthly Base Salary</span>
-                        <p className="font-semibold text-emerald-400 mt-0.5">
-                          {formatCurrency(selectedEmployee.salary)} / mo
-                        </p>
-                      </div>
-                      <div>
-                        <span className="text-[10px] uppercase font-bold text-slate-400">Highest Qualification</span>
-                        <p className="font-semibold text-white mt-0.5">{selectedEmployee.education || 'Degree / Diploma'}</p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* TAB 3: LICENSES, CERTS & HEALTH */}
-                {digitalFileActiveTab === 'licenses' && (
-                  <div className="space-y-5">
-                    {/* Medical Licenses & Certifications */}
-                    <div>
-                      <h4 className="font-bold text-xs uppercase text-slate-300 mb-2 flex items-center gap-2">
-                        <Award className="h-4 w-4 text-emerald-400" /> Hospital Medical Licenses & Certifications
-                      </h4>
-                      <div className="space-y-2">
-                        {(selectedEmployee.medicalLicenses || []).length === 0 ? (
-                          <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-slate-500 text-xs italic text-center">
-                            No medical license records registered.
-                          </div>
-                        ) : (
-                          (selectedEmployee.medicalLicenses || []).map((lic) => (
-                            <div
-                              key={lic.id}
-                              className="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-950 p-3.5"
-                            >
-                              <div>
-                                <span className="font-bold text-white block">{lic.licenseType}</span>
-                                <p className="text-[10px] text-slate-400 mt-0.5">
-                                  License No: {lic.licenseNumber} • Issuing Board: {lic.issuingAuthority}
-                                </p>
-                              </div>
-                              <div className="text-right">
-                                <span
-                                  className={`rounded-lg px-2.5 py-1 text-[10px] font-extrabold ${
-                                    lic.status === 'Active'
-                                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                                      : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
-                                  }`}
-                                >
-                                  {lic.status} (Expires: {lic.expiryDate})
-                                </span>
-                              </div>
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Vaccinations & Fitness for Duty */}
-                    <div>
-                      <h4 className="font-bold text-xs uppercase text-slate-300 mb-2">
-                        Occupational Health & Vaccinations
-                      </h4>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        {(selectedEmployee.vaccinations || []).length === 0 ? (
-                          <div className="col-span-2 p-3 rounded-xl bg-slate-950 border border-slate-800 text-slate-500 text-xs italic text-center">
-                            No vaccination entries recorded.
-                          </div>
-                        ) : (
-                          (selectedEmployee.vaccinations || []).map((v) => (
-                            <div key={v.id} className="rounded-xl bg-slate-950 p-3 border border-slate-800">
-                              <span className="font-bold text-white block">{v.vaccineName}</span>
-                              <p className="text-[10px] text-emerald-400 font-semibold mt-0.5">✓ {v.status} ({v.doseDate})</p>
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        );
-      })()}
+      {selectedEmployee && (
+        <DigitalStaffFileModal
+          employee={selectedEmployee}
+          onClose={() => setSelectedEmployee(null)}
+          onEdit={(emp) => {
+            setSelectedEmployee(null);
+            setEditingEmployee(emp);
+          }}
+          onDelete={(emp) => {
+            setSelectedEmployee(null);
+            setStaffToDelete(emp);
+          }}
+          staffFiles={staffFiles}
+          toggleStaffFilePermission={toggleStaffFilePermission}
+          deleteStaffFile={deleteStaffFile}
+          handleTriggerSendInvite={handleTriggerSendInvite}
+          handleTriggerSendSmsInvite={handleTriggerSendSmsInvite}
+          formatCurrency={formatCurrency}
+          onUpdateEmployee={(updated) => {
+            updateEmployee(updated.id, updated);
+          }}
+          onOpenChangePassword={(emp) => {
+            setSelectedEmployee(null);
+            setPortalAccountModalEmp(emp);
+            setSingleUsernameType(emp.portalAccess?.usernameType || 'email');
+            setSinglePasswordType(emp.customPassword || emp.portalAccess?.customPassword ? 'custom' : 'empCode');
+            setSingleCustomPassword(emp.customPassword || emp.portalAccess?.customPassword || '');
+            setShowSingleCustomPassword(false);
+            setSingleRequireChangeOnLogin(emp.portalAccess?.mustChangePassword ?? true);
+            setSingleSendEmailNotification(!!emp.email);
+            setSingleSendSmsNotification(!!emp.phone);
+          }}
+        />
+      )}
 
       {/* Add Employee Modal */}
       {isAddModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100">
             <div className="flex justify-between items-center mb-4">
               <h3 className="font-bold text-base flex items-center gap-2">
                 <UserPlus className="h-5 w-5 text-emerald-600" /> Create Staff Profile & Portal Login
@@ -4281,7 +2097,19 @@ export const EmployeeDirectory: React.FC = () => {
               </button>
             </div>
 
-            <form onSubmit={handleCreateEmployee} className="space-y-3 text-xs">
+            <form onSubmit={handleCreateEmployee} className="space-y-3.5 text-xs max-h-[75vh] overflow-y-auto pr-1">
+              {/* Photo Upload & Preview */}
+              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80">
+                <EmployeePhotoUploader
+                  currentPhoto={newEmp.photo}
+                  employeeName={newEmp.firstName ? `${newEmp.firstName} ${newEmp.lastName}` : 'New Staff'}
+                  gender={newEmp.gender}
+                  onPhotoChange={(photo) => setNewEmp((prev) => ({ ...prev, photo }))}
+                  title="Staff Photo (Optional)"
+                  subtitle="Upload image, take camera snapshot, or select clinical preset"
+                />
+              </div>
+
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="block font-semibold mb-1">First Name</label>
@@ -4302,6 +2130,44 @@ export const EmployeeDirectory: React.FC = () => {
                     onChange={(e) => setNewEmp({ ...newEmp, lastName: e.target.value })}
                     className="w-full rounded-lg border p-2 dark:bg-slate-800 dark:border-slate-700"
                   />
+                </div>
+              </div>
+
+              {/* Gender Designation Selection */}
+              <div className="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="block font-bold text-slate-700 dark:text-slate-200 text-xs">
+                    Gender Designation *
+                  </label>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${
+                    newEmp.gender === 'Female'
+                      ? 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border-rose-500/30'
+                      : newEmp.gender === 'Male'
+                      ? 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/30'
+                      : 'bg-purple-500/15 text-purple-600 dark:text-purple-400 border-purple-500/30'
+                  }`}>
+                    {newEmp.gender === 'Female' ? '♀ Female Staff' : newEmp.gender === 'Male' ? '♂ Male Staff' : '⚧ Other / Non-Binary'}
+                  </span>
+                </div>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {(['Female', 'Male', 'Other'] as const).map((g) => (
+                    <button
+                      key={g}
+                      type="button"
+                      onClick={() => setNewEmp({ ...newEmp, gender: g })}
+                      className={`py-2 px-2 rounded-lg font-bold text-xs transition border flex items-center justify-center gap-1 ${
+                        newEmp.gender === g
+                          ? g === 'Female'
+                            ? 'bg-rose-500/20 text-rose-600 dark:text-rose-300 border-rose-500/50 shadow-sm'
+                            : g === 'Male'
+                            ? 'bg-blue-500/20 text-blue-600 dark:text-blue-300 border-blue-500/50 shadow-sm'
+                            : 'bg-purple-500/20 text-purple-600 dark:text-purple-300 border-purple-500/50 shadow-sm'
+                          : 'bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:text-slate-800 dark:hover:text-white'
+                      }`}
+                    >
+                      <span>{g === 'Female' ? '♀ Female' : g === 'Male' ? '♂ Male' : '⚧ Other'}</span>
+                    </button>
+                  ))}
                 </div>
               </div>
 
@@ -4342,16 +2208,15 @@ export const EmployeeDirectory: React.FC = () => {
                 <div>
                   <label className="block font-semibold mb-1">Department</label>
                   <select
-                    value={newEmp.department}
+                    value={newEmp.department || departmentLeadership[0]?.departmentName || ''}
                     onChange={(e) => setNewEmp({ ...newEmp, department: e.target.value })}
                     className="w-full rounded-lg border p-2 dark:bg-slate-800 dark:border-slate-700"
                   >
-                    <option value="Intensive Care Unit (ICU)">Intensive Care Unit (ICU)</option>
-                    <option value="Cardiology & Intensive Care">Cardiology & ICU</option>
-                    <option value="Emergency & Trauma">Emergency & Trauma</option>
-                    <option value="Human Resources & Workforce">Human Resources</option>
-                    <option value="Surgical Services & OT">Surgical Services & OT</option>
-                    <option value="Pharmacy & Clinical Pharmacology">Pharmacy</option>
+                    {(departmentLeadership || []).map((dept) => (
+                      <option key={dept.departmentName} value={dept.departmentName}>
+                        {dept.departmentName}
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>
@@ -4389,6 +2254,44 @@ export const EmployeeDirectory: React.FC = () => {
                 </div>
               </div>
 
+              {/* Staff Payroll Classification (Ghana Govt vs Hospital) */}
+              <div className="p-3 bg-slate-100 dark:bg-slate-800/90 rounded-xl border border-slate-200 dark:border-slate-700 space-y-1.5">
+                <label className="block font-bold text-slate-700 dark:text-slate-200 text-xs">
+                  Payroll Classification Group *
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setNewEmp({ ...newEmp, mechanisationStatus: 'Mechanised' })}
+                    className={`p-2 rounded-lg border text-left transition ${
+                      newEmp.mechanisationStatus === 'Mechanised'
+                        ? 'bg-emerald-500/20 border-emerald-500 text-emerald-600 dark:text-emerald-300 font-bold'
+                        : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-500'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1 text-[11px]">
+                      <span>🇬🇭</span> Mechanised (GoG)
+                    </div>
+                    <div className="text-[9px] opacity-75 font-normal">Salary: Ghana Government</div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setNewEmp({ ...newEmp, mechanisationStatus: 'Non-Mechanised' })}
+                    className={`p-2 rounded-lg border text-left transition ${
+                      newEmp.mechanisationStatus === 'Non-Mechanised'
+                        ? 'bg-amber-500/20 border-amber-500 text-amber-600 dark:text-amber-300 font-bold'
+                        : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-500'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1 text-[11px]">
+                      <span>🏥</span> Non-Mechanised (IGF)
+                    </div>
+                    <div className="text-[9px] opacity-75 font-normal">Salary: Hospital Paid</div>
+                  </button>
+                </div>
+              </div>
+
               <div>
                 <label className="block font-semibold mb-1">Monthly Salary</label>
                 <input
@@ -4418,6 +2321,19 @@ export const EmployeeDirectory: React.FC = () => {
             </form>
           </div>
         </div>
+      )}
+
+      {/* Standalone Employee Photo Upload / Camera Modal */}
+      {photoModalEmp && (
+        <EmployeePhotoModal
+          isOpen={!!photoModalEmp}
+          employee={photoModalEmp}
+          onClose={() => setPhotoModalEmp(null)}
+          onSavePhoto={(newPhoto) => {
+            updateEmployeePhoto(photoModalEmp.id, newPhoto);
+            setPhotoModalEmp(null);
+          }}
+        />
       )}
 
       {/* FLOATING TOAST NOTIFICATION BANNER */}
@@ -4678,10 +2594,852 @@ export const EmployeeDirectory: React.FC = () => {
         </div>
       )}
 
+      {/* MODAL: SET OR CHANGE STAFF PORTAL PASSWORD */}
+      {portalAccountModalEmp && (
+        <div className="fixed inset-0 z-[95] flex items-center justify-center bg-slate-950/85 backdrop-blur-md p-4 animate-in fade-in duration-200">
+          <div className="relative w-full max-w-xl rounded-3xl bg-slate-900 border border-slate-800 text-white shadow-2xl p-6 sm:p-7 space-y-5">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+                  <Key className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-slate-100">
+                    Set / Change Staff Portal Password
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    Configure official portal login credentials for this staff member
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setPortalAccountModalEmp(null)}
+                className="rounded-xl p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white transition"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Target Staff Summary Card */}
+            <div className="flex items-center gap-3.5 p-3.5 rounded-2xl bg-slate-950 border border-slate-800">
+              <img
+                src={portalAccountModalEmp.photo || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150'}
+                alt={portalAccountModalEmp.firstName}
+                className="h-12 w-12 rounded-xl object-cover border border-slate-700 shrink-0"
+              />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <h4 className="font-bold text-white text-sm truncate">
+                    {portalAccountModalEmp.firstName} {portalAccountModalEmp.lastName}
+                  </h4>
+                  <span className="font-mono text-[10px] bg-slate-800 text-emerald-400 px-2 py-0.5 rounded font-bold border border-slate-700">
+                    {portalAccountModalEmp.empCode}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400 truncate">
+                  {portalAccountModalEmp.jobTitle} • {portalAccountModalEmp.department}
+                </p>
+                <div className="flex items-center gap-3 mt-1 text-[11px] text-slate-400">
+                  <span>Current Username: <strong className="text-indigo-300 font-mono">{portalAccountModalEmp.portalAccess?.username || portalAccountModalEmp.email || portalAccountModalEmp.empCode}</strong></span>
+                </div>
+              </div>
+            </div>
+
+            <form onSubmit={handleSingleAccountCreateSubmit} className="space-y-4">
+              {/* Login Username Format */}
+              <div>
+                <label className="block text-xs font-bold text-slate-300 mb-1.5">
+                  Portal Login Username Format
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <label className={`flex items-center gap-2 p-2.5 rounded-xl border cursor-pointer transition ${
+                    singleUsernameType === 'email'
+                      ? 'bg-indigo-950/40 border-indigo-500/50 text-white'
+                      : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
+                  }`}>
+                    <input
+                      type="radio"
+                      name="singleUsername"
+                      value="email"
+                      checked={singleUsernameType === 'email'}
+                      onChange={() => setSingleUsernameType('email')}
+                      className="text-indigo-600"
+                    />
+                    <div className="text-xs">
+                      <span className="font-bold block">Work Email</span>
+                      <span className="text-[10px] text-slate-500 font-mono truncate max-w-[170px] block">{portalAccountModalEmp.email || 'No email'}</span>
+                    </div>
+                  </label>
+
+                  <label className={`flex items-center gap-2 p-2.5 rounded-xl border cursor-pointer transition ${
+                    singleUsernameType === 'empCode'
+                      ? 'bg-indigo-950/40 border-indigo-500/50 text-white'
+                      : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
+                  }`}>
+                    <input
+                      type="radio"
+                      name="singleUsername"
+                      value="empCode"
+                      checked={singleUsernameType === 'empCode'}
+                      onChange={() => setSingleUsernameType('empCode')}
+                      className="text-indigo-600"
+                    />
+                    <div className="text-xs">
+                      <span className="font-bold block">Staff Code</span>
+                      <span className="text-[10px] text-emerald-400 font-mono font-bold">{portalAccountModalEmp.empCode}</span>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              {/* Password Option Selection */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-bold text-slate-300">
+                    Staff Portal Password Assignment
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleGenerateRandomPassword}
+                    className="text-[11px] font-bold text-amber-400 hover:text-amber-300 flex items-center gap-1 transition"
+                  >
+                    <Sparkles className="h-3 w-3" /> Generate Strong Password
+                  </button>
+                </div>
+
+                <div className="space-y-2">
+                  {/* Custom Password */}
+                  <div className={`p-3 rounded-2xl border transition ${
+                    singlePasswordType === 'custom'
+                      ? 'bg-slate-950 border-amber-500/50'
+                      : 'bg-slate-950/60 border-slate-800 text-slate-400'
+                  }`}>
+                    <label className="flex items-center gap-2 cursor-pointer mb-2">
+                      <input
+                        type="radio"
+                        name="singlePasswordType"
+                        value="custom"
+                        checked={singlePasswordType === 'custom'}
+                        onChange={() => setSinglePasswordType('custom')}
+                        className="text-amber-500"
+                      />
+                      <span className="text-xs font-bold text-white">Set Specific / New Custom Password</span>
+                    </label>
+
+                    {singlePasswordType === 'custom' && (
+                      <div className="relative mt-2">
+                        <input
+                          type={showSingleCustomPassword ? 'text' : 'password'}
+                          value={singleCustomPassword}
+                          onChange={(e) => setSingleCustomPassword(e.target.value)}
+                          placeholder="Type new password (e.g. Hospital2026!)"
+                          className="w-full rounded-xl bg-slate-900 border border-slate-700 px-3.5 py-2.5 text-xs text-white font-mono placeholder:text-slate-500 focus:border-amber-500 focus:outline-none pr-10"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowSingleCustomPassword(!showSingleCustomPassword)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+                        >
+                          {showSingleCustomPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Reset to Staff ID */}
+                  <label className={`flex items-center justify-between p-3 rounded-2xl border cursor-pointer transition ${
+                    singlePasswordType === 'empCode'
+                      ? 'bg-slate-950 border-emerald-500/50 text-white'
+                      : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:text-slate-200'
+                  }`}>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="radio"
+                        name="singlePasswordType"
+                        value="empCode"
+                        checked={singlePasswordType === 'empCode'}
+                        onChange={() => setSinglePasswordType('empCode')}
+                        className="text-emerald-500"
+                      />
+                      <span className="text-xs font-bold">Reset to Staff Code (Default)</span>
+                    </div>
+                    <span className="font-mono text-xs font-bold text-emerald-400">{portalAccountModalEmp.empCode}</span>
+                  </label>
+
+                  {/* Reset to Email */}
+                  {portalAccountModalEmp.email && (
+                    <label className={`flex items-center justify-between p-3 rounded-2xl border cursor-pointer transition ${
+                      singlePasswordType === 'email'
+                        ? 'bg-slate-950 border-indigo-500/50 text-white'
+                        : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:text-slate-200'
+                    }`}>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="radio"
+                          name="singlePasswordType"
+                          value="email"
+                          checked={singlePasswordType === 'email'}
+                          onChange={() => setSinglePasswordType('email')}
+                          className="text-indigo-500"
+                        />
+                        <span className="text-xs font-bold">Reset to Work Email</span>
+                      </div>
+                      <span className="font-mono text-xs text-indigo-300 truncate max-w-[200px]">{portalAccountModalEmp.email}</span>
+                    </label>
+                  )}
+                </div>
+              </div>
+
+              {/* Policy & Notification Options */}
+              <div className="space-y-2 pt-1 border-t border-slate-800">
+                <label className="flex items-center gap-2.5 cursor-pointer text-xs text-slate-300">
+                  <input
+                    type="checkbox"
+                    checked={singleRequireChangeOnLogin}
+                    onChange={(e) => setSingleRequireChangeOnLogin(e.target.checked)}
+                    className="rounded bg-slate-950 border-slate-700 text-amber-500"
+                  />
+                  <span>Require staff member to change password upon their next login</span>
+                </label>
+
+                <div className="flex items-center gap-4 text-xs text-slate-300">
+                  {portalAccountModalEmp.email && (
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={singleSendEmailNotification}
+                        onChange={(e) => setSingleSendEmailNotification(e.target.checked)}
+                        className="rounded bg-slate-950 border-slate-700 text-indigo-500"
+                      />
+                      <span>Email credentials slip</span>
+                    </label>
+                  )}
+                  {portalAccountModalEmp.phone && (
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={singleSendSmsNotification}
+                        onChange={(e) => setSingleSendSmsNotification(e.target.checked)}
+                        className="rounded bg-slate-950 border-slate-700 text-emerald-500"
+                      />
+                      <span>SMS credentials notification</span>
+                    </label>
+                  )}
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setPortalAccountModalEmp(null)}
+                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-white text-xs font-bold shadow-lg shadow-amber-900/30 transition flex items-center gap-1.5"
+                >
+                  <Lock className="h-3.5 w-3.5" /> Save & Update Password
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       <CreateStaffAccountModal
         isOpen={isCreateHrAccountModalOpen}
         onClose={() => setIsCreateHrAccountModalOpen(false)}
       />
+
+      {/* ENROLL HR LEADERSHIP MODAL */}
+      {isEnrollHrModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 backdrop-blur-md p-4 font-sans overflow-y-auto">
+          <div className="w-full max-w-lg rounded-3xl bg-slate-900 border border-indigo-500/30 p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-150 text-slate-100 my-8">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="p-3 rounded-2xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/30">
+                  <Briefcase className="h-6 w-6" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">
+                    Enroll HR Directorate Leadership
+                  </h3>
+                  <p className="text-xs text-indigo-300/80">Human Resources Director & Senior Operations Manager</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsEnrollHrModalOpen(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg text-lg font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleEnrollHrSubmit} className="space-y-4 text-xs">
+              {/* HR Role Selection */}
+              <div className="grid grid-cols-2 gap-2 p-1.5 bg-slate-950 rounded-2xl border border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEnrollHrForm((prev) => ({
+                      ...prev,
+                      role: 'hr_director',
+                      jobTitle: 'Director of Human Resources',
+                      empCode: prev.empCode === 'EMP-2044' ? 'EMP-1976' : prev.empCode,
+                    }));
+                  }}
+                  className={`py-2 px-3 rounded-xl font-bold transition flex items-center justify-center gap-2 ${
+                    enrollHrForm.role === 'hr_director'
+                      ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <ShieldCheck className="h-4 w-4" />
+                  <span>HR Director</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEnrollHrForm((prev) => ({
+                      ...prev,
+                      role: 'hr_manager',
+                      jobTitle: 'Hospital HR Operations Manager',
+                      empCode: prev.empCode === 'EMP-1976' ? 'EMP-2044' : prev.empCode,
+                    }));
+                  }}
+                  className={`py-2 px-3 rounded-xl font-bold transition flex items-center justify-center gap-2 ${
+                    enrollHrForm.role === 'hr_manager'
+                      ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <UserPlus className="h-4 w-4" />
+                  <span>HR Manager</span>
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1">First Name / Title *</label>
+                  <input
+                    type="text"
+                    required
+                    value={enrollHrForm.firstName}
+                    onChange={(e) => setEnrollHrForm({ ...enrollHrForm, firstName: e.target.value })}
+                    placeholder="e.g. Mr. Kwabena or Sarah"
+                    className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1">Last Name / Surname *</label>
+                  <input
+                    type="text"
+                    required
+                    value={enrollHrForm.lastName}
+                    onChange={(e) => setEnrollHrForm({ ...enrollHrForm, lastName: e.target.value })}
+                    placeholder="e.g. Antwi or Mensah"
+                    className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* HR Leader Gender Designation */}
+              <div className="p-3 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="block text-slate-300 font-bold">Gender Designation *</label>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                    enrollHrForm.gender === 'Female'
+                      ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                      : enrollHrForm.gender === 'Male'
+                      ? 'bg-blue-500/20 text-blue-300 border-blue-500/40'
+                      : 'bg-purple-500/20 text-purple-300 border-purple-500/40'
+                  }`}>
+                    {enrollHrForm.gender === 'Female' ? '♀ Female Leader' : enrollHrForm.gender === 'Male' ? '♂ Male Leader' : '⚧ Other / Non-Binary'}
+                  </span>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  {(['Female', 'Male', 'Other'] as const).map((g) => (
+                    <button
+                      key={g}
+                      type="button"
+                      onClick={() => setEnrollHrForm((prev) => ({ ...prev, gender: g }))}
+                      className={`py-2 px-3 rounded-xl font-bold transition border flex items-center justify-center gap-1.5 ${
+                        enrollHrForm.gender === g
+                          ? g === 'Female'
+                            ? 'bg-rose-500/20 text-rose-300 border-rose-500/50 shadow'
+                            : g === 'Male'
+                            ? 'bg-blue-500/20 text-blue-300 border-blue-500/50 shadow'
+                            : 'bg-purple-500/20 text-purple-300 border-purple-500/50 shadow'
+                          : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white'
+                      }`}
+                    >
+                      <span>{g === 'Female' ? '♀ Female' : g === 'Male' ? '♂ Male' : '⚧ Other'}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1">Staff Code / Identifier *</label>
+                  <input
+                    type="text"
+                    required
+                    value={enrollHrForm.empCode}
+                    onChange={(e) => setEnrollHrForm({ ...enrollHrForm, empCode: e.target.value })}
+                    placeholder="e.g. EMP-1976 or HR-001"
+                    className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none uppercase font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1">Login Password *</label>
+                  <input
+                    type="text"
+                    required
+                    value={enrollHrForm.password}
+                    onChange={(e) => setEnrollHrForm({ ...enrollHrForm, password: e.target.value })}
+                    placeholder="e.g. EMP-1976 or ADMIN123"
+                    className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1">Work Email</label>
+                  <input
+                    type="email"
+                    value={enrollHrForm.email}
+                    onChange={(e) => setEnrollHrForm({ ...enrollHrForm, email: e.target.value })}
+                    placeholder="e.g. kwabena.antwi@pjpiimc.org"
+                    className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1">Phone Number</label>
+                  <input
+                    type="tel"
+                    value={enrollHrForm.phone}
+                    onChange={(e) => setEnrollHrForm({ ...enrollHrForm, phone: e.target.value })}
+                    placeholder="+233 24 555 2000"
+                    className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-bold mb-1">Official Position Title</label>
+                <input
+                  type="text"
+                  value={enrollHrForm.jobTitle}
+                  onChange={(e) => setEnrollHrForm({ ...enrollHrForm, jobTitle: e.target.value })}
+                  placeholder="Director of Human Resources"
+                  className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                />
+              </div>
+
+              <div className="p-3 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 text-[11px] text-indigo-300 space-y-1">
+                <p className="font-bold flex items-center gap-1.5">
+                  <ShieldCheck className="h-4 w-4 text-indigo-400" /> Granted HR Management Privileges:
+                </p>
+                <ul className="list-disc list-inside space-y-0.5 text-indigo-200/90">
+                  <li>Full Staff Lifecycle & Recruitment Onboarding</li>
+                  <li>Tier-2 HR Leave Verification & Certificate Archiving</li>
+                  <li>Biometric Attendance, Rosters & Payroll Administration</li>
+                  <li>Administrator Portal Access with HR Directorate Controls</li>
+                </ul>
+              </div>
+
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsEnrollHrModalOpen(false)}
+                  className="flex-1 py-3 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  id="btn-confirm-enroll-hr-modal"
+                  disabled={isEnrollingHr}
+                  className="flex-1 py-3 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black shadow-lg shadow-indigo-600/20 transition flex items-center justify-center gap-2"
+                >
+                  {isEnrollingHr ? (
+                    <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <span>Enroll HR Leader</span>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ENROLL HEAD OF FACILITY MODAL */}
+      {isEnrollHeadModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 backdrop-blur-md p-4 font-sans overflow-y-auto">
+          <div className="w-full max-w-lg rounded-3xl bg-slate-900 border border-emerald-500/30 p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-150 text-slate-100 my-8">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="p-3 rounded-2xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                  <Crown className="h-6 w-6" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">
+                    Enroll Head of Facility
+                  </h3>
+                  <p className="text-xs text-emerald-300/80">Chief Executive Officer & Executive Council Head</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsEnrollHeadModalOpen(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg text-lg font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleEnrollHeadSubmit} className="space-y-4 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1">First Name / Title *</label>
+                  <input
+                    type="text"
+                    required
+                    value={enrollHeadForm.firstName}
+                    onChange={(e) => setEnrollHeadForm({ ...enrollHeadForm, firstName: e.target.value })}
+                    placeholder="e.g. Rev. Fr. Michael"
+                    className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1">Last Name / Surname *</label>
+                  <input
+                    type="text"
+                    required
+                    value={enrollHeadForm.lastName}
+                    onChange={(e) => setEnrollHeadForm({ ...enrollHeadForm, lastName: e.target.value })}
+                    placeholder="e.g. Afoakwah"
+                    className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* Head of Facility Gender Designation */}
+              <div className="p-3 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="block text-slate-300 font-bold">Gender Designation *</label>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                    enrollHeadForm.gender === 'Female'
+                      ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                      : enrollHeadForm.gender === 'Male'
+                      ? 'bg-blue-500/20 text-blue-300 border-blue-500/40'
+                      : 'bg-purple-500/20 text-purple-300 border-purple-500/40'
+                  }`}>
+                    {enrollHeadForm.gender === 'Female' ? '♀ Female Leader' : enrollHeadForm.gender === 'Male' ? '♂ Male Leader' : '⚧ Other / Non-Binary'}
+                  </span>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  {(['Male', 'Female', 'Other'] as const).map((g) => (
+                    <button
+                      key={g}
+                      type="button"
+                      onClick={() => setEnrollHeadForm((prev) => ({ ...prev, gender: g }))}
+                      className={`py-2 px-3 rounded-xl font-bold transition border flex items-center justify-center gap-1.5 ${
+                        enrollHeadForm.gender === g
+                          ? g === 'Female'
+                            ? 'bg-rose-500/20 text-rose-300 border-rose-500/50 shadow'
+                            : g === 'Male'
+                            ? 'bg-blue-500/20 text-blue-300 border-blue-500/50 shadow'
+                            : 'bg-purple-500/20 text-purple-300 border-purple-500/50 shadow'
+                          : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white'
+                      }`}
+                    >
+                      <span>{g === 'Female' ? '♀ Female' : g === 'Male' ? '♂ Male' : '⚧ Other'}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1">Staff Code / Identifier *</label>
+                  <input
+                    type="text"
+                    required
+                    value={enrollHeadForm.empCode}
+                    onChange={(e) => setEnrollHeadForm({ ...enrollHeadForm, empCode: e.target.value })}
+                    placeholder="e.g. EMP-3522"
+                    className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white focus:ring-2 focus:ring-emerald-500 focus:outline-none uppercase font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1">Initial Login Password *</label>
+                  <input
+                    type="text"
+                    required
+                    value={enrollHeadForm.password}
+                    onChange={(e) => setEnrollHeadForm({ ...enrollHeadForm, password: e.target.value })}
+                    placeholder="e.g. EMP-3522 or SecurePass"
+                    className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1">Official Email</label>
+                  <input
+                    type="email"
+                    value={enrollHeadForm.email}
+                    onChange={(e) => setEnrollHeadForm({ ...enrollHeadForm, email: e.target.value })}
+                    placeholder="rev.fr.michael@pjpiimc.org"
+                    className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1">Contact Phone Number</label>
+                  <input
+                    type="tel"
+                    value={enrollHeadForm.phone}
+                    onChange={(e) => setEnrollHeadForm({ ...enrollHeadForm, phone: e.target.value })}
+                    placeholder="+233 24 222 1000"
+                    className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-bold mb-1">Executive Title</label>
+                <input
+                  type="text"
+                  value={enrollHeadForm.jobTitle}
+                  onChange={(e) => setEnrollHeadForm({ ...enrollHeadForm, jobTitle: e.target.value })}
+                  placeholder="Head of Facility / Chief Executive Officer"
+                  className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                />
+              </div>
+
+              <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-[11px] text-emerald-300 space-y-1">
+                <p className="font-bold flex items-center gap-1.5">
+                  <Crown className="h-4 w-4 text-emerald-400" /> Executive Facility Privileges:
+                </p>
+                <ul className="list-disc list-inside space-y-0.5 text-emerald-200/90">
+                  <li>Tier-3 Hospital Executive Governance & Final Approvals</li>
+                  <li>Complete Administrative Registry & Institutional Reset Authority</li>
+                  <li>Direct Access to Medical Council Audit & Regulatory Files</li>
+                  <li>Leadership & Departmental Allocation Management</li>
+                </ul>
+              </div>
+
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsEnrollHeadModalOpen(false)}
+                  className="flex-1 py-3 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  id="btn-confirm-enroll-head-modal"
+                  disabled={isEnrollingHead}
+                  className="flex-1 py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black shadow-lg shadow-emerald-600/20 transition flex items-center justify-center gap-2"
+                >
+                  {isEnrollingHead ? (
+                    <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <span>Enroll Head of Facility</span>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: STAFF MEMBER DELETION CONFIRMATION */}
+      {staffToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in">
+          <div className="w-full max-w-md bg-slate-900 rounded-3xl border border-rose-500/30 p-6 shadow-2xl space-y-5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-rose-500/10 text-rose-400 border border-rose-500/30">
+                  <Trash2 className="h-6 w-6" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">
+                    Delete Staff from System
+                  </h3>
+                  <p className="text-xs text-rose-400 font-medium">
+                    Permanent Hospital Roster & Cloud Removal
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setStaffToDelete(null)}
+                className="text-slate-400 hover:text-white p-1"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Employee Preview Card */}
+            <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 flex items-center gap-3.5">
+              <img
+                src={staffToDelete.photo || 'https://images.unsplash.com/photo-1537368910025-700350fe46c7?auto=format&fit=crop&q=80&w=300'}
+                alt={staffToDelete.firstName}
+                className="h-12 w-12 rounded-xl object-cover border border-slate-700"
+              />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <p className="font-bold text-white truncate">
+                    {staffToDelete.firstName} {staffToDelete.lastName}
+                  </p>
+                  <span className="font-mono text-[11px] font-bold text-emerald-400 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-800">
+                    {staffToDelete.empCode}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400 truncate">
+                  {staffToDelete.jobTitle} • {staffToDelete.department || 'General'}
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-xs text-rose-200/90 space-y-1">
+              <p className="font-bold text-rose-300 flex items-center gap-1.5">
+                <AlertCircle className="h-4 w-4 text-rose-400 shrink-0" /> Are you sure you want to delete this staff member?
+              </p>
+              <p className="text-[11px] text-slate-300">
+                This will delete their employee profile, revoke portal access, and synchronize the deletion with Cloud Firestore.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-3 pt-1">
+              <button
+                type="button"
+                onClick={() => setStaffToDelete(null)}
+                disabled={isDeletingSingle}
+                className="flex-1 py-3 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold transition text-xs"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                id="btn-confirm-delete-staff"
+                disabled={isDeletingSingle}
+                onClick={async () => {
+                  if (!staffToDelete) return;
+                  setIsDeletingSingle(true);
+                  try {
+                    await deleteEmployee(staffToDelete.id);
+                    setStaffToDelete(null);
+                  } finally {
+                    setIsDeletingSingle(false);
+                  }
+                }}
+                className="flex-1 py-3 px-4 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs shadow-lg shadow-rose-600/30 transition flex items-center justify-center gap-2"
+              >
+                {isDeletingSingle ? (
+                  <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <>
+                    <Trash2 className="h-4 w-4" />
+                    <span>Confirm Delete</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: DELETE ALL STAFF HARD RESET CONFIRMATION */}
+      {isDeleteAllStaffModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm animate-in fade-in">
+          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl dark:bg-slate-900 border border-rose-500/40 text-slate-900 dark:text-slate-100 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
+              <div className="flex items-center gap-2.5 text-rose-500">
+                <div className="p-2.5 rounded-2xl bg-rose-500/10 border border-rose-500/30">
+                  <Trash2 className="h-6 w-6" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-base text-slate-900 dark:text-slate-100">
+                    Delete All Staff Records
+                  </h3>
+                  <p className="text-xs text-rose-500 font-semibold">
+                    Complete Staff Directory Reset
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsDeleteAllStaffModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-white p-1"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+              Are you sure you want to permanently delete all <strong>{employees.length}</strong> staff profile(s) from the hospital system? This action will remove all staff directory entries, credential logins, and digital records from both the local application and Cloud Firestore.
+            </p>
+
+            <div className="p-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-xs text-rose-800 dark:text-rose-200 space-y-1">
+              <p className="font-bold flex items-center gap-1.5">
+                <AlertCircle className="h-4 w-4 text-rose-500 shrink-0" />
+                What happens next:
+              </p>
+              <ul className="list-disc list-inside space-y-0.5 text-[11px] text-slate-600 dark:text-slate-300">
+                <li>All staff member profiles will be permanently erased.</li>
+                <li>You can immediately self-enroll fresh facility leadership or add staff.</li>
+                <li>Changes synchronize to Cloud Firestore in real time.</li>
+              </ul>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsDeleteAllStaffModalOpen(false)}
+                disabled={isClearingAll}
+                className="rounded-xl border border-slate-300 dark:border-slate-700 px-4 py-2.5 font-bold text-slate-600 dark:text-slate-300 text-xs"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                id="btn-confirm-delete-all-staff"
+                disabled={isClearingAll}
+                onClick={async () => {
+                  setIsClearingAll(true);
+                  try {
+                    await clearAllEmployees();
+                    setIsDeleteAllStaffModalOpen(false);
+                  } finally {
+                    setIsClearingAll(false);
+                  }
+                }}
+                className="rounded-xl bg-rose-600 hover:bg-rose-500 px-5 py-2.5 font-bold text-white text-xs shadow-lg shadow-rose-600/30 transition flex items-center gap-2"
+              >
+                {isClearingAll ? (
+                  <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <>
+                    <Trash2 className="h-4 w-4" />
+                    <span>Yes, Delete All Staff</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

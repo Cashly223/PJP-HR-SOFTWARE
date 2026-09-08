@@ -89,13 +89,25 @@ export interface EducationItem {
 export interface OfficialDocument {
   id: string;
   title: string;
-  type: 'Appointment Letter' | 'Assumption of Duty Letter' | 'Transfer Document' | 'Other Official Document';
+  type:
+    | 'Appointment Letter'
+    | 'Assumption of Duty Letter'
+    | 'Transfer Document'
+    | 'Approved Leave Form (PDF)'
+    | 'Promotion Gazette Letter'
+    | 'Disciplinary Record'
+    | 'Other Official Document';
   fileUrl: string;
   fileName: string;
   fileSize?: number;
   uploadedAt: string;
   uploadedBy?: string;
   notes?: string;
+  leaveId?: string;
+  leaveType?: string;
+  leaveStartDate?: string;
+  leaveEndDate?: string;
+  daysGranted?: number;
 }
 
 export interface VaccinationRecord {
@@ -116,6 +128,7 @@ export interface StaffFile {
   fileSize: number;
   fileData: string; // base64 or text or url
   category:
+    | 'Approved Leave Form (PDF)'
     | 'Medical License'
     | 'Clinical Certification'
     | 'HR Contract'
@@ -131,6 +144,8 @@ export interface StaffFile {
   uploadedAt: string;
   updatedAt: string;
   permissionGrantedByHr: boolean;
+  leaveId?: string;
+  isSystemGenerated?: boolean;
 }
 
 export interface PromotionRecord {
@@ -155,6 +170,7 @@ export type EmploymentSource =
   | 'Promotion'
   | 'Reappointment'
   | 'National Service'
+  | 'Institutional Appointment'
   | 'Other';
 
 export type TransferType = 'Internal Transfer' | 'External Transfer';
@@ -192,6 +208,7 @@ export interface Employee {
   empCode: string;
   firstName: string;
   lastName: string;
+  gender?: 'Male' | 'Female' | 'Other' | string;
   photo: string;
   email: string;
   phone: string;
@@ -219,6 +236,7 @@ export interface Employee {
   movementHistory?: StaffMovementRecord[];
   managerId?: string;
   employmentType: 'Full-Time' | 'Part-Time' | 'Contract' | 'Locum / On-Call';
+  mechanisationStatus?: 'Mechanised' | 'Non-Mechanised'; // 'Mechanised' = Salary Paid by Ghana Government, 'Non-Mechanised' = Salary Paid by Hospital (IGF)
   joinDate: string;
   salary: number;
   currency: CurrencyCode;
@@ -299,7 +317,14 @@ export interface AttendanceRecord {
   date: string;
   clockIn: string;
   clockOut: string;
-  method: 'Biometric_Fingerprint' | 'Facial_Recognition' | 'RFID_Badge' | 'QR_Mobile' | 'GPS_Geofence';
+  method:
+    | 'Biometric_Fingerprint'
+    | 'Facial_Recognition'
+    | 'Phone_Biometric_Fingerprint'
+    | 'Dual_Geofence_Fingerprint'
+    | 'RFID_Badge'
+    | 'QR_Mobile'
+    | 'GPS_Geofence';
   location: string;
   status: 'On-Time' | 'Late' | 'Early-Departure' | 'Absent' | 'Overtime';
   overtimeHours: number;
@@ -307,6 +332,13 @@ export interface AttendanceRecord {
   snapshotUrl?: string; // Captured live facial selfie snapshot
   facialVerified?: boolean; // Face match verified against profile photo
   facialConfidence?: number; // Match confidence score (e.g. 98.4%)
+  fingerprintVerified?: boolean; // Phone Touch ID / Android Biometrics / Passkey verified
+  fingerprintConfidence?: number; // Fingerprint match confidence score (e.g. 99.8%)
+  webAuthnCredentialId?: string; // Secure Enclave FIDO2 / WebAuthn Public Key Credential ID
+  zeroBuddyPunchingVerified?: boolean; // Enforced GPS Perimeter + Phone Biometric Lock
+  biometricSecurityLevel?: string; // e.g. "Class 3 Strong Hardware Biometric (TEE/Enclave)"
+  antiSpoofingStatus?: 'Passed' | 'Verified';
+  verificationProtocol?: 'GPS_Perimeter_Plus_Phone_Fingerprint' | 'GPS_Perimeter_Plus_Face_Liveness' | 'GPS_Dual_Biometric_Lock';
   coordinates?: {
     latitude: number;
     longitude: number;
@@ -314,7 +346,7 @@ export interface AttendanceRecord {
     distanceMeters?: number;
   };
   geofenceVerified?: boolean; // Within allowed hospital perimeter (e.g. <= 150m)
-  deviceType?: string; // e.g. "Mobile Smartphone (iOS/Android)" or "Station Kiosk"
+  deviceType?: string; // e.g. "Mobile Smartphone (Touch ID / Android Biometric & GPS)" or "Station Kiosk"
 }
 
 export interface UnitLeadership {
@@ -325,6 +357,13 @@ export interface UnitLeadership {
   unitHeadName?: string;
   unitHeadEmail?: string;
   staffCount: number;
+}
+
+export interface StaffActionResult {
+  type: 'added' | 'deleted' | 'cleared_all';
+  employee?: Partial<Employee>;
+  timestamp: string;
+  message: string;
 }
 
 export interface DepartmentLeadership {
@@ -451,6 +490,7 @@ export interface LeaveRequest {
   validatedStartDate?: string;
   validatedEndDate?: string;
   dateOfResumption?: string;
+  reportingDate?: string; // Official Reporting Date (Resumption Date for duty)
   hrRemarks?: string;
   hrSignedBy?: string;
   hrSignedDate?: string;
@@ -463,6 +503,17 @@ export interface LeaveRequest {
   facilityInChargeSignedDate?: string;
   facilityHeadSignatureUrl?: string;
   digitalSignaturesCertified?: boolean;
+
+  // PUBLIC HOLIDAY & HR END DATE ADJUSTMENTS
+  isHolidayAdjusted?: boolean;
+  originalEndDate?: string;
+  originalResumptionDate?: string;
+  holidayAdjustmentDays?: number;
+  holidayNames?: string[];
+  holidayAdjustmentReason?: string;
+  hrAdjustmentRemarks?: string;
+  adjustedByHrName?: string;
+  adjustedAt?: string;
 }
 
 export interface PayrollRecord {
@@ -741,6 +792,15 @@ export interface ShiftSwapRequest {
   }[];
 }
 
+export interface StaffRosterRow {
+  id: string;
+  name: string;
+  phone: string;
+  rank: string;
+  shifts: string[];
+  mechanisationStatus?: 'Mechanised' | 'Non-Mechanised';
+}
+
 export interface DepartmentMonthlyRoster {
   id: string;
   department: string;
@@ -756,7 +816,7 @@ export interface DepartmentMonthlyRoster {
   fileName: string;
   fileSize: string;
   notes: string;
-  status: 'Pending HR Approval' | 'Approved' | 'Returned for Revision';
+  status: 'Pending Verification' | 'Pending HR Approval' | 'Approved' | 'Returned for Revision';
   reviewedBy?: string;
   reviewedDate?: string;
   rejectionNotes?: string;
@@ -774,6 +834,8 @@ export interface DepartmentMonthlyRoster {
     week3: string;
     week4: string;
   }[];
+  staffGrid?: StaffRosterRow[];
+  lastSyncedAt?: string;
 }
 
 export interface ConferenceParticipant {
@@ -952,6 +1014,99 @@ export interface AppraisalDocument {
   description?: string;
 }
 
+export interface CatholicHealthAppraisalObjective {
+  id: string;
+  no: number; // 1 to 5
+  agreedObjective: string; // Agreed Objectives (List between 3 to 5 for the period)
+  mainActivities: string; // Main Activities/Task (To achieve Objectives and Targets)
+  objectivesAchieved: string; // Objectives Achieved
+  rating?: number; // 1 (Meet less/none), 2 (Meet some 3/5), 3 (Meet all), 4 (Exceed target), 5 (Far exceeded targets)
+  monitoringMechanism?: string; // Monitoring mechanism
+  comments?: string; // Comments
+}
+
+export interface CatholicHealthCurrentPerformanceFactor {
+  id: string;
+  factorNumber: number;
+  factorName: string; // 1. Quality of Work, 2. Job Knowledge, 3. Initiative & Resourcefulness, 4. Attendance & Dependability, 5. Attitude toward work, staff, patients & public
+  rating: number; // 1: Unsatisfactory, 2: Poor, 3: Satisfactory, 4: Very Good, 5: Excellent
+  comments?: string;
+}
+
+export interface CatholicHealthAppraisalFormData {
+  // Facility & Appraisal Period (Page 1)
+  facilityName: string; // e.g. "POPE JOHN PAUL II MEDICAL CENTRE (PJPIIMC)"
+  periodFromMonthYear: string; // e.g. "January 2026"
+  periodToMonthYear: string; // e.g. "December 2026"
+  reviewDate: string; // dd/mm/yy
+
+  // SECTION A: Personal Information (to be completed by the Appraisee)
+  staffIdNumber: string; // 10 digit box format
+  surname: string;
+  otherNames: string;
+  dateOfBirth: string; // dd/mm/yy
+  gender: 'Male' | 'Female' | 'Other' | string;
+  directorateDepartmentUnit: string;
+  diocese: string; // e.g. "Catholic Archdiocese of Accra"
+  district: string;
+  subDistrict: string;
+  dateFirstAppointment: string; // dd/mm/yy
+  dateCurrentAppointment: string; // dd/mm/yy
+  currentGrade: string;
+  professionalCategory: string;
+  specialty: string;
+  basicQualification: string;
+  basicQualificationYear: string;
+  additionalQualification: string;
+  additionalQualificationYear: string;
+  currentSalaryLevel: string;
+  currentStep: string;
+
+  // SECTION B: Setting Objectives and Assessment of Performance (completed by Appraiser / supervising officer)
+  objectives: CatholicHealthAppraisalObjective[];
+  sectionBTotalScoreQ: number; // Total Score (Q)
+  sectionBNumberOfTargetsN: number; // Number of targets (N)
+  sectionBScoreA: number; // Q / N = A
+  sectionBGradeLabel: string; // Unsatisfactory (1-1.5) | Marginal (1.6-2.5) | Good (2.6-3.5) | Very good (3.6-4.5) | Excellent (4.6-5)
+
+  // SECTION C: Rating and Assessment of Current Performance (completed by Appraiser)
+  assessmentFactors: CatholicHealthCurrentPerformanceFactor[];
+  sectionCTotalScoreQ: number; // Total score Q
+  sectionCScoreS: number; // Q / 5 = S
+  sectionCGradeLabel: string; // Unsatisfactory (1-1.5) | Marginal (1.6-2.5) | Good (2.6-3.5) | Very Good (3.6-4.5) | Excellent (4.6-5)
+  overallRatingO: number; // (A + S) / 2 = O
+  overallRatingGradeLabel: string; // Unsatisfactory (1-1.5) | Marginal (1.6-2.5) | Good (2.6-3.5) | Very Good (3.6-4.5) | Excellent (4.6-5)
+
+  // SECTION D: Summary of Performance and Development Plan (completed by Appraiser)
+  majorStrengths: string; // What activities does this Appraisee do especially well? (Major strengths)
+  weaknessesToImprove: string; // In what respects does this Appraisee need to improve? (Weaknesses)
+  trainingNeededInPriority: string; // Based on current job performance and requirements of the Appraisee's job position, in order of priority list areas of training needed / recommended
+
+  // SECTION E: Comments (completed by both Appraiser and Appraisee)
+  appraiserComments: string;
+  appraiserName: string;
+  appraiserPositionRank: string;
+  appraiserSignatureDate: string;
+  appraiserSignatureUrl?: string;
+
+  appraiseeComments: string;
+  appraiseeName?: string;
+  appraiseeSignatureDate: string;
+  appraiseeSignatureUrl?: string;
+
+  // SECTION F: Comments by Countersigning Officer
+  countersigningComments: string;
+  countersigningOfficerName: string;
+  countersigningOfficerPosition: string;
+  countersigningSignatureDate: string;
+  countersigningSignatureUrl?: string;
+
+  // Sign-off / Submission status
+  isAppraiseeCompleted?: boolean;
+  isAppraiserCompleted?: boolean;
+  isCountersigned?: boolean;
+}
+
 export interface PerformanceAppraisal {
   id: string;
   employeeId: string;
@@ -998,6 +1153,7 @@ export interface PerformanceAppraisal {
   trainingNeeds?: string[];
 
   // Multi-tier workflow steps
+  workflow?: MultiTierWorkflow;
   unitHeadStep?: AppraisalWorkflowStep;
   departmentHeadStep?: AppraisalWorkflowStep;
   hrStep?: AppraisalWorkflowStep;
@@ -1006,6 +1162,9 @@ export interface PerformanceAppraisal {
 
   // Attached Appraisal Documents
   documents: AppraisalDocument[];
+
+  // Catholic Health Service Trust Ghana Official Annual Performance Appraisal Form
+  catholicHealthForm?: CatholicHealthAppraisalFormData;
 
   // Dispatch Notification Logs
   notificationsSent?: {
@@ -1101,7 +1260,17 @@ export interface SuggestionItem {
 export interface InfoHubArticle {
   id: string;
   title: string;
-  category: 'Vision & Mission' | 'Leave Policies' | 'Study Leave Policies' | 'Promotion & Demotion' | 'Code of Conduct & Ethics' | 'Hospital Guidelines';
+  category:
+    | 'Vision & Mission'
+    | 'Leave Policies'
+    | 'Study Leave Policies'
+    | 'Promotion & Demotion'
+    | 'Code of Conduct & Ethics'
+    | 'Hospital Guidelines'
+    | 'Clinical Protocols'
+    | 'Staff Welfare & Benefits'
+    | 'Occupational Health & Safety'
+    | string;
   summary: string;
   content: string;
   lastUpdated: string;
@@ -1109,6 +1278,9 @@ export interface InfoHubArticle {
   author: string;
   downloadablePdfName?: string;
   tags: string[];
+  effectiveDate?: string;
+  revisionNotes?: string;
+  fileAttachment?: string;
 }
 
 export type BoardRole =
@@ -1121,6 +1293,7 @@ export type BoardRole =
   | 'Nursing Directorate Representative'
   | 'Staff Representative'
   | 'Standing Committee Member'
+  | 'Panelist'
   | 'Member';
 
 export interface DisciplinaryBoardMember {

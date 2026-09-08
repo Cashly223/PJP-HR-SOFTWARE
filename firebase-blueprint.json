@@ -55,6 +55,84 @@
         "details": { "type": "string" }
       },
       "required": ["action", "timestamp"]
+    },
+    "leaves": {
+      "title": "Leave Request",
+      "description": "4-tier leave applications and approval workflows",
+      "type": "object",
+      "properties": {
+        "employeeId": { "type": "string" },
+        "leaveType": { "type": "string" },
+        "startDate": { "type": "string" },
+        "endDate": { "type": "string" },
+        "status": { "type": "string" }
+      },
+      "required": ["employeeId", "leaveType", "startDate", "endDate", "status"]
+    },
+    "attendance": {
+      "title": "Attendance Record",
+      "description": "Biometric clock-ins, clock-outs, and overtime records",
+      "type": "object",
+      "properties": {
+        "employeeId": { "type": "string" },
+        "date": { "type": "string" },
+        "status": { "type": "string" }
+      },
+      "required": ["employeeId", "date", "status"]
+    },
+    "monthly_unit_roasters": {
+      "title": "Monthly Unit Roster",
+      "description": "Hospital unit shift schedules and rotations",
+      "type": "object",
+      "properties": {
+        "department": { "type": "string" },
+        "month": { "type": "string" },
+        "year": { "type": "number" }
+      },
+      "required": ["department", "month", "year"]
+    },
+    "annual_unit_leave_roasters": {
+      "title": "Annual Leave Roster",
+      "description": "Annual unit leave planning schedules",
+      "type": "object",
+      "properties": {
+        "department": { "type": "string" },
+        "year": { "type": "number" }
+      },
+      "required": ["department", "year"]
+    },
+    "performance_appraisals": {
+      "title": "Performance Appraisal",
+      "description": "Annual and mid-year staff performance appraisal records",
+      "type": "object",
+      "properties": {
+        "employeeId": { "type": "string" },
+        "reviewPeriod": { "type": "string" },
+        "status": { "type": "string" }
+      },
+      "required": ["employeeId", "reviewPeriod", "status"]
+    },
+    "staff_queries": {
+      "title": "Staff Query",
+      "description": "Official HR administrative queries and staff explanations",
+      "type": "object",
+      "properties": {
+        "employeeId": { "type": "string" },
+        "subject": { "type": "string" },
+        "status": { "type": "string" }
+      },
+      "required": ["employeeId", "subject", "status"]
+    },
+    "disciplinary_hearings": {
+      "title": "Disciplinary Hearing",
+      "description": "Hospital disciplinary committee hearings and outcome records",
+      "type": "object",
+      "properties": {
+        "employeeId": { "type": "string" },
+        "hearingDate": { "type": "string" },
+        "status": { "type": "string" }
+      },
+      "required": ["employeeId", "hearingDate", "status"]
     }
   }
 }

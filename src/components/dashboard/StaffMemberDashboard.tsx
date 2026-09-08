@@ -21,15 +21,23 @@ import {
   BellRing,
   ChevronRight,
   AlertCircle,
+  Camera,
+  Fingerprint,
+  FileText,
 } from 'lucide-react';
 import { useHrms } from '../../context/HrmsContext';
 import { SubordinateRequestModal } from '../notifications/SubordinateRequestModal';
+import { EmployeePhotoModal } from '../common/EmployeePhotoModal';
+import { ComplianceOverviewWidget } from './ComplianceOverviewWidget';
+import { BiometricSecurityModal } from '../security/BiometricSecurityModal';
+import { CatholicHealthAppraisalFormModal } from '../performance/CatholicHealthAppraisalFormModal';
 
 export const StaffMemberDashboard: React.FC = () => {
   const {
     currentUser,
     activeRole,
     employees,
+    updateEmployeePhoto,
     departmentLeadership,
     leaves,
     rosters,
@@ -47,6 +55,9 @@ export const StaffMemberDashboard: React.FC = () => {
   } = useHrms();
 
   const [isSubordinateModalOpen, setIsSubordinateModalOpen] = useState(false);
+  const [isPhotoModalOpen, setIsPhotoModalOpen] = useState(false);
+  const [isBiometricModalOpen, setIsBiometricModalOpen] = useState(false);
+  const [isAppraisalModalOpen, setIsAppraisalModalOpen] = useState(false);
 
   // Find employee profile
   const emp = (employees || []).find(
@@ -140,11 +151,21 @@ export const StaffMemberDashboard: React.FC = () => {
       <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-slate-900 via-teal-950 to-emerald-950 p-6 text-white shadow-xl border border-slate-800">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between z-10 relative">
           <div className="flex items-center gap-4">
-            <img
-              src={emp.photo || currentUser?.avatar}
-              alt={emp.firstName}
-              className="h-16 w-16 rounded-2xl object-cover ring-2 ring-emerald-500/50 shadow-md"
-            />
+            <button
+              type="button"
+              onClick={() => setIsPhotoModalOpen(true)}
+              className="group relative focus:outline-none shrink-0"
+              title="Click to update your profile photo"
+            >
+              <img
+                src={emp.photo || currentUser?.avatar}
+                alt={emp.firstName}
+                className="h-16 w-16 rounded-2xl object-cover ring-2 ring-emerald-500/50 shadow-md transition group-hover:opacity-80"
+              />
+              <span className="absolute inset-0 flex items-center justify-center rounded-2xl bg-black/50 opacity-0 group-hover:opacity-100 transition">
+                <Camera className="h-5 w-5 text-emerald-400" />
+              </span>
+            </button>
             <div>
               <div className="flex items-center gap-2">
                 <span className="rounded-full bg-emerald-500/20 px-2.5 py-0.5 text-xs font-bold text-emerald-400 border border-emerald-500/30">
@@ -172,6 +193,13 @@ export const StaffMemberDashboard: React.FC = () => {
               </button>
             )}
             <button
+              onClick={() => setIsAppraisalModalOpen(true)}
+              className="flex items-center gap-1.5 rounded-2xl bg-gradient-to-r from-amber-500 to-rose-600 hover:from-amber-400 hover:to-rose-500 px-4 py-2.5 text-xs font-black text-slate-950 transition shadow-md"
+              title="Fill official Catholic Health Service Trust Annual Performance Appraisal Form"
+            >
+              <FileText className="h-4 w-4" /> Annual Appraisal Form
+            </button>
+            <button
               onClick={() => setActiveTab('leave')}
               className="flex items-center gap-1.5 rounded-2xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white shadow-lg hover:bg-emerald-500 transition"
             >
@@ -182,6 +210,13 @@ export const StaffMemberDashboard: React.FC = () => {
               className="flex items-center gap-1.5 rounded-2xl bg-slate-800 px-4 py-2.5 text-xs font-bold text-slate-200 hover:bg-slate-700 transition border border-slate-700"
             >
               <Clock className="h-4 w-4 text-cyan-400" /> Clock In / Out
+            </button>
+            <button
+              onClick={() => setIsBiometricModalOpen(true)}
+              className="flex items-center gap-1.5 rounded-2xl bg-teal-900/60 hover:bg-teal-800/80 px-4 py-2.5 text-xs font-bold text-teal-200 transition border border-teal-500/40 cursor-pointer"
+              title="Add or manage your biometric passkey"
+            >
+              <Fingerprint className="h-4 w-4 text-emerald-400" /> Biometric Passkey
             </button>
           </div>
         </div>
@@ -361,6 +396,19 @@ export const StaffMemberDashboard: React.FC = () => {
         </div>
       </div>
 
+      {/* Leadership Unit & Department Compliance Overview */}
+      {isLeadership && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              Departmental & Unit Compliance Governance
+            </h4>
+          </div>
+          <ComplianceOverviewWidget embedded={true} />
+        </div>
+      )}
+
       {/* HR Granted Custom Permissions Section */}
       {grantedModules.length > 0 && (
         <div className="rounded-2xl border border-indigo-500/30 bg-indigo-950/20 p-5 backdrop-blur-sm">
@@ -392,6 +440,32 @@ export const StaffMemberDashboard: React.FC = () => {
       <SubordinateRequestModal
         isOpen={isSubordinateModalOpen}
         onClose={handleCloseModal}
+      />
+
+      {/* Staff Self-Service Profile Photo Modal */}
+      {isPhotoModalOpen && emp && (
+        <EmployeePhotoModal
+          isOpen={isPhotoModalOpen}
+          employee={emp}
+          onClose={() => setIsPhotoModalOpen(false)}
+          onSavePhoto={(newPhoto) => {
+            updateEmployeePhoto(emp.id, newPhoto);
+            setIsPhotoModalOpen(false);
+          }}
+        />
+      )}
+
+      {/* Staff Biometric Security & Passkey Enrollment Modal */}
+      <BiometricSecurityModal
+        isOpen={isBiometricModalOpen}
+        onClose={() => setIsBiometricModalOpen(false)}
+      />
+
+      {/* Catholic Health Service Trust Ghana Appraisal Form Modal */}
+      <CatholicHealthAppraisalFormModal
+        isOpen={isAppraisalModalOpen}
+        onClose={() => setIsAppraisalModalOpen(false)}
+        targetEmployee={emp}
       />
     </div>
   );

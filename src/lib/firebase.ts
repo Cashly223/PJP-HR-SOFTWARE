@@ -37,9 +37,11 @@ let dbInstance;
 try {
   dbInstance = firebaseConfig.firestoreDatabaseId
     ? initializeFirestore(app, {
+        ignoreUndefinedProperties: true,
         experimentalAutoDetectLongPolling: true,
       }, firebaseConfig.firestoreDatabaseId)
     : initializeFirestore(app, {
+        ignoreUndefinedProperties: true,
         experimentalAutoDetectLongPolling: true,
       });
 } catch (e) {
@@ -49,6 +51,15 @@ try {
 }
 
 export const db = dbInstance;
+
+/**
+ * Deep cleans an object before sending to Firestore
+ * Strips undefined properties and ensures clean JSON serializable data
+ */
+export function cleanForFirestore<T>(data: T): T {
+  if (data === null || data === undefined) return data;
+  return JSON.parse(JSON.stringify(data));
+}
 
 export enum OperationType {
   CREATE = 'create',

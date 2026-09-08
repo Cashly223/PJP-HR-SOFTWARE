@@ -1,50 +1,84 @@
-import React, { useState, useEffect } from 'react';
-import { Cake, Sparkles, Heart, Gift, Send, CheckCircle2, ChevronRight, PartyPopper, X } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { Cake, Sparkles, Gift, CheckCircle2, PartyPopper, X } from 'lucide-react';
 import { useHrms } from '../../context/HrmsContext';
 
 export const BirthdayNotificationBanner: React.FC = () => {
-  const { employees, addChatMessage, currentUser, activeRole } = useHrms();
-  const [isDismissed, setIsDismissed] = useState<boolean>(() => {
-    return localStorage.getItem('pjpiimc_birthday_banner_dismissed_date') === new Date().toISOString().slice(0, 10);
-  });
+  const { employees, addChatMessage, currentUser } = useHrms();
 
-  const [wishedEmployees, setWishedEmployees] = useState<string[]>(() => {
-    try {
-      const saved = localStorage.getItem('pjpiimc_wished_birthdays_v1');
-      return saved ? JSON.parse(saved) : [];
-    } catch (e) {
-      return [];
-    }
-  });
-  const [showCelebrationModal, setShowCelebrationModal] = useState(false);
-
-  // Current month & day helper
+  // Current date helpers
   const today = new Date();
   const currentMonth = today.getMonth() + 1; // 1 - 12
   const currentDay = today.getDate();
+  const currentYear = today.getFullYear();
   const todayDateStr = today.toISOString().slice(0, 10);
 
-  // Find staff who have birthdays today
-  const birthdayStaff = (employees || []).filter(Boolean).map((emp, index) => {
-    // Generate deterministic DOB for mock visualization if missing
-    let dobDay = currentDay;
-    if (index === 1) dobDay = currentDay; // Today
-    else if (index === 2) dobDay = currentDay + 1; // Tomorrow
-    else dobDay = (index * 5) % 28 + 1;
+  const [isDismissed, setIsDismissed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('pjpiimc_birthday_banner_dismissed_date') === todayDateStr;
+    } catch {
+      return false;
+    }
+  });
 
-    return {
-      ...emp,
-      isToday: dobDay === currentDay,
-      birthdayDateDisplay: dobDay === currentDay ? 'TODAY 🎉' : `August ${dobDay}`,
-    };
-  }).filter((e) => e && (e.isToday || e.id === 'emp-101' || e.id === 'emp-102'));
+  // Track employees who have already received birthday wishes
+  const [wishedEmployees, setWishedEmployees] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('pjpiimc_wished_birthdays_v1');
+      const parsed = saved ? JSON.parse(saved) : [];
+      const baseWished = Array.isArray(parsed) ? parsed : [];
+      // Permanently keep previous mock entries (emp-101, emp-102) as wished so they never re-appear
+      return Array.from(new Set([...baseWished, 'emp-101', 'emp-102']));
+    } catch {
+      return ['emp-101', 'emp-102'];
+    }
+  });
 
-  // Filter out birthdays that have already been wished by this staff member!
-  const unwishedBirthdayStaff = birthdayStaff.filter((staff) => staff && !wishedEmployees.includes(staff.id));
-  const todayBirthdays = birthdayStaff.filter((e) => e && e.isToday);
+  const [showCelebrationModal, setShowCelebrationModal] = useState(false);
+
+  // Find staff who actually have birthdays today based on their official dateOfBirth
+  const birthdayStaff = useMemo(() => {
+    return (employees || [])
+      .filter(Boolean)
+      .filter((emp) => {
+        if (!emp.dateOfBirth) return false;
+        try {
+          const parts = emp.dateOfBirth.split(/[-/]/);
+          if (parts.length >= 3) {
+            let m = 0;
+            let d = 0;
+            if (parts[0].length === 4) {
+              // Format: YYYY-MM-DD
+              m = parseInt(parts[1], 10);
+              d = parseInt(parts[2], 10);
+            } else {
+              // Format: MM-DD-YYYY or DD-MM-YYYY
+              m = parseInt(parts[0], 10);
+              d = parseInt(parts[1], 10);
+            }
+            return m === currentMonth && d === currentDay;
+          }
+        } catch {}
+        return false;
+      })
+      .map((emp) => ({
+        ...emp,
+        isToday: true,
+        birthdayDateDisplay: 'TODAY 🎉',
+      }));
+  }, [employees, currentMonth, currentDay]);
+
+  // Filter out birthdays that have already been wished (wished once and never re-appear)
+  const unwishedBirthdayStaff = useMemo(() => {
+    return birthdayStaff.filter(
+      (staff) =>
+        staff &&
+        !wishedEmployees.includes(staff.id) &&
+        !wishedEmployees.includes(`${staff.id}_${currentYear}`)
+    );
+  }, [birthdayStaff, wishedEmployees, currentYear]);
 
   const handleSendWish = (empName: string, empId: string) => {
-    if (wishedEmployees.includes(empId)) return;
+    if (wishedEmployees.includes(empId) || wishedEmployees.includes(`${empId}_${currentYear}`)) return;
 
     const currentEmpName = currentUser?.name || 'Staff Member';
 
@@ -55,22 +89,34 @@ export const BirthdayNotificationBanner: React.FC = () => {
       senderName: currentEmpName,
       senderRole: 'Hospital Staff',
       senderDepartment: currentUser?.department || 'Clinical Services',
-      senderAvatar: currentUser?.avatar || 'https://images.unsplash.com/photo-1537368910025-700350fe46c7?w=150&auto=format&fit=crop&q=80',
+      senderAvatar:
+        currentUser?.avatar ||
+        'https://images.unsplash.com/photo-1537368910025-700350fe46c7?w=150&auto=format&fit=crop&q=80',
       content: `🎉 Happy Birthday ${empName}! Wishing you a wonderful day filled with joy, health, and clinical excellence from all of us at PJPIIMC! 🎂🎈`,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     });
 
-    const updated = [...wishedEmployees, empId];
+    // Record as wished both by ID and by ID_Year so it never reappears
+    const updated = Array.from(new Set([...wishedEmployees, empId, `${empId}_${currentYear}`]));
     setWishedEmployees(updated);
-    localStorage.setItem('pjpiimc_wished_birthdays_v1', JSON.stringify(updated));
+    try {
+      localStorage.setItem('pjpiimc_wished_birthdays_v1', JSON.stringify(updated));
+    } catch {}
   };
 
   const handleDismissBanner = () => {
     setIsDismissed(true);
-    localStorage.setItem('pjpiimc_birthday_banner_dismissed_date', todayDateStr);
+    try {
+      localStorage.setItem('pjpiimc_birthday_banner_dismissed_date', todayDateStr);
+      // Mark any current staff as acknowledged/wished so they do not re-appear
+      const currentIds = birthdayStaff.map((s) => s.id);
+      const updated = Array.from(new Set([...wishedEmployees, ...currentIds]));
+      setWishedEmployees(updated);
+      localStorage.setItem('pjpiimc_wished_birthdays_v1', JSON.stringify(updated));
+    } catch {}
   };
 
-  // If user dismissed banner OR all staff birthdays have been wished, the banner completely disappears from the dashboard!
+  // If dismissed or all birthday staff have been wished (or none celebrating today), disappear completely!
   if (isDismissed || unwishedBirthdayStaff.length === 0) {
     return null;
   }
@@ -99,7 +145,7 @@ export const BirthdayNotificationBanner: React.FC = () => {
               Happy Birthday Staff Members! 🎉
             </h3>
             <p className="text-xs text-amber-100/90 font-medium">
-              Wish your colleagues a wonderful day! Once wished, celebrations disappear to keep your dashboard clean.
+              Birthdays are celebrated once. Once wished, they will not reappear.
             </p>
           </div>
         </div>
@@ -110,7 +156,7 @@ export const BirthdayNotificationBanner: React.FC = () => {
             className="flex items-center gap-2 rounded-2xl bg-white px-4 py-2 text-xs font-black text-purple-900 shadow-md hover:bg-amber-100 transition-transform active:scale-95"
           >
             <Gift className="h-4 w-4 text-purple-700" />
-            <span>Birthday Wall ({unwishedBirthdayStaff.length} Unwished)</span>
+            <span>Celebration Wall</span>
           </button>
           <button
             onClick={handleDismissBanner}
@@ -141,7 +187,7 @@ export const BirthdayNotificationBanner: React.FC = () => {
                     {staff.firstName} {staff.lastName}
                   </div>
                   <div className="text-[10px] text-amber-100 truncate">
-                    {staff.department} • <span className="font-bold text-yellow-300">{staff.birthdayDateDisplay}</span>
+                    {staff.department} • <span className="font-bold text-yellow-300">TODAY 🎉</span>
                   </div>
                 </div>
               </div>
@@ -169,60 +215,68 @@ export const BirthdayNotificationBanner: React.FC = () => {
                 PJPIIMC Hospital Birthday Celebration Wall 🎂
               </h3>
               <p className="mt-1 text-xs text-amber-200/80">
-                Send official staff warm wishes and birthday messages directly to the Staff Canteen Channel.
+                Official staff birthday wishes posted to the Staff Canteen channel.
               </p>
             </div>
 
             <div className="mt-5 space-y-3 max-h-[280px] overflow-y-auto pr-1">
-              {birthdayStaff.map((staff) => {
-                const isWished = wishedEmployees.includes(staff.id);
+              {birthdayStaff.length === 0 ? (
+                <div className="p-4 text-center text-sm text-slate-400">
+                  No birthdays celebrating today.
+                </div>
+              ) : (
+                birthdayStaff.map((staff) => {
+                  const isWished =
+                    wishedEmployees.includes(staff.id) ||
+                    wishedEmployees.includes(`${staff.id}_${currentYear}`);
 
-                return (
-                  <div
-                    key={staff.id}
-                    className="flex items-center justify-between rounded-2xl bg-slate-800/80 p-3 border border-slate-700/60"
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <img
-                        src={staff.photo}
-                        alt={staff.firstName}
-                        className="h-10 w-10 rounded-full object-cover ring-2 ring-amber-400"
-                      />
-                      <div className="min-w-0">
-                        <h4 className="text-sm font-bold text-white truncate">
-                          {staff.firstName} {staff.lastName}
-                        </h4>
-                        <p className="text-xs text-slate-300 truncate">
-                          {staff.jobTitle} • {staff.department}
-                        </p>
-                        <span className="inline-block mt-0.5 rounded-md bg-amber-400/20 px-2 py-0.5 text-[10px] font-bold text-amber-300">
-                          {staff.birthdayDateDisplay}
-                        </span>
-                      </div>
-                    </div>
-
-                    <button
-                      onClick={() => handleSendWish(`${staff.firstName} ${staff.lastName}`, staff.id)}
-                      disabled={isWished}
-                      className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition-colors ${
-                        isWished
-                          ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 cursor-default'
-                          : 'bg-gradient-to-r from-amber-400 to-rose-500 text-slate-950 hover:brightness-110'
-                      }`}
+                  return (
+                    <div
+                      key={staff.id}
+                      className="flex items-center justify-between rounded-2xl bg-slate-800/80 p-3 border border-slate-700/60"
                     >
-                      {isWished ? (
-                        <>
-                          <CheckCircle2 className="h-3.5 w-3.5" /> Sent
-                        </>
-                      ) : (
-                        <>
-                          <Sparkles className="h-3.5 w-3.5" /> Wish 🎉
-                        </>
-                      )}
-                    </button>
-                  </div>
-                );
-              })}
+                      <div className="flex items-center gap-3 min-w-0">
+                        <img
+                          src={staff.photo}
+                          alt={staff.firstName}
+                          className="h-10 w-10 rounded-full object-cover ring-2 ring-amber-400"
+                        />
+                        <div className="min-w-0">
+                          <h4 className="text-sm font-bold text-white truncate">
+                            {staff.firstName} {staff.lastName}
+                          </h4>
+                          <p className="text-xs text-slate-300 truncate">
+                            {staff.jobTitle} • {staff.department}
+                          </p>
+                          <span className="inline-block mt-0.5 rounded-md bg-amber-400/20 px-2 py-0.5 text-[10px] font-bold text-amber-300">
+                            TODAY 🎉
+                          </span>
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={() => handleSendWish(`${staff.firstName} ${staff.lastName}`, staff.id)}
+                        disabled={isWished}
+                        className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition-colors ${
+                          isWished
+                            ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 cursor-default'
+                            : 'bg-gradient-to-r from-amber-400 to-rose-500 text-slate-950 hover:brightness-110'
+                        }`}
+                      >
+                        {isWished ? (
+                          <>
+                            <CheckCircle2 className="h-3.5 w-3.5" /> Wished
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles className="h-3.5 w-3.5" /> Wish 🎉
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  );
+                })
+              )}
             </div>
 
             <div className="mt-5 flex justify-end">
@@ -239,3 +293,4 @@ export const BirthdayNotificationBanner: React.FC = () => {
     </div>
   );
 };
+

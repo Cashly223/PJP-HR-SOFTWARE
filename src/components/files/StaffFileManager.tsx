@@ -22,23 +22,34 @@ import {
   Calendar,
   Tag,
   Building,
+  Printer,
+  FileCheck,
 } from 'lucide-react';
 import { useHrms } from '../../context/HrmsContext';
-import { StaffFile } from '../../types/hrms';
+import { StaffFile, LeaveRequest } from '../../types/hrms';
+import { downloadLeaveFormPdf, openLeaveFormPrintWindow } from '../../lib/leavePdfGenerator';
+import { OfficialLeaveFormViewModal } from '../leave/OfficialLeaveFormViewModal';
 
 export const StaffFileManager: React.FC = () => {
   const {
     currentUser,
     staffFiles,
     employees,
+    leaves,
     uploadStaffFile,
     deleteStaffFile,
     toggleStaffFilePermission,
+    selectedHospital,
+    deleteLeaveRequest,
+    isHeadOfFacilityOrHr,
+    activeRole,
   } = useHrms();
 
-  const isHR = ['super_admin', 'facility_head', 'hr_director', 'hr_manager'].includes(
-    currentUser?.role || ''
-  );
+  const isHR =
+    ['super_admin', 'facility_head', 'hr_director', 'hr_manager'].includes(currentUser?.role || '') ||
+    ['super_admin', 'facility_head', 'hr_director', 'hr_manager'].includes(activeRole) ||
+    currentUser?.email?.toLowerCase() === 'attasam223@gmail.com' ||
+    isHeadOfFacilityOrHr;
 
   // Selected employee view for HR officers
   const [selectedEmpId, setSelectedEmpId] = useState<string>(currentUser?.id || '');
@@ -60,6 +71,7 @@ export const StaffFileManager: React.FC = () => {
 
   // Preview Modal State
   const [activePreviewFile, setActivePreviewFile] = useState<StaffFile | null>(null);
+  const [officialLeaveModalLeave, setOfficialLeaveModalLeave] = useState<LeaveRequest | null>(null);
 
   // Target Employee record
   const targetEmp = employees.find((e) => e.id === selectedEmpId) || {
@@ -306,21 +318,27 @@ export const StaffFileManager: React.FC = () => {
       {/* Filter and Search Bar */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 rounded-3xl bg-slate-900 border border-slate-800">
         <div className="flex items-center gap-2 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0">
-          {['All', 'Medical License', 'Clinical Certification', 'HR Contract', 'Personal Document', 'Other'].map(
-            (cat) => (
-              <button
-                key={cat}
-                onClick={() => setSelectedCategory(cat)}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition whitespace-nowrap ${
-                  selectedCategory === cat
-                    ? 'bg-emerald-600 text-white shadow'
-                    : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
-                }`}
-              >
-                {cat}
-              </button>
-            )
-          )}
+          {[
+            'All',
+            'Approved Leave Form (PDF)',
+            'Medical License',
+            'Clinical Certification',
+            'HR Contract',
+            'Personal Document',
+            'Other',
+          ].map((cat) => (
+            <button
+              key={cat}
+              onClick={() => setSelectedCategory(cat)}
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition whitespace-nowrap ${
+                selectedCategory === cat
+                  ? 'bg-emerald-600 text-white shadow'
+                  : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
+              }`}
+            >
+              {cat}
+            </button>
+          ))}
         </div>
 
         <div className="relative w-full sm:w-64">
@@ -337,68 +355,115 @@ export const StaffFileManager: React.FC = () => {
 
       {/* Files Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {userFiles.map((file) => (
-          <div
-            key={file.id}
-            className="group relative flex flex-col justify-between p-5 rounded-3xl bg-slate-900/90 border border-slate-800 hover:border-emerald-500/40 transition shadow-lg"
-          >
-            <div className="space-y-3">
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                    <FileText className="h-5 w-5" />
+        {userFiles.map((file) => {
+          const isLeavePdf = file.category === 'Approved Leave Form (PDF)' || !!file.leaveId;
+          const matchingLeave = isLeavePdf && file.leaveId
+            ? leaves.find((l) => l.id === file.leaveId)
+            : null;
+
+          return (
+            <div
+              key={file.id}
+              className={`group relative flex flex-col justify-between p-5 rounded-3xl transition shadow-lg ${
+                isLeavePdf
+                  ? 'bg-gradient-to-b from-slate-900 via-slate-900 to-emerald-950/20 border border-emerald-500/40 hover:border-emerald-400 shadow-emerald-950/20'
+                  : 'bg-slate-900/90 border border-slate-800 hover:border-emerald-500/40'
+              }`}
+            >
+              <div className="space-y-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-3">
+                    <div
+                      className={`flex h-10 w-10 items-center justify-center rounded-2xl border ${
+                        isLeavePdf
+                          ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40 shadow-sm'
+                          : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                      }`}
+                    >
+                      {isLeavePdf ? <FileCheck className="h-5 w-5" /> : <FileText className="h-5 w-5" />}
+                    </div>
+                    <div className="min-w-0">
+                      <h4 className="text-xs font-bold text-white truncate group-hover:text-emerald-400 transition">
+                        {file.fileName}
+                      </h4>
+                      <span className="text-[10px] text-slate-400 block font-mono">
+                        {formatBytes(file.fileSize)}
+                      </span>
+                    </div>
                   </div>
-                  <div className="min-w-0">
-                    <h4 className="text-xs font-bold text-white truncate group-hover:text-emerald-400 transition">
-                      {file.fileName}
-                    </h4>
-                    <span className="text-[10px] text-slate-400 block font-mono">
-                      {formatBytes(file.fileSize)}
-                    </span>
-                  </div>
+
+                  <span
+                    className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border whitespace-nowrap ${
+                      isLeavePdf
+                        ? 'bg-emerald-950/80 text-emerald-300 border-emerald-500/40'
+                        : 'bg-slate-950 text-emerald-400 border border-slate-800'
+                    }`}
+                  >
+                    {file.category}
+                  </span>
                 </div>
 
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-lg bg-slate-950 text-emerald-400 border border-slate-800 whitespace-nowrap">
-                  {file.category}
-                </span>
+                {file.description && (
+                  <p className="text-xs text-slate-300 line-clamp-2 bg-slate-950/60 p-2.5 rounded-xl border border-slate-800/80">
+                    {file.description}
+                  </p>
+                )}
+
+                <div className="flex items-center justify-between text-[10px] text-slate-500 pt-1">
+                  <span className="flex items-center gap-1">
+                    <Calendar className="h-3 w-3" /> {file.uploadedAt}
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <Building className="h-3 w-3" /> {file.ownerName}
+                  </span>
+                </div>
               </div>
 
-              {file.description && (
-                <p className="text-xs text-slate-300 line-clamp-2 bg-slate-950/60 p-2.5 rounded-xl border border-slate-800/80">
-                  {file.description}
-                </p>
-              )}
+              <div className="flex items-center justify-between pt-4 border-t border-slate-800/80 mt-4 gap-2">
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setActivePreviewFile(file)}
+                    className="text-xs font-bold text-emerald-400 hover:underline flex items-center gap-1"
+                  >
+                    <Eye className="h-3.5 w-3.5" /> View / Actions
+                  </button>
 
-              <div className="flex items-center justify-between text-[10px] text-slate-500 pt-1">
-                <span className="flex items-center gap-1">
-                  <Calendar className="h-3 w-3" /> {file.uploadedAt}
-                </span>
-                <span className="flex items-center gap-1">
-                  <Building className="h-3 w-3" /> {file.ownerName}
-                </span>
+                  {isLeavePdf && (
+                    <button
+                      onClick={() => {
+                        const targetEmpForPdf = employees.find(
+                          (e) => e.id === file.ownerUid || e.email === file.ownerEmail
+                        );
+                        if (matchingLeave) {
+                          downloadLeaveFormPdf(matchingLeave, targetEmpForPdf, selectedHospital?.name);
+                        } else {
+                          const link = document.createElement('a');
+                          link.href = file.fileData;
+                          link.download = file.fileName;
+                          link.click();
+                        }
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 text-[11px] font-bold flex items-center gap-1 transition"
+                      title="Download Approved Leave Form PDF"
+                    >
+                      <Download className="h-3 w-3" /> PDF
+                    </button>
+                  )}
+                </div>
+
+                {hasUploadPermission && !file.isSystemGenerated && (
+                  <button
+                    onClick={() => deleteStaffFile(file.id)}
+                    className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition"
+                    title="Delete File"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                )}
               </div>
             </div>
-
-            <div className="flex items-center justify-between pt-4 border-t border-slate-800/80 mt-4">
-              <button
-                onClick={() => setActivePreviewFile(file)}
-                className="text-xs font-bold text-emerald-400 hover:underline flex items-center gap-1"
-              >
-                <Eye className="h-3.5 w-3.5" /> View / Download
-              </button>
-
-              {hasUploadPermission && (
-                <button
-                  onClick={() => deleteStaffFile(file.id)}
-                  className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition"
-                  title="Delete File"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              )}
-            </div>
-          </div>
-        ))}
+          );
+        })}
 
         {userFiles.length === 0 && (
           <div className="col-span-full flex flex-col items-center justify-center p-12 rounded-3xl bg-slate-900/50 border border-slate-800 text-center space-y-3">
@@ -521,13 +586,24 @@ export const StaffFileManager: React.FC = () => {
           <div className="relative w-full max-w-2xl overflow-hidden rounded-3xl border border-slate-800 bg-slate-900 p-6 sm:p-8 shadow-2xl text-slate-100 space-y-4">
             <div className="flex items-center justify-between border-b border-slate-800 pb-4">
               <div className="flex items-center gap-3">
-                <div className="p-2.5 rounded-2xl bg-emerald-500/10 text-emerald-400">
-                  <FileText className="h-6 w-6" />
+                <div
+                  className={`p-2.5 rounded-2xl ${
+                    activePreviewFile.category === 'Approved Leave Form (PDF)'
+                      ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
+                      : 'bg-emerald-500/10 text-emerald-400'
+                  }`}
+                >
+                  {activePreviewFile.category === 'Approved Leave Form (PDF)' ? (
+                    <FileCheck className="h-6 w-6" />
+                  ) : (
+                    <FileText className="h-6 w-6" />
+                  )}
                 </div>
                 <div>
                   <h3 className="text-base font-black text-white">{activePreviewFile.fileName}</h3>
                   <p className="text-xs text-slate-400">
-                    Category: {activePreviewFile.category} • Uploaded by {activePreviewFile.ownerName}
+                    Category: <span className="text-emerald-400 font-semibold">{activePreviewFile.category}</span> • Owner:{' '}
+                    {activePreviewFile.ownerName}
                   </p>
                 </div>
               </div>
@@ -541,6 +617,10 @@ export const StaffFileManager: React.FC = () => {
 
             <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-2 text-xs">
               <div className="flex items-center justify-between">
+                <span className="font-bold text-slate-400">Owner / Staff Name:</span>
+                <span className="font-semibold text-white">{activePreviewFile.ownerName}</span>
+              </div>
+              <div className="flex items-center justify-between">
                 <span className="font-bold text-slate-400">Owner Email:</span>
                 <span className="font-mono text-white">{activePreviewFile.ownerEmail}</span>
               </div>
@@ -549,32 +629,120 @@ export const StaffFileManager: React.FC = () => {
                 <span className="font-mono text-white">{formatBytes(activePreviewFile.fileSize)}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="font-bold text-slate-400">Upload Date:</span>
+                <span className="font-bold text-slate-400">Archived Date:</span>
                 <span className="text-white">{activePreviewFile.uploadedAt}</span>
               </div>
               {activePreviewFile.description && (
                 <div className="pt-2 border-t border-slate-800">
-                  <span className="font-bold text-slate-400 block mb-1">Notes:</span>
-                  <p className="text-slate-300">{activePreviewFile.description}</p>
+                  <span className="font-bold text-slate-400 block mb-1">Official Notes / Summary:</span>
+                  <p className="text-slate-300 bg-slate-900/60 p-2 rounded-xl border border-slate-800/80">
+                    {activePreviewFile.description}
+                  </p>
                 </div>
               )}
             </div>
 
-            <div className="p-8 text-center bg-slate-950/50 rounded-2xl border border-slate-800 flex flex-col items-center justify-center space-y-3">
-              <ShieldCheck className="h-10 w-10 text-emerald-400" />
-              <p className="text-xs text-slate-300">
-                Document verified and encrypted in St. Jude Health Firestore Vault.
-              </p>
-              <a
-                href={activePreviewFile.fileData}
-                download={activePreviewFile.fileName}
-                className="px-5 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-lg transition flex items-center gap-2"
-              >
-                <Download className="h-4 w-4" /> Download Encrypted File
-              </a>
-            </div>
+            {activePreviewFile.category === 'Approved Leave Form (PDF)' || activePreviewFile.leaveId ? (
+              <div className="p-6 text-center bg-gradient-to-b from-slate-950/70 to-emerald-950/30 rounded-2xl border border-emerald-500/30 flex flex-col items-center justify-center space-y-4">
+                <div className="flex items-center gap-2 text-emerald-400 font-bold text-sm">
+                  <ShieldCheck className="h-5 w-5" />
+                  <span>Certified Digital Leave Record Archival</span>
+                </div>
+                <p className="text-xs text-slate-300 max-w-md">
+                  This approved leave form is permanently preserved in the staff digital vault. Human Resources and the employee can print, view, or download the certified PDF copy at any time.
+                </p>
+
+                <div className="flex flex-wrap items-center justify-center gap-3 w-full pt-1">
+                  <button
+                    onClick={() => {
+                      const matchingLeave = leaves.find((l) => l.id === activePreviewFile.leaveId);
+                      const targetEmpForPdf = employees.find(
+                        (e) => e.id === activePreviewFile.ownerUid || e.email === activePreviewFile.ownerEmail
+                      );
+                      if (matchingLeave) {
+                        setOfficialLeaveModalLeave(matchingLeave);
+                      } else if (activePreviewFile.fileData?.startsWith('data:text/html')) {
+                        // Open data url
+                        const w = window.open();
+                        if (w) w.location.href = activePreviewFile.fileData;
+                      }
+                    }}
+                    className="px-4 py-2.5 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-lg transition flex items-center gap-2"
+                  >
+                    <Eye className="h-4 w-4" /> View Full 4-Part Form
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      const matchingLeave = leaves.find((l) => l.id === activePreviewFile.leaveId);
+                      const targetEmpForPdf = employees.find(
+                        (e) => e.id === activePreviewFile.ownerUid || e.email === activePreviewFile.ownerEmail
+                      );
+                      if (matchingLeave) {
+                        downloadLeaveFormPdf(matchingLeave, targetEmpForPdf, selectedHospital?.name);
+                      } else {
+                        const link = document.createElement('a');
+                        link.href = activePreviewFile.fileData;
+                        link.download = activePreviewFile.fileName;
+                        link.click();
+                      }
+                    }}
+                    className="px-4 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-lg transition flex items-center gap-2"
+                  >
+                    <Download className="h-4 w-4" /> Download PDF Form
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      const matchingLeave = leaves.find((l) => l.id === activePreviewFile.leaveId);
+                      const targetEmpForPdf = employees.find(
+                        (e) => e.id === activePreviewFile.ownerUid || e.email === activePreviewFile.ownerEmail
+                      );
+                      if (matchingLeave) {
+                        openLeaveFormPrintWindow(matchingLeave, targetEmpForPdf, selectedHospital?.name);
+                      } else {
+                        window.print();
+                      }
+                    }}
+                    className="px-4 py-2.5 rounded-2xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs border border-slate-700 transition flex items-center gap-2"
+                  >
+                    <Printer className="h-4 w-4 text-cyan-400" /> Print Official Form
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="p-8 text-center bg-slate-950/50 rounded-2xl border border-slate-800 flex flex-col items-center justify-center space-y-3">
+                <ShieldCheck className="h-10 w-10 text-emerald-400" />
+                <p className="text-xs text-slate-300">
+                  Document verified and securely stored in PJPIIMC Cloud Vault.
+                </p>
+                <a
+                  href={activePreviewFile.fileData}
+                  download={activePreviewFile.fileName}
+                  className="px-5 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-lg transition flex items-center gap-2"
+                >
+                  <Download className="h-4 w-4" /> Download Encrypted File
+                </a>
+              </div>
+            )}
           </div>
         </div>
+      )}
+
+      {/* Official Leave Form View Modal */}
+      {officialLeaveModalLeave && (
+        <OfficialLeaveFormViewModal
+          isOpen={!!officialLeaveModalLeave}
+          onClose={() => setOfficialLeaveModalLeave(null)}
+          leave={officialLeaveModalLeave}
+          hospitalName={selectedHospital?.name}
+          isHRorAdmin={isHR}
+          canDeleteLeave={isHR}
+          onDeleteLeave={async (l) => {
+            await deleteLeaveRequest(l.id);
+            setOfficialLeaveModalLeave(null);
+          }}
+        />
       )}
     </div>
   );

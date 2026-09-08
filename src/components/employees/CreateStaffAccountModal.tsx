@@ -12,16 +12,33 @@ export const CreateStaffAccountModal: React.FC<CreateStaffAccountModalProps> = (
   isOpen,
   onClose,
 }) => {
-  const { createStaffAccountByHR, activeRole, currentUser } = useHrms();
+  const { createStaffAccountByHR, activeRole, currentUser, departmentLeadership } = useHrms();
 
   const isHR = ['hr_director', 'hr_manager', 'super_admin'].includes(activeRole);
 
+  const availableDepartments = React.useMemo(() => {
+    const list = (departmentLeadership || []).map((d) => d.departmentName).filter(Boolean);
+    if (list.length > 0) return Array.from(new Set(list));
+    return [
+      'Intensive Care Unit (ICU)',
+      'Emergency & Trauma Dept',
+      'Surgical Operating Theater',
+      'Pediatrics & Neonatal Unit',
+      'Pharmacy & Dispensary',
+      'Radiology & Imaging',
+      'Outpatient Dept (OPD)',
+      'Obstetrics & Gynecology',
+      'General Medical Wards',
+    ];
+  }, [departmentLeadership]);
+
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
+  const [gender, setGender] = useState<'Male' | 'Female' | 'Other'>('Female');
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<UserRole>('doctor');
-  const [department, setDepartment] = useState('Cardiology & Intensive Care');
-  const [jobTitle, setJobTitle] = useState('Consultant Cardiologist');
+  const [department, setDepartment] = useState(availableDepartments[0] || 'Intensive Care Unit (ICU)');
+  const [jobTitle, setJobTitle] = useState('Consultant Physician');
   const [defaultPassword, setDefaultPassword] = useState('Hospital2026!');
 
   const [isLoading, setIsLoading] = useState(false);
@@ -45,6 +62,7 @@ export const CreateStaffAccountModal: React.FC<CreateStaffAccountModalProps> = (
       const created = await createStaffAccountByHR({
         firstName,
         lastName,
+        gender,
         email,
         role,
         department,
@@ -57,6 +75,7 @@ export const CreateStaffAccountModal: React.FC<CreateStaffAccountModalProps> = (
         onClose();
         setFirstName('');
         setLastName('');
+        setGender('Female');
         setEmail('');
         setSuccessMsg(null);
       }, 2500);
@@ -156,6 +175,44 @@ export const CreateStaffAccountModal: React.FC<CreateStaffAccountModalProps> = (
             </div>
           </div>
 
+          {/* Gender Designation */}
+          <div className="space-y-1.5 p-3 rounded-2xl bg-slate-950/60 border border-slate-800/80">
+            <div className="flex items-center justify-between">
+              <label className="block text-xs font-bold text-slate-300">
+                Gender Designation *
+              </label>
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                gender === 'Female'
+                  ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                  : gender === 'Male'
+                  ? 'bg-blue-500/20 text-blue-300 border-blue-500/40'
+                  : 'bg-purple-500/20 text-purple-300 border-purple-500/40'
+              }`}>
+                {gender === 'Female' ? '♀ Female Staff' : gender === 'Male' ? '♂ Male Staff' : '⚧ Other / Non-Binary'}
+              </span>
+            </div>
+            <div className="grid grid-cols-3 gap-2 pt-1">
+              {(['Female', 'Male', 'Other'] as const).map((g) => (
+                <button
+                  key={g}
+                  type="button"
+                  onClick={() => setGender(g)}
+                  className={`py-2 px-3 rounded-xl font-bold text-xs transition border flex items-center justify-center gap-1.5 ${
+                    gender === g
+                      ? g === 'Female'
+                        ? 'bg-rose-500/20 text-rose-300 border-rose-500/50 shadow'
+                        : g === 'Male'
+                        ? 'bg-blue-500/20 text-blue-300 border-blue-500/50 shadow'
+                        : 'bg-purple-500/20 text-purple-300 border-purple-500/50 shadow'
+                      : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white'
+                  }`}
+                >
+                  <span>{g === 'Female' ? '♀ Female' : g === 'Male' ? '♂ Male' : '⚧ Other'}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className="space-y-1.5">
             <label className="block text-xs font-bold text-slate-300">Hospital Email Address</label>
             <div className="relative">
@@ -195,11 +252,11 @@ export const CreateStaffAccountModal: React.FC<CreateStaffAccountModalProps> = (
                 onChange={(e) => setDepartment(e.target.value)}
                 className="w-full rounded-2xl bg-slate-950 border border-slate-800 px-3 py-2.5 text-xs text-white focus:border-indigo-500 focus:outline-none"
               >
-                <option value="Cardiology & Intensive Care">Cardiology & ICU</option>
-                <option value="Emergency & Trauma">Emergency & Trauma</option>
-                <option value="Surgical Services & OT">Surgical Services</option>
-                <option value="Human Resources & Workforce">Human Resources</option>
-                <option value="Pediatrics & Child Health">Pediatrics</option>
+                {availableDepartments.map((dept) => (
+                  <option key={dept} value={dept}>
+                    {dept}
+                  </option>
+                ))}
               </select>
             </div>
           </div>

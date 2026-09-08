@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Printer,
   X,
@@ -13,6 +13,7 @@ import {
   Layers,
   Sparkles,
 } from 'lucide-react';
+import { getDaysInMonth, getMonthCalendarDays } from '../../utils/rosterTransferUtils';
 
 interface StaffRosterRow {
   id: string;
@@ -31,7 +32,7 @@ interface PrintDutyRoasterModalProps {
   preparedBy: string;
   staffList: StaffRosterRow[];
   hrApprovalStatus?: {
-    status: 'Pending HR Approval' | 'Approved' | 'Returned for Revision';
+    status: 'Pending Verification' | 'Pending HR Approval' | 'Approved' | 'Returned for Revision';
     approvedBy?: string;
     approvedAt?: string;
     notes?: string;
@@ -57,9 +58,9 @@ export const PrintDutyRoasterModal: React.FC<PrintDutyRoasterModalProps> = ({
 
   if (!isOpen) return null;
 
-  const daysInMonth = 30;
-  const daysArray = Array.from({ length: daysInMonth }, (_, i) => i + 1);
-  const dayInitials = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+  const daysInMonth = useMemo(() => getDaysInMonth(month, year), [month, year]);
+  const calendarDays = useMemo(() => getMonthCalendarDays(month, year), [month, year]);
+  const daysArray = useMemo(() => Array.from({ length: daysInMonth }, (_, i) => i + 1), [daysInMonth]);
 
   // Generate blank dummy staff rows for template printing
   const blankStaffList: StaffRosterRow[] = Array.from({ length: blankRowCount }, (_, idx) => ({
@@ -352,20 +353,17 @@ export const PrintDutyRoasterModal: React.FC<PrintDutyRoasterModalProps> = ({
         <th rowspan="2" class="th-num">#</th>
         <th rowspan="2" class="th-name">Staff Name & Contact</th>
         <th rowspan="2" class="th-rank">Rank / Cadre</th>
-        ${daysArray
-          .map((d) => {
-            const dayOfWeek = dayInitials[(d - 1) % 7];
-            const isWknd = dayOfWeek === 'S';
-            return `<th class="th-day ${isWknd ? 'weekend-col' : ''}">${d}</th>`;
+        <th rowspan="2" style="width: 4%; font-size: 7px;">Group</th>
+        ${calendarDays
+          .map((cd) => {
+            return `<th class="th-day ${cd.isWeekend ? 'weekend-col' : ''}" title="${cd.fullFormattedDate || ''}">${cd.dayNumber}</th>`;
           })
           .join('')}
       </tr>
       <tr>
-        ${daysArray
-          .map((d) => {
-            const dayOfWeek = dayInitials[(d - 1) % 7];
-            const isWknd = dayOfWeek === 'S';
-            return `<th class="th-day ${isWknd ? 'weekend-col' : ''}" style="background-color: #1e293b;">${dayOfWeek}</th>`;
+        ${calendarDays
+          .map((cd) => {
+            return `<th class="th-day ${cd.isWeekend ? 'weekend-col' : ''}" style="background-color: #1e293b;" title="${cd.fullFormattedDate || ''}">${cd.initial}</th>`;
           })
           .join('')}
       </tr>
@@ -373,10 +371,12 @@ export const PrintDutyRoasterModal: React.FC<PrintDutyRoasterModalProps> = ({
     <tbody>
       ${activeStaffToPrint
         .map((staff, idx) => {
+          const isMech = (staff.mechanisationStatus || 'Mechanised') === 'Mechanised';
           return `<tr>
             <td style="font-weight: bold; color: #64748b;">${idx + 1}</td>
             <td class="td-name">${staff.name || ''} ${staff.phone ? `<span style="font-weight: normal; color: #64748b; font-size: 7px;">(${staff.phone})</span>` : ''}</td>
             <td class="td-rank">${staff.rank || ''}</td>
+            <td style="font-size: 7px; font-weight: bold; color: ${isMech ? '#047857' : '#b45309'};">${isMech ? 'GoG' : 'IGF'}</td>
             ${daysArray
               .map((_, dayIdx) => {
                 const shift = staff.shifts[dayIdx] || '';
@@ -396,19 +396,19 @@ export const PrintDutyRoasterModal: React.FC<PrintDutyRoasterModalProps> = ({
 
       <!-- Bottom Shift Tallies -->
       <tr class="tally-row">
-        <td colspan="3" class="tally-label">MORNING (M) SHIFT COVERAGE</td>
+        <td colspan="4" class="tally-label">MORNING (M) SHIFT COVERAGE</td>
         ${daysArray.map((_, dayIdx) => `<td>${getDailyCount(dayIdx, 'M')}</td>`).join('')}
       </tr>
       <tr class="tally-row" style="background-color: #f1f5f9 !important;">
-        <td colspan="3" class="tally-label">AFTERNOON (A) SHIFT COVERAGE</td>
+        <td colspan="4" class="tally-label">AFTERNOON (A) SHIFT COVERAGE</td>
         ${daysArray.map((_, dayIdx) => `<td>${getDailyCount(dayIdx, 'A')}</td>`).join('')}
       </tr>
       <tr class="tally-row" style="background-color: #e2e8f0 !important;">
-        <td colspan="3" class="tally-label">NIGHT (N) SHIFT COVERAGE</td>
+        <td colspan="4" class="tally-label">NIGHT (N) SHIFT COVERAGE</td>
         ${daysArray.map((_, dayIdx) => `<td>${getDailyCount(dayIdx, 'N')}</td>`).join('')}
       </tr>
       <tr class="tally-row" style="background-color: #f1f5f9 !important;">
-        <td colspan="3" class="tally-label">OFF / LEAVE TALLY</td>
+        <td colspan="4" class="tally-label">OFF / LEAVE TALLY</td>
         ${daysArray.map((_, dayIdx) => `<td>${getDailyCount(dayIdx, 'OFF')}</td>`).join('')}
       </tr>
     </tbody>
@@ -712,7 +712,7 @@ export const PrintDutyRoasterModal: React.FC<PrintDutyRoasterModalProps> = ({
                       <td className="p-0.5 text-slate-400">...</td>
                       {daysArray.slice(-3).map((_, dIdx) => (
                         <td key={dIdx} className="p-0.5 font-bold text-emerald-700">
-                          {templateMode === 'filled' ? s.shifts[27 + dIdx] || 'OFF' : ''}
+                          {templateMode === 'filled' ? s.shifts[daysInMonth - 3 + dIdx] || 'OFF' : ''}
                         </td>
                       ))}
                     </tr>

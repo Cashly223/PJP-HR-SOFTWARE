@@ -14,22 +14,26 @@ import {
   Building2,
   ChevronRight,
   FileText,
+  Sparkles,
+  Users,
 } from 'lucide-react';
 import { useHrms } from '../../context/HrmsContext';
 import { printElementById } from '../../utils/printDocument';
+import { StaffLeaveAndAttendantReportModal } from '../leave/StaffLeaveAndAttendantReportModal';
 
 export const CustomReportsExporter: React.FC = () => {
   const { employees, payrolls, attendance, leaves, courses, trainingAttendance } = useHrms();
 
   // Selected Category Query
   const [queryCategory, setQueryCategory] = useState<
-    'attendance_lateness' | 'leave' | 'license_credentials' | 'lms_training'
-  >('attendance_lateness');
+    'attendance_lateness' | 'leave' | 'license_credentials' | 'lms_training' | 'staff_leave_attendant'
+  >('staff_leave_attendant');
 
   const [exportFormat, setExportFormat] = useState<'csv' | 'excel' | 'pdf'>('csv');
   const [searchTerm, setSearchTerm] = useState('');
   const [deptFilter, setDeptFilter] = useState('All');
   const [generatedMsg, setGeneratedMsg] = useState('');
+  const [isStaffLeaveAttendantModalOpen, setIsStaffLeaveAttendantModalOpen] = useState(false);
 
   // Extract unique departments
   const departmentList = Array.from(new Set((employees || []).filter(Boolean).map((e) => e.department).filter(Boolean)));
@@ -186,12 +190,93 @@ export const CustomReportsExporter: React.FC = () => {
       });
   };
 
+  // Query 5: Staff Leave & Attendant Integrated Data
+  const getStaffLeaveAndAttendantData = () => {
+    const todayStr = new Date().toISOString().split('T')[0];
+
+    return (employees || [])
+      .filter(Boolean)
+      .map((emp) => {
+        const empAttendance = (attendance || []).filter((a) => a && a.employeeId === emp.id);
+        const todayAtt = empAttendance.find((a) => a && a.date === todayStr);
+        const daysAttended = empAttendance.filter((a) => Boolean(a.clockIn)).length;
+
+        const empLeaves = (leaves || []).filter((l) => l && l.employeeId === emp.id);
+        const approvedLeaves = empLeaves.filter((l) => l.status === 'Approved');
+        const activeLeave = approvedLeaves.find((l) => todayStr >= l.startDate && todayStr <= l.endDate);
+
+        const annual = emp.leaveEntitlement || 30;
+        const deferred = emp.deferredLeaveDays || 0;
+        const totalEntitlement = annual + deferred;
+        const leaveDaysTaken = approvedLeaves.reduce(
+          (acc, l) => acc + (l.daysGranted || l.totalDays || (l as any).days || 0),
+          0
+        );
+        const leaveBalance = Math.max(0, totalEntitlement - leaveDaysTaken);
+
+        let dutyStatus = 'Off Duty';
+        if (activeLeave) {
+          dutyStatus = `On Leave (${activeLeave.leaveType})`;
+        } else if (todayAtt?.clockIn) {
+          const hr = parseInt(todayAtt.clockIn.split(':')[0], 10);
+          const min = parseInt(todayAtt.clockIn.split(':')[1] || '0', 10);
+          if (hr > 8 || (hr === 8 && min > 15)) {
+            dutyStatus = 'Late Arrival';
+          } else {
+            dutyStatus = 'Present On Duty';
+          }
+        } else if (daysAttended > 0) {
+          dutyStatus = 'Active Duty';
+        }
+
+        return {
+          id: emp.id,
+          empCode: emp.employeeCode || emp.empCode || 'SJH-1001',
+          staffName: `${emp.firstName || ''} ${emp.lastName || ''}`.trim() || 'Staff',
+          department: emp.department || 'General',
+          unit: emp.unit || 'Clinical',
+          jobTitle: emp.jobTitle || 'Staff',
+          dutyStatus,
+          clockIn: todayAtt?.clockIn || '--:--',
+          clockOut: todayAtt?.clockOut || '--:--',
+          daysAttended,
+          annual,
+          deferred,
+          totalEntitlement,
+          leaveDaysTaken,
+          leaveBalance,
+          activeLeave: activeLeave ? `${activeLeave.leaveType} (${activeLeave.startDate} to ${activeLeave.endDate})` : 'None',
+        };
+      })
+      .filter((rec) => {
+        if (deptFilter !== 'All' && rec.department !== deptFilter) return false;
+        if (searchTerm) {
+          const t = searchTerm.toLowerCase();
+          return (
+            (rec.staffName || '').toLowerCase().includes(t) ||
+            (rec.empCode || '').toLowerCase().includes(t) ||
+            (rec.department || '').toLowerCase().includes(t) ||
+            (rec.jobTitle || '').toLowerCase().includes(t) ||
+            (rec.dutyStatus || '').toLowerCase().includes(t)
+          );
+        }
+        return true;
+      });
+  };
+
   const handleExecuteExport = () => {
     let filename = `PJPIIMC_Report_${queryCategory}_${Date.now()}.${exportFormat}`;
     let csvHeaders = '';
     let csvRows: string[] = [];
 
-    if (queryCategory === 'attendance_lateness') {
+    if (queryCategory === 'staff_leave_attendant') {
+      const data = getStaffLeaveAndAttendantData();
+      csvHeaders = 'Staff ID,Staff Name,Department,Unit,Designation,Duty Attendant Status,Today Clock In,Today Clock Out,Total Days Attended,Annual Entitlement,Deferred Days,Total Entitlement,Approved Leave Taken,Leave Balance,Active Leave Schedule';
+      csvRows = data.map(
+        (d) =>
+          `"${d.empCode}","${d.staffName}","${d.department}","${d.unit}","${d.jobTitle}","${d.dutyStatus}","${d.clockIn}","${d.clockOut}",${d.daysAttended},${d.annual},${d.deferred},${d.totalEntitlement},${d.leaveDaysTaken},${d.leaveBalance},"${d.activeLeave}"`
+      );
+    } else if (queryCategory === 'attendance_lateness') {
       const data = getAttendanceData();
       csvHeaders = 'Staff ID,Staff Name,Department,Date,Clock In,Clock Out,Lateness Status,Delay (Mins),Overtime (Hrs),Biometric Method,Approval Status';
       csvRows = data.map(
@@ -249,13 +334,33 @@ export const CustomReportsExporter: React.FC = () => {
           </div>
           <h2 className="text-2xl font-bold tracking-tight">Custom Report & Multi-Module Query Builder</h2>
           <p className="text-sm text-slate-300 max-w-2xl mt-1">
-            Query and generate customized administrative & clinical reports across Attendance & Lateness, Staff Leaves, License Credentials, and LMS Training.
+            Query and generate customized administrative & clinical reports across Staff Leave & Attendant, Attendance & Lateness, Staff Leaves, License Credentials, and LMS Training.
           </p>
         </div>
       </div>
 
       {/* Query Category Selector Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
+        <button
+          onClick={() => setQueryCategory('staff_leave_attendant')}
+          className={`p-4 rounded-2xl border text-left transition-all flex flex-col justify-between ${
+            queryCategory === 'staff_leave_attendant'
+              ? 'bg-purple-600/10 border-purple-500 text-purple-400 shadow-lg shadow-purple-950/40'
+              : 'bg-slate-900/70 border-slate-800 text-slate-400 hover:border-slate-700'
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <Users className="w-6 h-6 text-purple-400" />
+            <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-purple-500/20 text-purple-300">
+              HR Master
+            </span>
+          </div>
+          <div className="mt-3">
+            <h3 className="text-sm font-bold text-white">Staff Leave & Attendant</h3>
+            <p className="text-xs text-slate-400 mt-0.5">Unified duty attendance, clock-ins, leave days & balance</p>
+          </div>
+        </button>
+
         <button
           onClick={() => setQueryCategory('attendance_lateness')}
           className={`p-4 rounded-2xl border text-left transition-all flex flex-col justify-between ${
@@ -320,13 +425,13 @@ export const CustomReportsExporter: React.FC = () => {
           onClick={() => setQueryCategory('lms_training')}
           className={`p-4 rounded-2xl border text-left transition-all flex flex-col justify-between ${
             queryCategory === 'lms_training'
-              ? 'bg-purple-600/10 border-purple-500 text-purple-400 shadow-lg shadow-purple-950/40'
+              ? 'bg-indigo-600/10 border-indigo-500 text-indigo-400 shadow-lg shadow-indigo-950/40'
               : 'bg-slate-900/70 border-slate-800 text-slate-400 hover:border-slate-700'
           }`}
         >
           <div className="flex items-center justify-between">
-            <BookOpen className="w-6 h-6 text-purple-400" />
-            <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-purple-500/20 text-purple-300">
+            <BookOpen className="w-6 h-6 text-indigo-400" />
+            <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300">
               Module 4
             </span>
           </div>
@@ -405,6 +510,14 @@ export const CustomReportsExporter: React.FC = () => {
             </div>
 
             <button
+              onClick={() => setIsStaffLeaveAttendantModalOpen(true)}
+              className="px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-black rounded-xl shadow-lg shadow-purple-950/40 flex items-center gap-2"
+              title="Open full-screen Official Master Leave & Attendant Report with dual signature endorsement blocks"
+            >
+              <Sparkles className="w-4 h-4 text-amber-300" /> Master Report Generator
+            </button>
+
+            <button
               onClick={handleExecuteExport}
               className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl shadow-lg shadow-indigo-950/50 flex items-center gap-2"
             >
@@ -432,6 +545,77 @@ export const CustomReportsExporter: React.FC = () => {
             Category: <strong className="text-slate-200 uppercase">{queryCategory.replace('_', ' ')}</strong>
           </span>
         </div>
+
+        {/* Staff Leave & Attendant Table */}
+        {queryCategory === 'staff_leave_attendant' && (
+          <div className="overflow-x-auto rounded-xl border border-slate-800">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className="bg-slate-950 text-slate-400 uppercase tracking-wider font-semibold border-b border-slate-800">
+                  <th className="py-3 px-4">Staff ID</th>
+                  <th className="py-3 px-4">Staff Name</th>
+                  <th className="py-3 px-4">Department & Post</th>
+                  <th className="py-3 px-4 text-center">Duty Status</th>
+                  <th className="py-3 px-4 text-center">Clock In / Out</th>
+                  <th className="py-3 px-4 text-center">Days Attended</th>
+                  <th className="py-3 px-4 text-center">Total Entitlement</th>
+                  <th className="py-3 px-4 text-center">Leave Taken</th>
+                  <th className="py-3 px-4 text-center">Leave Balance</th>
+                  <th className="py-3 px-4">Active Leave</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800 text-slate-200">
+                {getStaffLeaveAndAttendantData().map((rec) => (
+                  <tr key={rec.id} className="hover:bg-slate-800/40">
+                    <td className="py-2.5 px-4 font-mono text-slate-400">{rec.empCode}</td>
+                    <td className="py-2.5 px-4 font-bold text-white">{rec.staffName}</td>
+                    <td className="py-2.5 px-4">
+                      <div className="font-semibold text-slate-300">{rec.department}</div>
+                      <div className="text-[10px] text-slate-500">{rec.unit} • {rec.jobTitle}</div>
+                    </td>
+                    <td className="py-2.5 px-4 text-center">
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                          rec.dutyStatus.includes('On Leave')
+                            ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                            : rec.dutyStatus.includes('Present') || rec.dutyStatus.includes('Active')
+                            ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                            : rec.dutyStatus.includes('Late')
+                            ? 'bg-orange-500/10 text-orange-400 border border-orange-500/20'
+                            : 'bg-slate-800 text-slate-400'
+                        }`}
+                      >
+                        {rec.dutyStatus}
+                      </span>
+                    </td>
+                    <td className="py-2.5 px-4 text-center font-mono text-[11px] text-slate-300">
+                      {rec.clockIn} - {rec.clockOut}
+                    </td>
+                    <td className="py-2.5 px-4 text-center font-bold text-white">
+                      {rec.daysAttended}d
+                    </td>
+                    <td className="py-2.5 px-4 text-center font-semibold text-slate-300">
+                      {rec.totalEntitlement}d
+                    </td>
+                    <td className="py-2.5 px-4 text-center font-bold text-emerald-400">
+                      {rec.leaveDaysTaken}d
+                    </td>
+                    <td className="py-2.5 px-4 text-center">
+                      <span className={`px-2 py-0.5 rounded-md font-bold text-[11px] ${
+                        rec.leaveBalance <= 5 ? 'bg-rose-500/20 text-rose-400' : 'bg-purple-500/20 text-purple-300'
+                      }`}>
+                        {rec.leaveBalance}d
+                      </span>
+                    </td>
+                    <td className="py-2.5 px-4 text-[11px] text-slate-400">
+                      {rec.activeLeave}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
 
         {/* 1. Attendance & Lateness Table */}
         {queryCategory === 'attendance_lateness' && (
@@ -605,6 +789,13 @@ export const CustomReportsExporter: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Official Master Staff Leave & Attendant Report Generator Modal */}
+      <StaffLeaveAndAttendantReportModal
+        isOpen={isStaffLeaveAttendantModalOpen}
+        onClose={() => setIsStaffLeaveAttendantModalOpen(false)}
+        defaultDepartment={deptFilter}
+      />
     </div>
   );
 };

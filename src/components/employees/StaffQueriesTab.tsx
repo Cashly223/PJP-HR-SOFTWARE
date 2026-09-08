@@ -19,9 +19,11 @@ import {
   Edit3,
   Building2,
   ShieldCheck,
+  MessageSquare,
 } from 'lucide-react';
 import { useHrms } from '../../context/HrmsContext';
 import { StaffQuery, QueryStatus } from '../../types/hrms';
+import { WhatsAppSmsGatewayModal } from '../notifications/WhatsAppSmsGatewayModal';
 
 interface StaffQueriesTabProps {
   onOpenIssueQueryModal: () => void;
@@ -46,6 +48,7 @@ export const StaffQueriesTab: React.FC<StaffQueriesTabProps> = ({
   const [selectedStatus, setSelectedStatus] = useState<string>('All');
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [categoryFilter, setCategoryFilter] = useState<string>('All');
+  const [selectedQueryForWhatsApp, setSelectedQueryForWhatsApp] = useState<StaffQuery | null>(null);
 
   const statusOptions: string[] = [
     'All',
@@ -395,13 +398,24 @@ export const StaffQueriesTab: React.FC<StaffQueriesTabProps> = ({
 
                     {/* Actions */}
                     <div className="space-y-2 pt-2 border-t border-slate-800">
-                      <button
-                        onClick={() => onOpenViewMemoModal(query)}
-                        className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition shadow-md group"
-                      >
-                        <Printer className="h-3.5 w-3.5 group-hover:scale-110 transition-transform" />
-                        <span>A4 Print & Editable Memo</span>
-                      </button>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        <button
+                          onClick={() => onOpenViewMemoModal(query)}
+                          className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition shadow-md group"
+                        >
+                          <Printer className="h-3.5 w-3.5 group-hover:scale-110 transition-transform" />
+                          <span>Memo & Print</span>
+                        </button>
+
+                        <button
+                          onClick={() => setSelectedQueryForWhatsApp(query)}
+                          className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white font-bold text-xs transition shadow-md border border-amber-400/30"
+                          title="Dispatch query notification to staff member via SMS Gateway"
+                        >
+                          <MessageSquare className="h-3.5 w-3.5" />
+                          <span>SMS Alert</span>
+                        </button>
+                      </div>
 
                       {/* Staff Defense Submission Button */}
                       {!query.staffResponse && (
@@ -441,6 +455,14 @@ export const StaffQueriesTab: React.FC<StaffQueriesTabProps> = ({
           })}
         </div>
       )}
+
+      {/* WhatsApp & SMS Gateway Alert Modal */}
+      <WhatsAppSmsGatewayModal
+        isOpen={Boolean(selectedQueryForWhatsApp)}
+        onClose={() => setSelectedQueryForWhatsApp(null)}
+        defaultTab="query_alerts"
+        preselectedQuery={selectedQueryForWhatsApp}
+      />
     </div>
   );
 };

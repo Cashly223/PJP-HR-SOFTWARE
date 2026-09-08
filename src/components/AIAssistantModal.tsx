@@ -84,7 +84,7 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({ isOpen, onCl
         }),
       });
       const data = await res.json();
-      setRankResult(data.analysis || 'Ranking complete.');
+      setRankResult(data.analysis || data.error || 'Ranking complete.');
     } catch (e) {
       setRankResult('AI Candidate Ranking completed.');
     } finally {
@@ -105,7 +105,7 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({ isOpen, onCl
         }),
       });
       const data = await res.json();
-      setRosterResult(data.rosterPlan || 'Roster optimization generated.');
+      setRosterResult(data.rosterPlan || data.error || 'Roster optimization generated.');
     } catch (e) {
       setRosterResult('Roster Optimization completed.');
     } finally {
@@ -124,7 +124,7 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({ isOpen, onCl
         }),
       });
       const data = await res.json();
-      setAttritionResult(data.forecast || 'Attrition forecast generated.');
+      setAttritionResult(data.forecast || data.error || 'Attrition forecast generated.');
     } catch (e) {
       setAttritionResult('Attrition analysis complete.');
     } finally {

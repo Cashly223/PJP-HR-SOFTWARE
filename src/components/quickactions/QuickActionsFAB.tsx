@@ -42,7 +42,7 @@ import {
   UserRole,
   AttendanceRecord,
 } from '../../types/hrms';
-import { calculateLeaveDays, calculateResumptionDate } from '../../lib/leaveUtils';
+import { calculateLeaveDays, calculateResumptionDate, calculateEndDateFromDays } from '../../lib/leaveUtils';
 
 type QuickModalType =
   | null
@@ -118,16 +118,10 @@ export const QuickActionsFAB: React.FC = () => {
     defaultApplicantEmp?.id || ''
   );
   const [leaveType, setLeaveType] = useState<LeaveRequest['leaveType']>('Annual Leave');
-  const [leaveStartDate, setLeaveStartDate] = useState<string>(() => {
-    const d = new Date();
-    d.setDate(d.getDate() + 3);
-    return d.toISOString().split('T')[0];
-  });
-  const [leaveEndDate, setLeaveEndDate] = useState<string>(() => {
-    const d = new Date();
-    d.setDate(d.getDate() + 10);
-    return d.toISOString().split('T')[0];
-  });
+  const [leaveStartDate, setLeaveStartDate] = useState<string>('');
+  const [leaveEndDate, setLeaveEndDate] = useState<string>('');
+  const [leaveDays, setLeaveDays] = useState<number | ''>('');
+  const [leaveReportingDate, setLeaveReportingDate] = useState<string>('');
   const [leaveReason, setLeaveReason] = useState<string>(
     'Annual scheduled rest, family vacation, and mental rejuvenation.'
   );
@@ -135,7 +129,7 @@ export const QuickActionsFAB: React.FC = () => {
   const [leaveEmergencyPhone, setLeaveEmergencyPhone] = useState<string>('+233 20 555 0192');
   const [isSubmittingLeave, setIsSubmittingLeave] = useState(false);
 
-  // Sync leave applicant when modal opens
+  // Sync leave applicant when modal opens & reset dates to blank slate
   useEffect(() => {
     if (defaultApplicantEmp && !leaveEmployeeId) {
       setLeaveEmployeeId(defaultApplicantEmp.id);
@@ -146,10 +140,49 @@ export const QuickActionsFAB: React.FC = () => {
     return employees.find((e) => e.id === leaveEmployeeId) || defaultApplicantEmp;
   }, [employees, leaveEmployeeId, defaultApplicantEmp]);
 
-  const computedLeaveDays = useMemo(() => {
-    if (!leaveStartDate || !leaveEndDate) return 0;
-    return calculateLeaveDays(leaveStartDate, leaveEndDate, leaveType);
-  }, [leaveStartDate, leaveEndDate, leaveType]);
+  const handleQuickStartDateChange = (newStart: string) => {
+    setLeaveStartDate(newStart);
+    if (newStart && leaveDays && Number(leaveDays) > 0) {
+      const compEnd = calculateEndDateFromDays(newStart, Number(leaveDays), leaveType);
+      setLeaveEndDate(compEnd);
+      setLeaveReportingDate(calculateResumptionDate(compEnd));
+    } else if (!newStart) {
+      setLeaveEndDate('');
+      setLeaveReportingDate('');
+    }
+  };
+
+  const handleQuickDaysChange = (newDays: number | '') => {
+    if (newDays === '' || isNaN(Number(newDays)) || Number(newDays) <= 0) {
+      setLeaveDays('');
+      setLeaveEndDate('');
+      setLeaveReportingDate('');
+      return;
+    }
+    const safe = Number(newDays);
+    setLeaveDays(safe);
+    if (leaveStartDate) {
+      const compEnd = calculateEndDateFromDays(leaveStartDate, safe, leaveType);
+      setLeaveEndDate(compEnd);
+      setLeaveReportingDate(calculateResumptionDate(compEnd));
+    } else {
+      setLeaveEndDate('');
+      setLeaveReportingDate('');
+    }
+  };
+
+  const handleQuickEndDateChange = (newEnd: string) => {
+    setLeaveEndDate(newEnd);
+    if (newEnd) {
+      setLeaveReportingDate(calculateResumptionDate(newEnd));
+      if (leaveStartDate) {
+        const computed = calculateLeaveDays(leaveStartDate, newEnd, leaveType);
+        setLeaveDays(computed);
+      }
+    } else {
+      setLeaveReportingDate('');
+    }
+  };
 
   const handleRequestLeaveSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -157,9 +190,22 @@ export const QuickActionsFAB: React.FC = () => {
       triggerToast('Error', 'Please select an employee.', 'error');
       return;
     }
+    if (!leaveStartDate) {
+      triggerToast('Error', 'Leave commence date is blank. Please select a start date.', 'error');
+      return;
+    }
+    if (!leaveDays || Number(leaveDays) <= 0) {
+      triggerToast('Error', 'Please enter or select the days requested.', 'error');
+      return;
+    }
+    if (!leaveEndDate) {
+      triggerToast('Error', 'Leave end date is blank.', 'error');
+      return;
+    }
 
     setIsSubmittingLeave(true);
     try {
+      const calculatedReporting = leaveReportingDate || calculateResumptionDate(leaveEndDate);
       const newLeaveReq: Partial<LeaveRequest> = {
         employeeId: selectedLeaveEmp.id,
         employeeName: `${selectedLeaveEmp.firstName} ${selectedLeaveEmp.lastName}`,
@@ -170,8 +216,9 @@ export const QuickActionsFAB: React.FC = () => {
         leaveType,
         startDate: leaveStartDate,
         endDate: leaveEndDate,
-        dateOfResumption: calculateResumptionDate(leaveEndDate),
-        totalDays: computedLeaveDays || 1,
+        dateOfResumption: calculatedReporting,
+        reportingDate: calculatedReporting,
+        totalDays: Number(leaveDays) || 1,
         reason: `${leaveReason} (Handover to: ${leaveRelievingOfficer})`,
         phoneOnLeave: leaveEmergencyPhone || selectedLeaveEmp.phone || '+233 20 000 0000',
         leaveYear: new Date().getFullYear(),
@@ -183,10 +230,15 @@ export const QuickActionsFAB: React.FC = () => {
 
       triggerToast(
         'Leave Application Submitted!',
-        `Filed ${computedLeaveDays} day(s) ${leaveType} for ${selectedLeaveEmp.firstName} ${selectedLeaveEmp.lastName}. Routed to Unit & Dept Head.`,
+        `Filed ${leaveDays} day(s) ${leaveType} for ${selectedLeaveEmp.firstName} ${selectedLeaveEmp.lastName}. Routed to Unit & Dept Head.`,
         'success'
       );
 
+      // Reset fields to blank slate
+      setLeaveStartDate('');
+      setLeaveEndDate('');
+      setLeaveDays('');
+      setLeaveReportingDate('');
       setActiveModal(null);
     } catch (err: any) {
       triggerToast('Submission Failed', err.message || 'Error submitting leave request.', 'error');
@@ -327,7 +379,7 @@ export const QuickActionsFAB: React.FC = () => {
       {/* =========================================================
           GLOBAL FLOATING ACTION BUTTON (FAB) CONTAINER
           ========================================================= */}
-      <div className="fixed bottom-6 right-6 z-40 flex flex-col items-end pointer-events-none select-none font-sans">
+      <div className="fixed bottom-20 lg:bottom-6 right-4 sm:right-6 z-40 flex flex-col items-end pointer-events-none select-none font-sans mb-safe">
         {/* TOAST CONFIRMATION NOTIFICATION */}
         {toastMessage && (
           <div className="pointer-events-auto mb-3 flex items-start gap-3 rounded-2xl bg-slate-900/95 border border-indigo-500/40 p-4 shadow-2xl backdrop-blur-md text-white max-w-sm animate-in slide-in-from-bottom-3 duration-200">
@@ -597,44 +649,108 @@ export const QuickActionsFAB: React.FC = () => {
                 </div>
               </div>
 
+              {/* Date Guidance Status Banner */}
+              {!leaveStartDate && !leaveEndDate ? (
+                <div className="p-2.5 rounded-xl bg-blue-500/10 border border-blue-500/30 text-[11px] text-blue-300">
+                  <span>
+                    ℹ️ Leave commence date and end date start blank. Select <strong>Commence Date</strong> and <strong>Days Requested</strong> to calculate End Date & Reporting Date.
+                  </span>
+                </div>
+              ) : leaveStartDate && leaveDays ? (
+                <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-[11px] text-emerald-300 flex items-center justify-between">
+                  <span>
+                    ✅ System Calculated: From <strong>{leaveStartDate}</strong> for <strong>{leaveDays} days</strong> ➔ Ends <strong>{leaveEndDate}</strong>, Reports <strong>{leaveReportingDate || calculateResumptionDate(leaveEndDate)}</strong>.
+                  </span>
+                  <span className="text-[9px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded font-bold">
+                    HR Adjustable
+                  </span>
+                </div>
+              ) : null}
+
               {/* Date Range & Computed Working Days */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5">
                 <div>
-                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">
-                    Start Date
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                    Commence Date *
                   </label>
                   <input
                     type="date"
                     required
                     value={leaveStartDate}
-                    onChange={(e) => setLeaveStartDate(e.target.value)}
-                    className="w-full rounded-xl bg-slate-950 border border-slate-800 px-3 py-2 text-xs text-white font-medium focus:border-emerald-500 focus:outline-none"
+                    onChange={(e) => handleQuickStartDateChange(e.target.value)}
+                    className="w-full rounded-xl bg-slate-950 border border-slate-800 px-2.5 py-2 text-xs text-white font-medium focus:border-emerald-500 focus:outline-none"
                   />
+                  <span className="text-[9px] text-slate-500 block mt-0.5">
+                    {leaveStartDate || 'Starts blank'}
+                  </span>
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">
-                    End Date
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-emerald-400 mb-1">
+                    Days Requested *
                   </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={120}
+                    required
+                    placeholder="e.g. 7"
+                    value={leaveDays}
+                    onChange={(e) => handleQuickDaysChange(e.target.value === '' ? '' : Number(e.target.value))}
+                    className="w-full rounded-xl bg-slate-950 border border-emerald-500/50 px-2.5 py-2 text-xs text-emerald-400 font-bold focus:border-emerald-500 focus:outline-none"
+                  />
+                  <div className="flex gap-1 mt-1">
+                    {[3, 5, 7, 14, 30].map((d) => (
+                      <button
+                        key={d}
+                        type="button"
+                        onClick={() => handleQuickDaysChange(d)}
+                        className={`text-[9px] px-1 py-0.5 rounded font-bold ${
+                          Number(leaveDays) === d ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-slate-400'
+                        }`}
+                      >
+                        {d}d
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                      End Date *
+                    </label>
+                    <span className="text-[8px] text-amber-400 bg-amber-500/10 px-1 rounded">HR Adj.</span>
+                  </div>
                   <input
                     type="date"
                     required
                     value={leaveEndDate}
-                    onChange={(e) => setLeaveEndDate(e.target.value)}
-                    className="w-full rounded-xl bg-slate-950 border border-slate-800 px-3 py-2 text-xs text-white font-medium focus:border-emerald-500 focus:outline-none"
+                    onChange={(e) => handleQuickEndDateChange(e.target.value)}
+                    className="w-full rounded-xl bg-slate-950 border border-slate-800 px-2.5 py-2 text-xs text-white font-medium focus:border-emerald-500 focus:outline-none"
                   />
+                  <span className="text-[9px] text-slate-500 block mt-0.5">
+                    {leaveEndDate || 'Calculated'}
+                  </span>
                 </div>
 
-                <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-center flex flex-col justify-center">
-                  <span className="text-[10px] uppercase font-bold text-slate-400">Total Working Days</span>
-                  <span className="text-lg font-black text-emerald-400 font-mono">
-                    {computedLeaveDays} {computedLeaveDays === 1 ? 'Day' : 'Days'}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-emerald-400">
+                      Reporting Date *
+                    </label>
+                    <span className="text-[8px] text-emerald-400 bg-emerald-500/10 px-1 rounded">+1d</span>
+                  </div>
+                  <input
+                    type="date"
+                    required
+                    value={leaveReportingDate}
+                    onChange={(e) => setLeaveReportingDate(e.target.value)}
+                    className="w-full rounded-xl bg-slate-950 border border-emerald-500/40 px-2.5 py-2 text-xs text-emerald-300 font-bold focus:border-emerald-500 focus:outline-none"
+                  />
+                  <span className="text-[9px] text-slate-500 block mt-0.5">
+                    {leaveReportingDate || 'Calculated'}
                   </span>
-                  {leaveEndDate && (
-                    <span className="text-[10px] text-emerald-400 font-bold mt-0.5">
-                      Resumes: {calculateResumptionDate(leaveEndDate)} (+1d)
-                    </span>
-                  )}
                 </div>
               </div>
 

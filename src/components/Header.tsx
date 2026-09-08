@@ -19,13 +19,20 @@ import {
   RefreshCw,
   Store,
   Menu,
+  ChevronLeft,
+  MessageSquare,
+  Fingerprint,
 } from 'lucide-react';
 import { useHrms } from '../context/HrmsContext';
 import { UserRole, LanguageCode, CurrencyCode } from '../types/hrms';
 import { PjpiimcLogo } from './common/PjpiimcLogo';
 import { SubordinateRequestModal } from './notifications/SubordinateRequestModal';
 import { EmailDispatchConsoleModal } from './notifications/EmailDispatchConsoleModal';
+import { WhatsAppSmsGatewayModal } from './notifications/WhatsAppSmsGatewayModal';
+import { SmsGatewayDropdown } from './notifications/SmsGatewayDropdown';
 import { PlayStoreDeployModal } from './mobile/PlayStoreDeployModal';
+import { SecurityComplianceModal } from './security/SecurityComplianceModal';
+import { BiometricSecurityModal } from './security/BiometricSecurityModal';
 
 interface HeaderProps {
   onToggleMobileMenu?: () => void;
@@ -56,12 +63,21 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileMenu, onOpenAIAssi
     shiftSwapRequests,
     monthlyUnitRosters,
     expenseClaims,
+    activeTab,
+    canGoBack,
+    goBack,
+    portalMode,
+    setPortalMode,
   } = useHrms();
 
   const [showNotifications, setShowNotifications] = useState(false);
   const [isSubordinateModalOpen, setIsSubordinateModalOpen] = useState(false);
   const [isEmailConsoleOpen, setIsEmailConsoleOpen] = useState(false);
+  const [isWhatsAppGatewayOpen, setIsWhatsAppGatewayOpen] = useState(false);
+  const [isWhatsAppFullModalOpen, setIsWhatsAppFullModalOpen] = useState(false);
   const [showPlayStoreModal, setShowPlayStoreModal] = useState(false);
+  const [isSecurityModalOpen, setIsSecurityModalOpen] = useState(false);
+  const [isBiometricSecurityOpen, setIsBiometricSecurityOpen] = useState(false);
 
   const unreadCount = (notifications || []).filter((n) => n && !n.read).length;
 
@@ -85,14 +101,29 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileMenu, onOpenAIAssi
   ];
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 w-full max-w-full items-center justify-between border-b border-slate-200 bg-white/95 px-3 sm:px-4 md:px-6 backdrop-blur dark:border-slate-800 dark:bg-slate-900/95">
-      {/* Left: Mobile Hamburger Toggle & Hospital Name Display */}
-      <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+    <header className="sticky top-0 z-30 flex h-16 w-full max-w-full items-center justify-between border-b border-slate-200 bg-white/95 px-3 sm:px-4 md:px-6 backdrop-blur dark:border-slate-800 dark:bg-slate-900/95 pt-safe">
+      {/* Left: Mobile Navigation (Back / Hamburger) & Hospital Name Display */}
+      <div className="flex items-center gap-1.5 sm:gap-2.5 min-w-0">
+        {/* Mobile Back Button (Enabled when user navigated to any sub-page or stack) */}
+        {canGoBack && activeTab !== 'dashboard' && (
+          <button
+            onClick={goBack}
+            className="lg:hidden flex items-center justify-center gap-1 py-1.5 px-2.5 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/25 hover:bg-blue-500/20 active:scale-95 transition text-xs font-bold shrink-0 shadow-sm"
+            aria-label="Go back to previous page"
+            id="btn-mobile-header-back"
+            title="Go Back to Previous Page"
+          >
+            <ChevronLeft className="h-4 w-4" />
+            <span className="text-xs font-black">Back</span>
+          </button>
+        )}
+
         {/* Hamburger Toggle Button for Mobile Screens */}
         <button
           onClick={onToggleMobileMenu}
           className="lg:hidden flex items-center justify-center p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition active:scale-95 shrink-0"
           aria-label="Toggle navigation menu"
+          id="btn-mobile-menu-toggle"
         >
           <Menu className="h-5 w-5 text-slate-800 dark:text-slate-100" />
         </button>
@@ -140,7 +171,35 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileMenu, onOpenAIAssi
           <span className="hidden xl:inline">Play Store & Install</span>
         </button>
 
+        {/* Hospital Security & Compliance Center Button */}
+        <button
+          onClick={() => setIsSecurityModalOpen(true)}
+          title="Hospital Security & Compliance: Active ABAC Rules, HIPAA Safeguards, Inactivity Lockout & WORM Audit Trail"
+          id="btn-header-security-compliance"
+          className="flex items-center gap-1.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 px-2.5 py-1.5 text-xs font-black transition border border-emerald-500/30 active:scale-95 shadow-sm"
+        >
+          <ShieldCheck className="h-4 w-4 text-emerald-500 shrink-0" />
+          <span className="hidden sm:inline">Security</span>
+          <span className="flex h-2 w-2 relative">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+          </span>
+        </button>
+
         {/* Official Assigned Role Badge */}
+        {/* Biometrics & WebAuthn Passkeys Manager */}
+        <button
+          type="button"
+          id="btn-header-webauthn-biometrics"
+          onClick={() => setIsBiometricSecurityOpen(true)}
+          className="flex items-center gap-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-700/50 px-2.5 py-1.5 text-xs font-bold transition hover:bg-emerald-100 dark:hover:bg-emerald-900/60 active:scale-95 shadow-xs"
+          title="WebAuthn Biometric & Passkey Access Manager"
+        >
+          <Fingerprint className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+          <span className="hidden md:inline">Biometrics</span>
+        </button>
+
+
         <div
           className="hidden lg:flex items-center gap-1.5 rounded-lg bg-slate-100 px-2.5 py-1.5 text-xs font-bold text-slate-800 dark:bg-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700/60"
           title="Your official role is solely determined and assigned by HR"
@@ -152,37 +211,46 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileMenu, onOpenAIAssi
         </div>
 
         {/* HR Dual Account Quick Switcher */}
-        {(currentUser?.email?.toLowerCase().includes('miss.vero') ||
-          currentUser?.email?.toLowerCase().includes('mr.frimpong') ||
+        {(currentUser?.email?.toLowerCase().includes('veronica') ||
+          currentUser?.email?.toLowerCase().includes('owusu') ||
+          currentUser?.email?.toLowerCase().includes('miss.vero') ||
           currentUser?.email?.toLowerCase().includes('hr.') ||
+          currentUser?.name?.toLowerCase().includes('veronica') ||
+          currentUser?.name?.toLowerCase().includes('owusu') ||
           ['hr_director', 'hr_manager'].includes(currentUser?.role || '') ||
           ['hr_director', 'hr_manager'].includes(activeRole)) && (
           <button
+            id="btn-dual-account-hr"
             onClick={() => {
               if (['hr_director', 'hr_manager', 'super_admin'].includes(activeRole)) {
                 setActiveRole('nurse');
               } else {
-                setActiveRole(currentUser?.email?.toLowerCase().includes('frimpong') ? 'hr_manager' : 'hr_director');
+                setActiveRole('hr_director');
               }
             }}
-            className="hidden sm:flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-indigo-500/20 to-purple-500/20 hover:from-indigo-500/30 hover:to-purple-500/30 text-indigo-700 dark:text-indigo-300 px-2 py-1.5 text-xs font-black border border-indigo-500/40 shadow-sm transition"
-            title="HR Dual Account Switcher: Toggle between Employee Staff Portal and HR Admin Office"
+            className="hidden sm:flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-indigo-500/20 to-purple-500/20 hover:from-indigo-500/30 hover:to-purple-500/30 text-indigo-700 dark:text-indigo-300 px-2.5 py-1.5 text-xs font-black border border-indigo-500/40 shadow-sm transition active:scale-95"
+            title="HR Dual Account Switcher: Toggle between Staff Self-Service and HR Directorate Admin"
           >
-            <RefreshCw className="h-3.5 w-3.5 text-indigo-500 shrink-0" />
+            <RefreshCw className="h-3.5 w-3.5 text-indigo-500 shrink-0 animate-spin-reverse" />
             <span className="hidden md:inline">
               {['hr_director', 'hr_manager'].includes(activeRole)
-                ? 'Staff Portal'
-                : 'HR Admin'}
+                ? 'Switch to Staff View'
+                : 'Switch to HR Admin'}
             </span>
           </button>
         )}
 
         {/* Head of Facility Dual Account Quick Switcher */}
-        {(currentUser?.email?.toLowerCase().includes('rev.fr.mike') ||
-          currentUser?.email?.toLowerCase().includes('facility') ||
+        {(currentUser?.email?.toLowerCase().includes('rev.fr.michael') ||
+          currentUser?.email?.toLowerCase().includes('afoakwah') ||
+          currentUser?.email?.toLowerCase().includes('michael') ||
+          currentUser?.email?.toLowerCase().includes('rev.fr.mike') ||
+          currentUser?.name?.toLowerCase().includes('afoakwah') ||
+          currentUser?.name?.toLowerCase().includes('michael') ||
           currentUser?.role === 'facility_head' ||
           activeRole === 'facility_head') && (
           <button
+            id="btn-dual-account-facility-head"
             onClick={() => {
               if (activeRole === 'facility_head') {
                 setActiveRole('doctor');
@@ -190,14 +258,14 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileMenu, onOpenAIAssi
                 setActiveRole('facility_head');
               }
             }}
-            className="hidden sm:flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-amber-500/20 to-orange-500/20 hover:from-amber-500/30 hover:to-orange-500/30 text-amber-700 dark:text-amber-300 px-2 py-1.5 text-xs font-black border border-amber-500/40 shadow-sm transition"
-            title="Head of Facility Dual Account Switcher: Toggle between Employee Staff Portal and Hospital Admin Office"
+            className="hidden sm:flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-amber-500/20 to-orange-500/20 hover:from-amber-500/30 hover:to-orange-500/30 text-amber-700 dark:text-amber-300 px-2.5 py-1.5 text-xs font-black border border-amber-500/40 shadow-sm transition active:scale-95"
+            title="Head of Facility Dual Account Switcher: Toggle between Staff Self-Service and Hospital Directorate Admin"
           >
             <RefreshCw className="h-3.5 w-3.5 text-amber-500 shrink-0" />
             <span className="hidden md:inline">
               {activeRole === 'facility_head'
-                ? 'Staff Portal'
-                : 'Hospital Admin'}
+                ? 'Switch to Staff View'
+                : 'Switch to Facility Admin'}
             </span>
           </button>
         )}
@@ -215,6 +283,37 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileMenu, onOpenAIAssi
             <option value="fr" className="dark:bg-slate-900">FR</option>
             <option value="ar" className="dark:bg-slate-900">AR</option>
           </select>
+        </div>
+
+        {/* Hospital SMS Gateway Console (Notification Style Dropdown) */}
+        <div className="relative">
+          <button
+            onClick={() => {
+              setIsWhatsAppGatewayOpen((prev) => !prev);
+              setShowNotifications(false);
+              setIsEmailConsoleOpen(false);
+            }}
+            className={`relative flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-xs font-extrabold transition-all duration-200 shadow-sm ${
+              isWhatsAppGatewayOpen
+                ? 'bg-emerald-600 text-white border-emerald-500 ring-2 ring-emerald-500/30'
+                : 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border-emerald-500/30'
+            }`}
+            title="Open Hospital SMS Gateway Notifications & Fast Dispatch"
+          >
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            </span>
+            <MessageSquare className="h-4 w-4" />
+            <span className="hidden lg:inline">{isWhatsAppGatewayOpen ? 'Close SMS' : 'SMS'}</span>
+          </button>
+
+          {/* Notification-Style SMS Gateway Dropdown Panel */}
+          <SmsGatewayDropdown
+            isOpen={isWhatsAppGatewayOpen}
+            onClose={() => setIsWhatsAppGatewayOpen(false)}
+            onOpenFullModal={() => setIsWhatsAppFullModalOpen(true)}
+          />
         </div>
 
         {/* Real-time Email Dispatch Outbox Console Toggle */}
@@ -366,10 +465,28 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileMenu, onOpenAIAssi
         onClose={() => setIsEmailConsoleOpen(false)}
       />
 
+      {/* WhatsApp & SMS Gateway Console Modal (Expanded View) */}
+      <WhatsAppSmsGatewayModal
+        isOpen={isWhatsAppFullModalOpen}
+        onClose={() => setIsWhatsAppFullModalOpen(false)}
+      />
+
       {/* Play Store & Mobile Packaging Modal */}
       <PlayStoreDeployModal
         isOpen={showPlayStoreModal}
         onClose={() => setShowPlayStoreModal(false)}
+      />
+
+      {/* Hospital Security & Compliance Center Modal */}
+      <SecurityComplianceModal
+        isOpen={isSecurityModalOpen}
+        onClose={() => setIsSecurityModalOpen(false)}
+      />
+
+      {/* WebAuthn Passkeys & Biometric Security Modal */}
+      <BiometricSecurityModal
+        isOpen={isBiometricSecurityOpen}
+        onClose={() => setIsBiometricSecurityOpen(false)}
       />
     </header>
   );

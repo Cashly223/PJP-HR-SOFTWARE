@@ -24,7 +24,9 @@ import {
   Printer,
 } from 'lucide-react';
 import { useHrms } from '../../context/HrmsContext';
-import { DepartmentMonthlyRoster } from '../../types/hrms';
+import { DepartmentMonthlyRoster, StaffRosterRow } from '../../types/hrms';
+import { transferDepartmentStaffToRosterGrid } from '../../utils/rosterTransferUtils';
+import { PrintDutyRoasterModal } from './PrintDutyRoasterModal';
 
 export const DepartmentRosterUploader: React.FC = () => {
   const {
@@ -36,7 +38,26 @@ export const DepartmentRosterUploader: React.FC = () => {
     isHeadOfFacilityOrHr,
     currentUserDepartment,
     canAccessDepartmentRoster,
+    departmentLeadership,
+    employees,
   } = useHrms();
+
+  // Dynamic Departments from Leadership Source of Truth
+  const availableDepartments = React.useMemo(() => {
+    const list = (departmentLeadership || []).map((d) => d.departmentName).filter(Boolean);
+    if (list.length > 0) return Array.from(new Set(list));
+    return [
+      'Intensive Care Unit (ICU)',
+      'Emergency & Trauma Dept',
+      'Surgical Operating Theater',
+      'Pediatrics & Neonatal Unit',
+      'Pharmacy & Dispensary',
+      'Radiology & Imaging',
+      'Outpatient Dept (OPD)',
+      'Obstetrics & Gynecology',
+      'General Medical Wards',
+    ];
+  }, [departmentLeadership]);
 
   // Filters
   const [statusFilter, setStatusFilter] = useState<string>('All');
@@ -46,7 +67,7 @@ export const DepartmentRosterUploader: React.FC = () => {
   // Upload Modal State
   const [isUploadModalOpen, setIsUploadModalOpen] = useState<boolean>(false);
   const [department, setDepartment] = useState<string>(
-    !isHeadOfFacilityOrHr ? currentUserDepartment : 'Intensive Care Unit (ICU)'
+    !isHeadOfFacilityOrHr ? currentUserDepartment : availableDepartments[0] || 'Intensive Care Unit (ICU)'
   );
   const [unit, setUnit] = useState<string>('ICU Critical Care Ward');
   const [month, setMonth] = useState<string>('September');
@@ -68,22 +89,22 @@ export const DepartmentRosterUploader: React.FC = () => {
 
   // Detail / Review Modal State
   const [selectedRosterForReview, setSelectedRosterForReview] = useState<DepartmentMonthlyRoster | null>(null);
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState<boolean>(false);
 
   // Return for Revision Modal State
   const [returningRosterId, setReturningRosterId] = useState<string | null>(null);
   const [rejectionNotesText, setRejectionNotesText] = useState<string>('');
 
-  // Department List
-  const hospitalDepartments = [
-    'Intensive Care Unit (ICU)',
-    'Emergency & Trauma Dept',
-    'Surgical Operating Theater',
-    'Pediatrics & Neonatal Unit',
-    'Pharmacy & Dispensary',
-    'Radiology & Imaging',
-    'Outpatient Dept (OPD)',
-    'Obstetrics & Gynecology',
-    'General Medical Wards',
+  // Helper for generating standard 30-staff monthly matrix
+  const getStaffMatrixForRoster = (roster: DepartmentMonthlyRoster): StaffRosterRow[] => {
+    return transferDepartmentStaffToRosterGrid(roster.department, employees, roster.staffGrid);
+  };
+
+  const daysArray = Array.from({ length: 30 }, (_, i) => i + 1);
+  const dayInitials = [
+    'W', 'Th', 'F', 'S', 'S', 'M', 'T', 'W', 'Th', 'F',
+    'S', 'S', 'M', 'T', 'W', 'Th', 'F', 'S', 'S', 'M',
+    'T', 'W', 'Th', 'F', 'S', 'S', 'M', 'T', 'W', 'Th',
   ];
 
   // Scoped Accessible Rosters based on Governance Policy
@@ -92,14 +113,18 @@ export const DepartmentRosterUploader: React.FC = () => {
 
   // Stats (Scoped)
   const totalRostersCount = visibleRosters.length;
-  const pendingCount = visibleRosters.filter((r) => r?.status === 'Pending HR Approval').length;
+  const pendingCount = visibleRosters.filter((r) => r?.status === 'Pending Verification' || r?.status === 'Pending HR Approval').length;
   const approvedCount = visibleRosters.filter((r) => r?.status === 'Approved').length;
   const revisionCount = visibleRosters.filter((r) => r?.status === 'Returned for Revision').length;
 
   // Filtered List
   const filteredRosters = visibleRosters.filter((r) => {
     if (!r) return false;
-    const matchesStatus = statusFilter === 'All' || r.status === statusFilter;
+    const matchesStatus =
+      statusFilter === 'All' ||
+      (statusFilter === 'Pending Verification' || statusFilter === 'Pending HR Approval'
+        ? r.status === 'Pending Verification' || r.status === 'Pending HR Approval'
+        : r.status === statusFilter);
     const matchesDept =
       !isHeadOfFacilityOrHr ||
       selectedDeptFilter === 'All' ||
@@ -166,32 +191,46 @@ export const DepartmentRosterUploader: React.FC = () => {
   };
 
   const handleDownloadRosterCSV = (roster: DepartmentMonthlyRoster) => {
-    const headers = ['Staff Name', 'Role', 'Week 1 Shift', 'Week 2 Shift', 'Week 3 Shift', 'Week 4 Shift'];
-    const rows = roster.dutyRosterGrid
-      ? roster.dutyRosterGrid.map((g) => [
-          `"${g.staffName}"`,
-          `"${g.role}"`,
-          `"${g.week1}"`,
-          `"${g.week2}"`,
-          `"${g.week3}"`,
-          `"${g.week4}"`,
-        ])
-      : [
-          ['"Staff Member 1"', '"Senior Nurse"', '"Morning (07-15)"', '"Night ICU (23-07)"', '"Off / Leave"', '"Evening (15-23)"'],
-          ['"Staff Member 2"', '"Resident Doctor"', '"12h Emergency (07-19)"', '"Morning (07-15)"', '"Night ICU (23-07)"', '"On-Call 24h"'],
-        ];
+    const matrixStaff = getStaffMatrixForRoster(roster);
+    const dayCols = Array.from({ length: 30 }, (_, i) => `Day ${i + 1}`);
+    const headers = ['No', 'Staff Name', 'Phone', 'Rank', ...dayCols];
+
+    const rows = matrixStaff.map((staff, idx) => [
+      idx + 1,
+      `"${staff.name}"`,
+      `"${staff.phone}"`,
+      `"${staff.rank}"`,
+      ...staff.shifts.map((s) => `"${s}"`),
+    ]);
+
+    const mTotals = Array.from({ length: 30 }, (_, d) =>
+      matrixStaff.reduce((sum, s) => sum + (s.shifts[d] === 'M' ? 1 : 0), 0)
+    );
+    const aTotals = Array.from({ length: 30 }, (_, d) =>
+      matrixStaff.reduce((sum, s) => sum + (s.shifts[d] === 'A' ? 1 : 0), 0)
+    );
+    const nTotals = Array.from({ length: 30 }, (_, d) =>
+      matrixStaff.reduce((sum, s) => sum + (s.shifts[d] === 'N' ? 1 : 0), 0)
+    );
+
+    const summaryRows = [
+      ['', '"MORNING TOTAL (M)"', '', '', ...mTotals.map((t) => `"${t}"`)],
+      ['', '"AFTERNOON TOTAL (A)"', '', '', ...aTotals.map((t) => `"${t}"`)],
+      ['', '"NIGHT TOTAL (N)"', '', '', ...nTotals.map((t) => `"${t}"`)],
+    ];
 
     const csvContent =
       'data:text/csv;charset=utf-8,' +
-      `"DEPARTMENT DUTY ROSTER: ${roster.department} - ${roster.month} ${roster.year}"\n` +
-      `"Prepared By: ${roster.preparedBy} (${roster.preparedByRole})"\n` +
+      `"POPE JOHN PAUL II MEDICAL CENTRE - JAMASI"\n` +
+      `"DEPARTMENTAL STAFF DUTY ROASTER: ${roster.department.toUpperCase()} - ${roster.month.toUpperCase()} ${roster.year}"\n` +
+      `"Unit: ${roster.unit} | Prepared By: ${roster.preparedBy} (${roster.preparedByRole})"\n` +
       `"Status: ${roster.status}"\n\n` +
-      [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
+      [headers.join(','), ...rows.map((e) => e.join(',')), ...summaryRows.map((e) => e.join(','))].join('\n');
 
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `${roster.department.replace(/[^a-zA-Z]/g, '_')}_Roster_${roster.month}_${roster.year}.csv`);
+    link.setAttribute('download', `${roster.department.replace(/[^a-zA-Z]/g, '_')}_Duty_Roaster_${roster.month}_${roster.year}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -432,36 +471,39 @@ export const DepartmentRosterUploader: React.FC = () => {
           </button>
 
           <button
-            onClick={() => setStatusFilter('Pending HR Approval')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-              statusFilter === 'Pending HR Approval'
+            onClick={() => setStatusFilter('Pending Verification')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
+              statusFilter === 'Pending Verification' || statusFilter === 'Pending HR Approval'
                 ? 'bg-amber-600 text-white shadow'
                 : 'text-slate-400 hover:text-white hover:bg-slate-900'
             }`}
           >
-            Pending HR Approval ({pendingCount})
+            <Clock className="h-3.5 w-3.5 text-amber-300" />
+            Pending Verification ({pendingCount})
           </button>
 
           <button
             onClick={() => setStatusFilter('Approved')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
               statusFilter === 'Approved'
                 ? 'bg-emerald-600 text-white shadow'
                 : 'text-slate-400 hover:text-white hover:bg-slate-900'
             }`}
           >
+            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-300" />
             Approved ({approvedCount})
           </button>
 
           <button
             onClick={() => setStatusFilter('Returned for Revision')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
               statusFilter === 'Returned for Revision'
                 ? 'bg-rose-600 text-white shadow'
                 : 'text-slate-400 hover:text-white hover:bg-slate-900'
             }`}
           >
-            Returned ({revisionCount})
+            <AlertCircle className="h-3.5 w-3.5 text-rose-300" />
+            Returned for Revision ({revisionCount})
           </button>
         </div>
 
@@ -484,7 +526,7 @@ export const DepartmentRosterUploader: React.FC = () => {
               className="w-full sm:w-auto rounded-xl bg-slate-950 border border-slate-800 px-3 py-2 text-xs text-slate-200 focus:border-emerald-500 focus:outline-none"
             >
               <option value="All">All Departments</option>
-              {hospitalDepartments.map((d) => (
+              {availableDepartments.map((d) => (
                 <option key={d} value={d}>
                   {d}
                 </option>
@@ -599,24 +641,23 @@ export const DepartmentRosterUploader: React.FC = () => {
                     </td>
 
                     <td className="px-5 py-4">
-                      <span
-                        className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold border ${
-                          roster.status === 'Approved'
-                            ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
-                            : roster.status === 'Returned for Revision'
-                            ? 'bg-rose-500/20 text-rose-300 border-rose-500/30'
-                            : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
-                        }`}
-                      >
-                        {roster.status === 'Approved' ? (
-                          <CheckCircle2 className="h-3 w-3" />
-                        ) : roster.status === 'Returned for Revision' ? (
-                          <AlertCircle className="h-3 w-3" />
-                        ) : (
-                          <Clock className="h-3 w-3" />
-                        )}
-                        {roster.status}
-                      </span>
+                      {roster.status === 'Approved' ? (
+                        <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm">
+                          <CheckCircle2 className="h-3 w-3 text-emerald-400" />
+                          Approved
+                        </span>
+                      ) : roster.status === 'Returned for Revision' ? (
+                        <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wider bg-rose-500/20 text-rose-300 border border-rose-500/40 shadow-sm">
+                          <AlertCircle className="h-3 w-3 text-rose-400" />
+                          Returned for Revision
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm">
+                          <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse"></span>
+                          <Clock className="h-3 w-3 text-amber-400" />
+                          Pending Verification
+                        </span>
+                      )}
                     </td>
 
                     <td className="px-5 py-4 text-right">
@@ -629,7 +670,7 @@ export const DepartmentRosterUploader: React.FC = () => {
                           <Eye className="h-3.5 w-3.5 text-teal-400" /> Preview
                         </button>
 
-                        {roster.status === 'Pending HR Approval' && isHeadOfFacilityOrHr && (
+                        {(roster.status === 'Pending Verification' || roster.status === 'Pending HR Approval') && isHeadOfFacilityOrHr && (
                           <>
                             <button
                               onClick={() => updateMonthlyUnitRosterStatus(roster.id, 'Approved')}
@@ -644,7 +685,7 @@ export const DepartmentRosterUploader: React.FC = () => {
                               className="inline-flex items-center gap-1 rounded-lg bg-rose-950/60 border border-rose-500/30 px-2.5 py-1.5 text-xs font-bold text-rose-300 hover:bg-rose-900 transition"
                               title="Return for Revision"
                             >
-                              <XCircle className="h-3.5 w-3.5" /> Return
+                              <XCircle className="h-3.5 w-3.5" /> Request Revision
                             </button>
                           </>
                         )}
@@ -695,7 +736,7 @@ export const DepartmentRosterUploader: React.FC = () => {
                     className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-slate-200 focus:border-emerald-500 focus:outline-none"
                     required
                   >
-                    {hospitalDepartments.map((d) => (
+                    {availableDepartments.map((d) => (
                       <option key={d} value={d}>
                         {d}
                       </option>
@@ -899,170 +940,341 @@ export const DepartmentRosterUploader: React.FC = () => {
         </div>
       )}
 
-      {/* MODAL 2: ROSTER PREVIEW & HR AUDIT MODAL */}
+      {/* MODAL 2: ROSTER PREVIEW & HR AUDIT MODAL (30 STAFF DUTY MATRIX) */}
       {selectedRosterForReview && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto">
-          <div className="w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-2xl bg-slate-900 border border-slate-800 p-6 shadow-2xl space-y-5">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <div>
-                <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest">
-                  HR Audit & Roster Schedule Inspector
-                </span>
-                <h3 className="text-base font-bold text-white flex items-center gap-2">
-                  <Building2 className="h-5 w-5 text-teal-400" />
-                  {selectedRosterForReview.department} — {selectedRosterForReview.month} {selectedRosterForReview.year} Duty Roster
-                </h3>
-              </div>
-
-              <button
-                onClick={() => setSelectedRosterForReview(null)}
-                className="rounded-lg bg-slate-800 p-1.5 text-slate-400 hover:text-white"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            {/* Submitter details */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-950 p-4 rounded-xl border border-slate-800 text-xs">
-              <div>
-                <span className="text-slate-500 text-[10px]">Prepared By:</span>
-                <p className="font-bold text-slate-200">{selectedRosterForReview.preparedBy}</p>
-                <p className="text-[10px] text-slate-400">{selectedRosterForReview.preparedByRole}</p>
-              </div>
-
-              <div>
-                <span className="text-slate-500 text-[10px]">Submission Info:</span>
-                <p className="font-bold text-slate-200">{selectedRosterForReview.submissionDate}</p>
-                <p className="text-[10px] text-slate-400">{selectedRosterForReview.preparedByEmail}</p>
-              </div>
-
-              <div>
-                <span className="text-slate-500 text-[10px]">Staff & Hours:</span>
-                <p className="font-bold text-emerald-400">{selectedRosterForReview.totalStaffCount} Staff Members</p>
-                <p className="text-[10px] text-slate-400">{selectedRosterForReview.totalPlannedHours} Planned Hours</p>
-              </div>
-            </div>
-
-            {/* File Info & Export/Print Actions */}
-            <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-950 p-3 rounded-xl border border-slate-800 text-xs">
-              <div className="flex items-center gap-3">
-                <FileSpreadsheet className="h-6 w-6 text-emerald-400" />
-                <div>
-                  <p className="font-mono font-bold text-white">{selectedRosterForReview.fileName}</p>
-                  <p className="text-[10px] text-slate-400">Size: {selectedRosterForReview.fileSize}</p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-2 sm:p-4 overflow-y-auto">
+          <div className="w-full max-w-7xl max-h-[94vh] overflow-y-auto rounded-3xl bg-slate-900 border border-slate-700 p-4 sm:p-6 shadow-2xl space-y-5">
+            {/* Header */}
+            <div className="flex items-start justify-between border-b border-slate-800 pb-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-md bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                    Official Submitted Duty Matrix
+                  </span>
+                  <span className="text-[10px] text-slate-400">
+                    Catholic Health Service Trust (CHST) • Pope John Paul II Medical Centre - Jamasi
+                  </span>
                 </div>
+                <h2 className="text-lg sm:text-xl font-black text-white tracking-tight flex items-center gap-2.5">
+                  <Building2 className="h-6 w-6 text-emerald-400 shrink-0" />
+                  {selectedRosterForReview.department.toUpperCase()} — STAFF DUTY ROASTER ({selectedRosterForReview.month.toUpperCase()} {selectedRosterForReview.year})
+                </h2>
+                <p className="text-xs text-slate-400 flex flex-wrap items-center gap-3">
+                  <span><strong>Unit:</strong> {selectedRosterForReview.unit}</span>
+                  <span>•</span>
+                  <span><strong>Prepared By:</strong> {selectedRosterForReview.preparedBy} ({selectedRosterForReview.preparedByRole})</span>
+                  <span>•</span>
+                  <span><strong>Submitted:</strong> {selectedRosterForReview.submissionDate}</span>
+                </p>
               </div>
 
-              <div className="flex items-center gap-2 print:hidden">
+              <div className="flex items-center gap-2">
                 <button
-                  onClick={() => handlePrintDepartmentRoster(selectedRosterForReview)}
-                  className="flex items-center gap-1.5 rounded-lg bg-sky-600/90 hover:bg-sky-600 px-3 py-1.5 text-xs font-bold text-white transition shadow"
-                  title="Print this Official Department Duty Roster Document"
+                  onClick={() => setIsPrintModalOpen(true)}
+                  className="flex items-center gap-1.5 rounded-xl bg-sky-600 hover:bg-sky-500 px-3.5 py-2 text-xs font-bold text-white transition shadow shadow-sky-950/40"
+                  title="Print Official Roaster Matrix"
                 >
-                  <Printer className="h-4 w-4" /> Print Roster
+                  <Printer className="h-4 w-4" /> Print Roaster Matrix
                 </button>
                 <button
                   onClick={() => handleDownloadRosterCSV(selectedRosterForReview)}
-                  className="flex items-center gap-1.5 rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-bold text-slate-200 hover:bg-slate-700 border border-slate-700 transition"
+                  className="flex items-center gap-1.5 rounded-xl bg-slate-800 px-3.5 py-2 text-xs font-bold text-slate-200 hover:bg-slate-700 border border-slate-700 transition"
                 >
                   <Download className="h-4 w-4 text-emerald-400" /> Export CSV
+                </button>
+                <button
+                  onClick={() => setSelectedRosterForReview(null)}
+                  className="rounded-xl bg-slate-800 p-2 text-slate-400 hover:text-white hover:bg-slate-700 transition"
+                >
+                  <X className="h-5 w-5" />
                 </button>
               </div>
             </div>
 
-            {/* Roster Grid Preview */}
-            <div className="space-y-2">
-              <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider">
-                Extracted Monthly Staff Schedule Grid
-              </h4>
-
-              <div className="rounded-xl border border-slate-800 bg-slate-950 overflow-hidden">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-900 text-slate-400 uppercase tracking-wider font-semibold border-b border-slate-800">
-                    <tr>
-                      <th className="px-4 py-2.5">Staff Name</th>
-                      <th className="px-4 py-2.5">Role</th>
-                      <th className="px-4 py-2.5">Week 1</th>
-                      <th className="px-4 py-2.5">Week 2</th>
-                      <th className="px-4 py-2.5">Week 3</th>
-                      <th className="px-4 py-2.5">Week 4</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800 text-slate-200">
-                    {(selectedRosterForReview.dutyRosterGrid || [
-                      { staffName: 'Elena Rostova', role: 'Senior Nurse', week1: 'Morning (07-15)', week2: 'Night ICU (23-07)', week3: 'Off / Leave', week4: 'Evening (15-23)' },
-                      { staffName: 'Dr. Sarah Jenkins', role: 'Attending Physician', week1: '12h Emergency (07-19)', week2: 'Morning (07-15)', week3: 'Night ICU (23-07)', week4: 'On-Call 24h' },
-                    ]).map((row, idx) => (
-                      <tr key={idx} className="hover:bg-slate-900/60">
-                        <td className="px-4 py-2.5 font-bold text-white">{row.staffName}</td>
-                        <td className="px-4 py-2.5 text-slate-400">{row.role}</td>
-                        <td className="px-4 py-2.5 font-mono text-emerald-400">{row.week1}</td>
-                        <td className="px-4 py-2.5 font-mono text-amber-300">{row.week2}</td>
-                        <td className="px-4 py-2.5 font-mono text-slate-300">{row.week3}</td>
-                        <td className="px-4 py-2.5 font-mono text-teal-300">{row.week4}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+            {/* Quick Metrics Bar */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-950 p-3.5 rounded-2xl border border-slate-800 text-xs">
+              <div>
+                <span className="text-slate-500 text-[10px] uppercase font-bold block">Hospital & Ward</span>
+                <p className="font-bold text-slate-200 truncate">{selectedHospital.name}</p>
+                <p className="text-[10px] text-emerald-400 truncate">{selectedRosterForReview.unit}</p>
+              </div>
+              <div>
+                <span className="text-slate-500 text-[10px] uppercase font-bold block">Total Staff Deployed</span>
+                <p className="font-extrabold text-white text-sm">30 Vertical Staff Members</p>
+                <p className="text-[10px] text-slate-400">Clinical Shifts (M / A / N / O)</p>
+              </div>
+              <div>
+                <span className="text-slate-500 text-[10px] uppercase font-bold block">File Reference</span>
+                <p className="font-mono text-slate-200 truncate text-[11px]">{selectedRosterForReview.fileName}</p>
+                <p className="text-[10px] text-slate-400">{selectedRosterForReview.fileSize}</p>
+              </div>
+              <div>
+                <span className="text-slate-500 text-[10px] uppercase font-bold block">HR Audit Status</span>
+                <span
+                  className={`inline-flex items-center gap-1.5 font-extrabold text-xs px-2.5 py-1 rounded-lg border ${
+                    selectedRosterForReview.status === 'Approved'
+                      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                      : selectedRosterForReview.status === 'Returned for Revision'
+                      ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                      : 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                  }`}
+                >
+                  {selectedRosterForReview.status === 'Approved' && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />}
+                  {selectedRosterForReview.status === 'Returned for Revision' && <AlertCircle className="h-3.5 w-3.5 text-rose-400" />}
+                  {(selectedRosterForReview.status === 'Pending Verification' || selectedRosterForReview.status === 'Pending HR Approval') && (
+                    <>
+                      <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse"></span>
+                      <Clock className="h-3.5 w-3.5 text-amber-400" />
+                    </>
+                  )}
+                  {selectedRosterForReview.status === 'Pending HR Approval' ? 'Pending Verification' : selectedRosterForReview.status}
+                </span>
+                {selectedRosterForReview.reviewedBy && (
+                  <p className="text-[10px] text-slate-400 truncate mt-0.5">By {selectedRosterForReview.reviewedBy}</p>
+                )}
               </div>
             </div>
 
-            {/* Notes or Rejection Reason */}
+            {/* 30-STAFF MONTHLY DUTY ROASTER GRID */}
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h4 className="text-xs font-black text-slate-200 uppercase tracking-wider flex items-center gap-2">
+                  <FileSpreadsheet className="h-4 w-4 text-emerald-400" />
+                  Staff Duty Allocation Matrix (30 Days × 30 Staff)
+                </h4>
+                <div className="flex items-center gap-3 text-[11px]">
+                  <span className="flex items-center gap-1 font-bold text-emerald-400">
+                    <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 inline-block"></span> M = Morning
+                  </span>
+                  <span className="flex items-center gap-1 font-bold text-amber-400">
+                    <span className="h-2.5 w-2.5 rounded-full bg-amber-500 inline-block"></span> A = Afternoon
+                  </span>
+                  <span className="flex items-center gap-1 font-bold text-rose-400">
+                    <span className="h-2.5 w-2.5 rounded-full bg-rose-500 inline-block"></span> N = Night
+                  </span>
+                  <span className="flex items-center gap-1 font-bold text-slate-400">
+                    <span className="h-2.5 w-2.5 rounded-full bg-slate-600 inline-block"></span> O = Off
+                  </span>
+                </div>
+              </div>
+
+              {/* Matrix Table */}
+              {(() => {
+                const matrixStaff = getStaffMatrixForRoster(selectedRosterForReview);
+                const getDailySum = (dayIdx: number, code: string) => {
+                  return matrixStaff.reduce((acc, s) => acc + (s.shifts[dayIdx] === code ? 1 : 0), 0);
+                };
+
+                return (
+                  <div className="rounded-2xl border border-slate-800 bg-slate-950 overflow-hidden shadow-inner">
+                    <div className="overflow-x-auto max-h-[500px]">
+                      <table className="w-full border-collapse text-center text-xs">
+                        <thead className="sticky top-0 z-20 bg-slate-900 border-b-2 border-slate-700 text-slate-300">
+                          {/* Row 1: DATE Header */}
+                          <tr className="bg-slate-950 text-slate-400 font-extrabold text-[11px]">
+                            <th className="sticky left-0 z-30 bg-slate-950 px-3 py-2 text-left font-black text-emerald-400 border-r border-slate-800 min-w-[150px]">
+                              DATE
+                            </th>
+                            <th className="sticky left-[150px] z-30 bg-slate-950 px-2 py-2 text-center font-bold text-slate-300 border-r border-slate-800 w-16">
+                              RANK
+                            </th>
+                            {daysArray.map((d) => (
+                              <th key={d} className="px-1.5 py-1.5 font-mono text-slate-300 border-r border-slate-800/80 min-w-[28px]">
+                                {d}
+                              </th>
+                            ))}
+                          </tr>
+
+                          {/* Row 2: NAMES & Day of Week Header */}
+                          <tr className="bg-slate-900 text-slate-300 font-black text-[10px] border-b border-slate-800">
+                            <th className="sticky left-0 z-30 bg-slate-900 px-3 py-2 text-left font-black text-slate-200 border-r border-slate-800">
+                              NAMES
+                            </th>
+                            <th className="sticky left-[150px] z-30 bg-slate-900 px-2 py-2 text-center font-bold text-slate-300 border-r border-slate-800">
+                              RANK
+                            </th>
+                            {daysArray.map((d) => (
+                              <th key={d} className="px-1.5 py-1 font-bold text-slate-400 border-r border-slate-800/80">
+                                {dayInitials[d - 1]}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+
+                        <tbody className="divide-y divide-slate-800/60 font-medium text-slate-200">
+                          {matrixStaff.map((staff, sIdx) => (
+                            <tr key={staff.id || sIdx} className="hover:bg-slate-900/70 transition">
+                              {/* Staff Name & Phone */}
+                              <td className="sticky left-0 z-10 bg-slate-950/95 hover:bg-slate-900 px-3 py-1.5 text-left font-bold text-slate-100 border-r border-slate-800 whitespace-nowrap">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-[10px] font-mono text-slate-500 w-4">{sIdx + 1}.</span>
+                                  <span className="text-xs text-white">{staff.name}</span>
+                                  <span className="text-[10px] text-slate-400 font-mono">- {staff.phone}</span>
+                                </div>
+                              </td>
+
+                              {/* Rank */}
+                              <td className="sticky left-[150px] z-10 bg-slate-950/95 hover:bg-slate-900 px-2 py-1.5 text-center font-bold border-r border-slate-800 whitespace-nowrap">
+                                <span className="rounded px-1.5 py-0.5 text-[10px] font-extrabold bg-slate-800 text-teal-300 border border-slate-700">
+                                  {staff.rank}
+                                </span>
+                              </td>
+
+                              {/* 30 Day Shift Cells */}
+                              {daysArray.map((d, dIdx) => {
+                                const code = staff.shifts[dIdx] || 'O';
+                                return (
+                                  <td
+                                    key={d}
+                                    className="px-0.5 py-1 border-r border-slate-800/40 text-center font-black font-mono text-xs"
+                                  >
+                                    <span
+                                      className={`inline-block w-6 h-6 leading-6 rounded-md ${
+                                        code === 'M'
+                                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                                          : code === 'A'
+                                          ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                                          : code === 'N'
+                                          ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+                                          : 'text-slate-600 bg-slate-900/40'
+                                      }`}
+                                    >
+                                      {code}
+                                    </span>
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          ))}
+
+                          {/* BOTTOM SUMMARY ROW 1: MORNING TOTAL */}
+                          <tr className="bg-emerald-950/40 font-black text-emerald-300 border-t-2 border-emerald-800/60">
+                            <td className="sticky left-0 z-10 bg-emerald-950/90 px-3 py-2 text-left font-black text-emerald-300 border-r border-emerald-800/60 uppercase">
+                              MORNING TOTAL
+                            </td>
+                            <td className="sticky left-[150px] z-10 bg-emerald-950/90 px-2 py-2 text-center font-black text-emerald-400 border-r border-emerald-800/60">
+                              (M)
+                            </td>
+                            {daysArray.map((_, dIdx) => (
+                              <td key={dIdx} className="px-1 py-1.5 font-black font-mono text-xs border-r border-emerald-900/50">
+                                {getDailySum(dIdx, 'M')}
+                              </td>
+                            ))}
+                          </tr>
+
+                          {/* BOTTOM SUMMARY ROW 2: AFTERNOON TOTAL */}
+                          <tr className="bg-amber-950/40 font-black text-amber-300 border-t border-amber-900/40">
+                            <td className="sticky left-0 z-10 bg-amber-950/90 px-3 py-2 text-left font-black text-amber-300 border-r border-amber-900/60 uppercase">
+                              AFTERNOON TOTAL
+                            </td>
+                            <td className="sticky left-[150px] z-10 bg-amber-950/90 px-2 py-2 text-center font-black text-amber-400 border-r border-amber-900/60">
+                              (A)
+                            </td>
+                            {daysArray.map((_, dIdx) => (
+                              <td key={dIdx} className="px-1 py-1.5 font-black font-mono text-xs border-r border-amber-900/50">
+                                {getDailySum(dIdx, 'A')}
+                              </td>
+                            ))}
+                          </tr>
+
+                          {/* BOTTOM SUMMARY ROW 3: NIGHT TOTAL */}
+                          <tr className="bg-rose-950/40 font-black text-rose-300 border-t border-rose-900/40">
+                            <td className="sticky left-0 z-10 bg-rose-950/90 px-3 py-2 text-left font-black text-rose-300 border-r border-rose-900/60 uppercase">
+                              NIGHT TOTAL
+                            </td>
+                            <td className="sticky left-[150px] z-10 bg-rose-950/90 px-2 py-2 text-center font-black text-rose-400 border-r border-rose-900/60">
+                              (N)
+                            </td>
+                            {daysArray.map((_, dIdx) => (
+                              <td key={dIdx} className="px-1 py-1.5 font-black font-mono text-xs border-r border-rose-900/50">
+                                {getDailySum(dIdx, 'N')}
+                              </td>
+                            ))}
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Notes and Revision Blocks */}
             {selectedRosterForReview.notes && (
-              <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 text-xs">
-                <span className="font-bold text-slate-400 block">Unit Head Submission Notes:</span>
-                <p className="text-slate-300 mt-1">{selectedRosterForReview.notes}</p>
+              <div className="p-3.5 bg-slate-950 rounded-2xl border border-slate-800 text-xs">
+                <span className="font-bold text-slate-400 block mb-1">Unit Head Handover & Clinical Constraints:</span>
+                <p className="text-slate-300">{selectedRosterForReview.notes}</p>
               </div>
             )}
 
             {selectedRosterForReview.rejectionNotes && (
-              <div className="p-3 bg-rose-950/40 rounded-xl border border-rose-500/30 text-xs">
-                <span className="font-bold text-rose-300 block">HR Revision Instructions:</span>
-                <p className="text-rose-200 mt-1">{selectedRosterForReview.rejectionNotes}</p>
+              <div className="p-3.5 bg-rose-950/40 rounded-2xl border border-rose-500/30 text-xs">
+                <span className="font-bold text-rose-300 block mb-1">HR Audit Revision Instructions:</span>
+                <p className="text-rose-200">{selectedRosterForReview.rejectionNotes}</p>
               </div>
             )}
 
-            {/* HR Decision Controls */}
-            <div className="flex items-center justify-between border-t border-slate-800 pt-3">
-              <span className="text-xs text-slate-400">
-                Current Status:{' '}
-                <strong className="text-white">{selectedRosterForReview.status}</strong>
-              </span>
+            {/* Modal Actions */}
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-800 pt-4">
+              <div className="flex items-center gap-2 text-xs text-slate-400">
+                <span>Roster Status:</span>
+                <span className="font-black text-white">{selectedRosterForReview.status}</span>
+              </div>
 
-              <div className="flex gap-2">
-                {selectedRosterForReview.status === 'Pending HR Approval' && (
+              <div className="flex flex-wrap items-center gap-2">
+                {(selectedRosterForReview.status === 'Pending Verification' || selectedRosterForReview.status === 'Pending HR Approval') && isHeadOfFacilityOrHr && (
                   <>
                     <button
                       onClick={() => {
                         updateMonthlyUnitRosterStatus(selectedRosterForReview.id, 'Approved');
                         setSelectedRosterForReview(null);
                       }}
-                      className="px-4 py-2 rounded-xl bg-emerald-600 text-white font-bold text-xs hover:bg-emerald-500 transition shadow"
+                      className="px-5 py-2.5 rounded-xl bg-emerald-600 text-white font-bold text-xs hover:bg-emerald-500 transition shadow-lg shadow-emerald-950/40 flex items-center gap-1.5"
                     >
-                      Approve & Sign Off
+                      <Check className="h-4 w-4" /> Approve & Sign Off Duty Roaster
                     </button>
 
                     <button
                       onClick={() => {
                         setReturningRosterId(selectedRosterForReview.id);
                       }}
-                      className="px-4 py-2 rounded-xl bg-rose-950/80 border border-rose-500/30 text-rose-300 font-bold text-xs hover:bg-rose-900 transition"
+                      className="px-4 py-2.5 rounded-xl bg-rose-950/80 border border-rose-500/30 text-rose-300 font-bold text-xs hover:bg-rose-900 transition flex items-center gap-1.5"
                     >
-                      Return for Revision
+                      <XCircle className="h-4 w-4" /> Request Revision
                     </button>
                   </>
                 )}
 
                 <button
                   onClick={() => setSelectedRosterForReview(null)}
-                  className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 font-semibold text-xs hover:bg-slate-700"
+                  className="px-4 py-2.5 rounded-xl bg-slate-800 text-slate-300 font-semibold text-xs hover:bg-slate-700"
                 >
-                  Close Preview
+                  Close Matrix
                 </button>
               </div>
             </div>
           </div>
         </div>
+      )}
+
+      {/* PRINT MODAL EMBED */}
+      {selectedRosterForReview && isPrintModalOpen && (
+        <PrintDutyRoasterModal
+          isOpen={isPrintModalOpen}
+          onClose={() => setIsPrintModalOpen(false)}
+          month={selectedRosterForReview.month}
+          year={selectedRosterForReview.year}
+          department={selectedRosterForReview.department}
+          preparedBy={selectedRosterForReview.preparedBy}
+          staffList={getStaffMatrixForRoster(selectedRosterForReview)}
+          hrApprovalStatus={{
+            status: selectedRosterForReview.status,
+            approvedBy: selectedRosterForReview.reviewedBy,
+            approvedAt: selectedRosterForReview.reviewedDate,
+            notes: selectedRosterForReview.rejectionNotes,
+          }}
+          hospitalName={selectedHospital.name}
+        />
       )}
 
       {/* MODAL 3: RETURN FOR REVISION */}

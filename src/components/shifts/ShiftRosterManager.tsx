@@ -23,11 +23,15 @@ import {
   UploadCloud,
   Grid,
   Printer,
+  PhoneCall,
+  MessageSquare,
 } from 'lucide-react';
 import { useHrms } from '../../context/HrmsContext';
 import { ShiftRoster, ShiftSwapRequest } from '../../types/hrms';
+import { transferDepartmentStaffToActiveShifts } from '../../utils/rosterTransferUtils';
 import { DepartmentRosterUploader } from './DepartmentRosterUploader';
 import { MonthlyDutyRoasterGrid } from './MonthlyDutyRoasterGrid';
+import { WhatsAppSmsGatewayModal } from '../notifications/WhatsAppSmsGatewayModal';
 
 export const ShiftRosterManager: React.FC = () => {
   const {
@@ -43,6 +47,7 @@ export const ShiftRosterManager: React.FC = () => {
     isHeadOfFacilityOrHr,
     currentUserDepartment,
     canAccessDepartmentRoster,
+    showToast,
   } = useHrms();
 
   // Active Main Tab
@@ -79,6 +84,9 @@ export const ShiftRosterManager: React.FC = () => {
 
   // Email Log Viewer Modal State
   const [viewingEmailLogsSwap, setViewingEmailLogsSwap] = useState<ShiftSwapRequest | null>(null);
+
+  // WhatsApp / SMS Emergency Call-In Modal State
+  const [isEmergencyModalOpen, setIsEmergencyModalOpen] = useState(false);
 
   // Search & Filter State for Swaps
   const [searchTerm, setSearchTerm] = useState('');
@@ -140,6 +148,22 @@ export const ShiftRosterManager: React.FC = () => {
     }
 
     setIsSwapModalOpen(true);
+  };
+
+  // Transfer departmental staff to active shifts
+  const handleAutoTransferStaffToActiveShifts = () => {
+    const targetDept = currentUserDepartment || 'Intensive Care Unit (ICU)';
+    const newShifts = transferDepartmentStaffToActiveShifts(targetDept, employees);
+    if (newShifts.length === 0) {
+      showToast('info', 'No Staff Found', `No registered staff found in ${targetDept} to transfer.`);
+      return;
+    }
+    newShifts.forEach((s) => addRoster(s));
+    showToast(
+      'success',
+      'Department Staff Transferred to Shifts',
+      `Transferred and scheduled ${newShifts.length} departmental staff members for ${targetDept}.`
+    );
   };
 
   const handleTargetEmpChange = (empId: string) => {
@@ -234,6 +258,13 @@ export const ShiftRosterManager: React.FC = () => {
 
         <div className="flex flex-wrap items-center gap-2 print:hidden">
           <button
+            onClick={() => setIsEmergencyModalOpen(true)}
+            className="flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 px-4 py-2.5 text-xs font-black text-white shadow-lg shadow-rose-950/40 transition active:scale-95 border border-rose-400/30"
+            title="Dispatch Emergency Staff Call-Ins via WhatsApp and Cellular SMS"
+          >
+            <PhoneCall className="h-4 w-4 animate-bounce" /> Emergency Call-In (SMS / WA)
+          </button>
+          <button
             onClick={() => window.print()}
             className="flex items-center justify-center gap-2 rounded-xl bg-slate-800 px-4 py-2.5 text-xs font-semibold text-slate-200 border border-slate-700 hover:bg-slate-700 hover:text-white transition shadow-sm"
             title="Print Shift Schedules & Roster Tables"
@@ -304,9 +335,10 @@ export const ShiftRosterManager: React.FC = () => {
           }`}
         >
           <UploadCloud className="h-4 w-4" /> Roster Documents & Uploads
-          {visibleMonthlyRosters.filter((r) => r.status === 'Pending HR Approval').length > 0 && (
-            <span className="ml-1 rounded-full bg-amber-500 px-2 py-0.5 text-[10px] font-bold text-slate-950">
-              {visibleMonthlyRosters.filter((r) => r.status === 'Pending HR Approval').length} HR Pending
+          {visibleMonthlyRosters.filter((r) => r.status === 'Pending Verification' || r.status === 'Pending HR Approval').length > 0 && (
+            <span className="ml-1 rounded-full bg-amber-500 px-2 py-0.5 text-[10px] font-bold text-slate-950 flex items-center gap-1 shadow-sm">
+              <Clock className="h-3 w-3" />
+              {visibleMonthlyRosters.filter((r) => r.status === 'Pending Verification' || r.status === 'Pending HR Approval').length} Pending Verification
             </span>
           )}
         </button>
@@ -349,17 +381,27 @@ export const ShiftRosterManager: React.FC = () => {
 
           <div className="rounded-2xl border border-slate-700 bg-slate-900 shadow-md overflow-hidden">
             {/* Header Action Bar */}
-            <div className="flex items-center justify-between px-5 py-4 bg-slate-800/80 border-b border-slate-700">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-5 py-4 bg-slate-800/80 border-b border-slate-700">
               <div>
                 <h3 className="text-sm font-bold text-white">Current Active Shift Allocation</h3>
                 <p className="text-xs text-slate-400">Live roster assignments, ward coverage & fatigue indicators</p>
               </div>
-              <button
-                onClick={() => window.print()}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition shadow-sm print:hidden"
-              >
-                <Printer className="h-3.5 w-3.5 text-sky-400" /> Print Active Roster
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleAutoTransferStaffToActiveShifts}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-semibold border border-emerald-500/30 transition shadow-sm"
+                  title="Automatically transfer all departmental staff into scheduled shifts"
+                >
+                  <ArrowRightLeft className="h-3.5 w-3.5 text-emerald-200" /> Auto-Transfer Staff
+                </button>
+                <button
+                  onClick={() => window.print()}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition shadow-sm print:hidden"
+                >
+                  <Printer className="h-3.5 w-3.5 text-sky-400" /> Print Active Roster
+                </button>
+              </div>
             </div>
 
             <div className="overflow-x-auto">
@@ -379,7 +421,22 @@ export const ShiftRosterManager: React.FC = () => {
                   {visibleRosters.length === 0 ? (
                     <tr>
                       <td colSpan={7} className="px-5 py-8 text-center text-slate-400">
-                        No active shifts currently scheduled for {currentUserDepartment}.
+                        <div className="flex flex-col items-center justify-center gap-2 py-4">
+                          <Users className="h-8 w-8 text-slate-500 mb-1" />
+                          <p className="text-sm font-semibold text-slate-300">
+                            No active shifts currently scheduled for {currentUserDepartment}.
+                          </p>
+                          <p className="text-xs text-slate-400 max-w-md">
+                            You can automatically transfer departmental staff into scheduled shifts or use the Monthly Duty Roaster tab to inspect the 30-day roster matrix.
+                          </p>
+                          <button
+                            type="button"
+                            onClick={handleAutoTransferStaffToActiveShifts}
+                            className="mt-2 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition shadow"
+                          >
+                            <ArrowRightLeft className="h-4 w-4" /> Transfer Departmental Staff to Shifts
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ) : (
@@ -909,6 +966,13 @@ export const ShiftRosterManager: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Emergency Call-In WhatsApp & SMS Gateway Modal */}
+      <WhatsAppSmsGatewayModal
+        isOpen={isEmergencyModalOpen}
+        onClose={() => setIsEmergencyModalOpen(false)}
+        defaultTab="emergency_callin"
+      />
     </div>
   );
 };

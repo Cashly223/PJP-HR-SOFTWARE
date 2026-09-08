@@ -25,14 +25,17 @@ import {
   Workflow,
 } from 'lucide-react';
 import { useHrms } from '../../context/HrmsContext';
-import { PerformanceReview, ClinicalCompetency, PerformanceGoal } from '../../types/hrms';
+import { PerformanceReview, ClinicalCompetency, PerformanceGoal, PerformanceAppraisal } from '../../types/hrms';
 import { AutomatedAppraisalWorkflow } from './AutomatedAppraisalWorkflow';
+import { CatholicHealthAppraisalFormModal } from './CatholicHealthAppraisalFormModal';
 
 export const PerformanceManagement: React.FC = () => {
   const { performanceReviews, employees, addPerformanceReview, updatePerformanceReview, activeRole, currentUser } = useHrms();
 
   // Active view: 'workflow' (Automated Appraisal Workflow) vs 'competencies' (Clinical Competencies & 360 Feedback)
   const [activeTab, setActiveTab] = useState<'workflow' | 'competencies'>('workflow');
+  const [isCatholicFormModalOpen, setIsCatholicFormModalOpen] = useState(false);
+  const [selectedAppraisalForForm, setSelectedAppraisalForForm] = useState<PerformanceAppraisal | null>(null);
 
   const isHRorAdmin = ['super_admin', 'facility_head', 'hr_director', 'hr_manager', 'dept_head', 'unit_head'].includes(activeRole);
   const currentEmpName = currentUser?.name || '';
@@ -163,6 +166,42 @@ export const PerformanceManagement: React.FC = () => {
               <Plus className="h-4 w-4" /> Start Review Form
             </button>
           )}
+        </div>
+      </div>
+
+      {/* Catholic Health Service Trust Ghana Appraisal Form Action Banner */}
+      <div className="rounded-2xl border border-amber-500/40 bg-gradient-to-r from-amber-950/40 via-slate-900 to-emerald-950/40 p-4 sm:p-5 shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex items-center gap-3.5">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-amber-500/20 text-amber-400 border border-amber-500/30">
+            <Award className="h-6 w-6" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="rounded-full bg-amber-400/20 px-2.5 py-0.5 text-[10px] font-black uppercase text-amber-300 border border-amber-400/30 tracking-wider">
+                Official Staff Appraisal Form
+              </span>
+              <span className="text-xs text-slate-300 font-semibold">Catholic Health Service Trust, Ghana</span>
+            </div>
+            <h2 className="text-sm sm:text-base font-bold text-white mt-0.5">
+              Annual Performance Appraisal Form (Sections A to F)
+            </h2>
+            <p className="text-xs text-slate-400 max-w-3xl">
+              Complete official personal data, agree 3-5 period objectives (Q/N=A), rate current performance factors (Q/5=S), formulate development plans, and execute multi-tier digital signatures and print official A4 documents.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={() => {
+              setSelectedAppraisalForForm(null);
+              setIsCatholicFormModalOpen(true);
+            }}
+            className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-rose-500 hover:from-amber-400 hover:to-rose-400 px-4 py-2.5 text-xs font-black text-slate-950 shadow-md transition active:scale-95"
+          >
+            <FileText className="h-4 w-4" />
+            <span>Fill Official Appraisal Form</span>
+          </button>
         </div>
       </div>
 
@@ -622,6 +661,16 @@ export const PerformanceManagement: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Catholic Health Service Trust Appraisal Form Modal */}
+      <CatholicHealthAppraisalFormModal
+        isOpen={isCatholicFormModalOpen}
+        onClose={() => {
+          setIsCatholicFormModalOpen(false);
+          setSelectedAppraisalForForm(null);
+        }}
+        appraisal={selectedAppraisalForForm}
+      />
     </div>
   );
 };

@@ -19,6 +19,10 @@ import {
   Upload,
   FileCheck,
   Lock,
+  Edit3,
+  AlertTriangle,
+  AlertCircle,
+  X,
 } from 'lucide-react';
 import { useHrms } from '../../context/HrmsContext';
 import { Employee } from '../../types/hrms';
@@ -32,15 +36,23 @@ export const DepartmentLeadershipManager: React.FC = () => {
     assignUnitHead,
     addUnitToDepartment,
     addDepartment,
+    updateDepartment,
+    deleteDepartment,
+    deleteUnit,
     setFacilityHead,
     uploadEmployeeDigitalSignature,
     activeRole,
     currentUser,
+    clearAllDepartments,
   } = useHrms();
 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedDeptFilter, setSelectedDeptFilter] = useState('All');
   
+  // Clear All Departments confirmation modal state
+  const [isClearAllDeptsModalOpen, setIsClearAllDeptsModalOpen] = useState(false);
+  const [isClearingAllDepts, setIsClearingAllDepts] = useState(false);
+
   // Vault modal state
   const [isVaultModalOpen, setIsVaultModalOpen] = useState(false);
   const [vaultTargetEmp, setVaultTargetEmp] = useState<Employee | null>(null);
@@ -57,6 +69,51 @@ export const DepartmentLeadershipManager: React.FC = () => {
     departmentCode: '',
     headEmpId: '',
     units: [{ unitName: '', unitHeadId: '' }],
+  });
+
+  // Modal state for Edit Department
+  const [editDeptModal, setEditDeptModal] = useState<{
+    open: boolean;
+    originalDeptName: string;
+    departmentName: string;
+    departmentCode: string;
+    headEmpId: string;
+    units: Array<{ id?: string; unitName: string; unitHeadId: string }>;
+  }>({
+    open: false,
+    originalDeptName: '',
+    departmentName: '',
+    departmentCode: '',
+    headEmpId: '',
+    units: [],
+  });
+
+  // Modal state for Delete Department
+  const [deleteDeptModal, setDeleteDeptModal] = useState<{
+    open: boolean;
+    departmentName: string;
+    departmentCode: string;
+    staffCount: number;
+    reassignToDept: string;
+  }>({
+    open: false,
+    departmentName: '',
+    departmentCode: '',
+    staffCount: 0,
+    reassignToDept: 'General Medicine',
+  });
+
+  // Modal state for Delete Unit
+  const [deleteUnitModal, setDeleteUnitModal] = useState<{
+    open: boolean;
+    departmentName: string;
+    unitIdOrName: string;
+    unitName: string;
+  }>({
+    open: false,
+    departmentName: '',
+    unitIdOrName: '',
+    unitName: '',
   });
 
   const handleAddUnitRow = () => {
@@ -269,6 +326,111 @@ export const DepartmentLeadershipManager: React.FC = () => {
     });
   };
 
+  const handleOpenEditDept = (dept: (typeof departmentLeadership)[0]) => {
+    setEditDeptModal({
+      open: true,
+      originalDeptName: dept.departmentName,
+      departmentName: dept.departmentName,
+      departmentCode: dept.departmentCode || '',
+      headEmpId: dept.departmentHeadId || '',
+      units: (dept.units || []).map((u) => ({
+        id: u.id,
+        unitName: u.unitName,
+        unitHeadId: u.unitHeadId || '',
+      })),
+    });
+  };
+
+  const handleEditAddUnitRow = () => {
+    setEditDeptModal((prev) => ({
+      ...prev,
+      units: [...prev.units, { unitName: '', unitHeadId: '' }],
+    }));
+  };
+
+  const handleEditRemoveUnitRow = (index: number) => {
+    setEditDeptModal((prev) => ({
+      ...prev,
+      units: prev.units.filter((_, i) => i !== index),
+    }));
+  };
+
+  const handleEditUpdateUnitRow = (index: number, field: 'unitName' | 'unitHeadId', value: string) => {
+    setEditDeptModal((prev) => {
+      const copy = [...prev.units];
+      copy[index] = { ...copy[index], [field]: value };
+      return { ...prev, units: copy };
+    });
+  };
+
+  const handleSaveEditDept = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editDeptModal.departmentName.trim()) {
+      showToast('Department name cannot be empty');
+      return;
+    }
+    const validUnits = editDeptModal.units.filter((u) => u.unitName.trim().length > 0);
+    updateDepartment(editDeptModal.originalDeptName, {
+      departmentName: editDeptModal.departmentName.trim(),
+      departmentCode: editDeptModal.departmentCode.trim() || 'DEPT',
+      departmentHeadId: editDeptModal.headEmpId || undefined,
+      units: validUnits.map((u) => ({
+        id: u.id,
+        unitName: u.unitName.trim(),
+        unitHeadId: u.unitHeadId || undefined,
+      })),
+    });
+    setEditDeptModal({
+      open: false,
+      originalDeptName: '',
+      departmentName: '',
+      departmentCode: '',
+      headEmpId: '',
+      units: [],
+    });
+    showToast(`Updated department '${editDeptModal.departmentName}'`);
+  };
+
+  const handleOpenDeleteDept = (dept: (typeof departmentLeadership)[0]) => {
+    const staffCount = employees.filter((e) => e.department === dept.departmentName).length;
+    const availableDepts = departmentLeadership
+      .filter((d) => d.departmentName.toLowerCase() !== dept.departmentName.toLowerCase())
+      .map((d) => d.departmentName);
+    const fallbackDept = availableDepts[0] || 'General Administration';
+
+    setDeleteDeptModal({
+      open: true,
+      departmentName: dept.departmentName,
+      departmentCode: dept.departmentCode || '',
+      staffCount,
+      reassignToDept: fallbackDept,
+    });
+  };
+
+  const handleConfirmDeleteDept = () => {
+    deleteDepartment(deleteDeptModal.departmentName, deleteDeptModal.reassignToDept);
+    setDeleteDeptModal({
+      open: false,
+      departmentName: '',
+      departmentCode: '',
+      staffCount: 0,
+      reassignToDept: 'General Medicine',
+    });
+    showToast(`Department '${deleteDeptModal.departmentName}' deleted`);
+  };
+
+  const handleConfirmDeleteUnit = () => {
+    if (!deleteUnitModal.departmentName || !deleteUnitModal.unitIdOrName) return;
+    deleteUnit(deleteUnitModal.departmentName, deleteUnitModal.unitIdOrName);
+    setDeleteUnitModal({
+      open: false,
+      departmentName: '',
+      unitIdOrName: '',
+      unitName: '',
+    });
+    showToast(`Unit '${deleteUnitModal.unitName}' removed`);
+  };
+
   // Facility Head reference (shared across hospital)
   const currentFacilityHead = (departmentLeadership || [])[0]?.facilityHeadName
     ? {
@@ -435,12 +597,45 @@ export const DepartmentLeadershipManager: React.FC = () => {
           >
             <Plus className="h-4 w-4" /> (ADD DEPARTMENT)
           </button>
+
+          {isHR && departmentLeadership.length > 0 && (
+            <button
+              onClick={() => setIsClearAllDeptsModalOpen(true)}
+              className="flex items-center gap-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 px-3.5 py-2 text-xs font-bold shadow transition active:scale-95 whitespace-nowrap"
+              title="Delete all departments to reconfigure hospital organizational structure"
+            >
+              <Trash2 className="h-4 w-4" /> Delete All Departments
+            </button>
+          )}
         </div>
 
         <div className="text-xs font-medium text-slate-500 dark:text-slate-400">
           Showing <strong className="text-slate-800 dark:text-slate-200">{filteredLeaderships.length}</strong> Departments & Units
         </div>
       </div>
+
+      {/* Empty State when no departments exist */}
+      {filteredLeaderships.length === 0 && (
+        <div className="rounded-3xl border-2 border-dashed border-slate-300 dark:border-slate-800 bg-white dark:bg-slate-900/60 p-10 text-center space-y-4 shadow-sm">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-500/10 text-amber-500 border border-amber-500/30">
+            <Building2 className="h-8 w-8" />
+          </div>
+          <div className="max-w-md mx-auto space-y-1.5">
+            <h3 className="text-base font-bold text-slate-900 dark:text-white">
+              No Departments Found in Hospital Registry
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              All departments have been cleared or no departments match your search. HR can create custom departments and clinical units dynamically as the hospital expands.
+            </p>
+          </div>
+          <button
+            onClick={() => setIsAddDeptModalOpen(true)}
+            className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 px-5 py-2.5 text-xs font-bold text-white shadow-lg shadow-emerald-600/20 transition"
+          >
+            <Plus className="h-4 w-4" /> (ADD FIRST DEPARTMENT)
+          </button>
+        </div>
+      )}
 
       {/* Department Leadership Cards */}
       <div className="grid grid-cols-1 gap-6">
@@ -454,7 +649,7 @@ export const DepartmentLeadershipManager: React.FC = () => {
               className="rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 shadow-sm overflow-hidden"
             >
               {/* Department Header Bar */}
-              <div className="bg-slate-50 dark:bg-slate-800/80 p-5 border-b border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="bg-slate-50 dark:bg-slate-800/80 p-5 border-b border-slate-200 dark:border-slate-800 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
                   <div className="p-2.5 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
                     <Building2 className="h-6 w-6" />
@@ -474,64 +669,89 @@ export const DepartmentLeadershipManager: React.FC = () => {
                   </div>
                 </div>
 
-                {/* HOD Card & HR Action */}
-                <div className="flex items-center gap-3 bg-white dark:bg-slate-900 p-3 rounded-xl border border-indigo-100 dark:border-slate-700">
-                  <div className="relative">
-                    <img
-                      src={
-                        deptHeadEmp?.photo ||
-                        'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?w=150&auto=format&fit=crop&q=80'
-                      }
-                      alt={dept.departmentHeadName || 'HOD'}
-                      className="h-10 w-10 rounded-full object-cover ring-2 ring-indigo-500"
-                    />
-                    <Crown className="h-3.5 w-3.5 text-amber-400 absolute -top-1 -right-1 fill-amber-400" />
-                  </div>
+                <div className="flex flex-wrap items-center gap-3">
+                  {/* HOD Card & HR Action */}
+                  <div className="flex items-center gap-3 bg-white dark:bg-slate-900 p-3 rounded-xl border border-indigo-100 dark:border-slate-700">
+                    <div className="relative">
+                      <img
+                        src={
+                          deptHeadEmp?.photo ||
+                          'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?w=150&auto=format&fit=crop&q=80'
+                        }
+                        alt={dept.departmentHeadName || 'HOD'}
+                        className="h-10 w-10 rounded-full object-cover ring-2 ring-indigo-500"
+                      />
+                      <Crown className="h-3.5 w-3.5 text-amber-400 absolute -top-1 -right-1 fill-amber-400" />
+                    </div>
 
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider flex items-center gap-1">
-                        <Award className="h-3 w-3" /> Head of Department (HOD - Tier 2)
-                      </span>
-                      {deptHeadEmp && (
-                        hasHODSignature ? (
-                          <span className="px-1.5 py-0.2 rounded text-[8px] font-black uppercase bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 flex items-center gap-0.5">
-                            <FileCheck className="h-2.5 w-2.5" /> Sig Verified
-                          </span>
-                        ) : (
-                          <span className="px-1.5 py-0.2 rounded text-[8px] font-black uppercase bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
-                            Sig Missing
-                          </span>
-                        )
-                      )}
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider flex items-center gap-1">
+                          <Award className="h-3 w-3" /> Head of Department (HOD - Tier 2)
+                        </span>
+                        {deptHeadEmp && (
+                          hasHODSignature ? (
+                            <span className="px-1.5 py-0.2 rounded text-[8px] font-black uppercase bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 flex items-center gap-0.5">
+                              <FileCheck className="h-2.5 w-2.5" /> Sig Verified
+                            </span>
+                          ) : (
+                            <span className="px-1.5 py-0.2 rounded text-[8px] font-black uppercase bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                              Sig Missing
+                            </span>
+                          )
+                        )}
+                      </div>
+                      <div className="text-xs font-bold text-slate-900 dark:text-slate-100">
+                        {dept.departmentHeadName || 'Unassigned (Select HOD)'}
+                      </div>
+                      <div className="text-[10px] text-slate-500 dark:text-slate-400">
+                        {dept.departmentHeadEmail || 'Pending HR Assignment'}
+                      </div>
                     </div>
-                    <div className="text-xs font-bold text-slate-900 dark:text-slate-100">
-                      {dept.departmentHeadName || 'Unassigned (Select HOD)'}
-                    </div>
-                    <div className="text-[10px] text-slate-500 dark:text-slate-400">
-                      {dept.departmentHeadEmail || 'Pending HR Assignment'}
-                    </div>
-                  </div>
 
-                  {isHR && (
-                    <div className="flex items-center gap-1.5 ml-2">
-                      {deptHeadEmp && !hasHODSignature && (
+                    {isHR && (
+                      <div className="flex items-center gap-1.5 ml-2">
+                        {deptHeadEmp && !hasHODSignature && (
+                          <button
+                            onClick={() => {
+                              setVaultTargetEmp(deptHeadEmp);
+                              setIsVaultModalOpen(true);
+                            }}
+                            className="rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30 p-1.5 text-[11px] font-bold hover:bg-amber-500/20"
+                            title="Upload official signature for HOD"
+                          >
+                            <PenTool className="h-3.5 w-3.5" />
+                          </button>
+                        )}
                         <button
-                          onClick={() => {
-                            setVaultTargetEmp(deptHeadEmp);
-                            setIsVaultModalOpen(true);
-                          }}
-                          className="rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30 p-1.5 text-[11px] font-bold hover:bg-amber-500/20"
-                          title="Upload official signature for HOD"
+                          onClick={() => handleOpenAssignModal('dept_head', dept.departmentName, undefined, dept.departmentHeadId)}
+                          className="rounded-lg bg-indigo-600 px-3 py-1.5 text-[11px] font-bold text-white shadow hover:bg-indigo-500 transition whitespace-nowrap"
                         >
-                          <PenTool className="h-3.5 w-3.5" />
+                          {dept.departmentHeadId ? 'Change HOD' : 'Assign HOD'}
                         </button>
-                      )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* HR Department Modification & Deletion Actions */}
+                  {isHR && (
+                    <div className="flex items-center gap-2 pl-2 border-l border-slate-200 dark:border-slate-700">
                       <button
-                        onClick={() => handleOpenAssignModal('dept_head', dept.departmentName, undefined, dept.departmentHeadId)}
-                        className="rounded-lg bg-indigo-600 px-3 py-1.5 text-[11px] font-bold text-white shadow hover:bg-indigo-500 transition"
+                        onClick={() => handleOpenEditDept(dept)}
+                        className="flex items-center gap-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 px-3 py-2 text-xs font-bold transition shadow-sm whitespace-nowrap"
+                        title={`Modify department details, code, HOD or units`}
                       >
-                        {dept.departmentHeadId ? 'Change HOD' : 'Assign HOD'}
+                        <Edit3 className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+                        <span>Edit Department</span>
+                      </button>
+
+                      <button
+                        onClick={() => handleOpenDeleteDept(dept)}
+                        className="flex items-center gap-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/30 px-3 py-2 text-xs font-bold transition shadow-sm whitespace-nowrap"
+                        title={`Delete ${dept.departmentName}`}
+                      >
+                        <Trash2 className="h-3.5 w-3.5 text-rose-500" />
+                        <span>Delete</span>
                       </button>
                     </div>
                   )}
@@ -622,9 +842,23 @@ export const DepartmentLeadershipManager: React.FC = () => {
                               onClick={() =>
                                 handleOpenAssignModal('unit_head', dept.departmentName, unit.unitName, unit.unitHeadId)
                               }
-                              className="rounded-lg bg-cyan-600/10 text-cyan-600 dark:text-cyan-400 border border-cyan-500/20 px-3 py-1.5 text-[11px] font-bold hover:bg-cyan-600 hover:text-white transition"
+                              className="rounded-lg bg-cyan-600/10 text-cyan-600 dark:text-cyan-400 border border-cyan-500/20 px-3 py-1.5 text-[11px] font-bold hover:bg-cyan-600 hover:text-white transition whitespace-nowrap"
                             >
                               {unit.unitHeadId ? 'Change HOU' : 'Assign HOU'}
+                            </button>
+                            <button
+                              onClick={() =>
+                                setDeleteUnitModal({
+                                  open: true,
+                                  departmentName: dept.departmentName,
+                                  unitIdOrName: unit.id,
+                                  unitName: unit.unitName,
+                                })
+                              }
+                              className="rounded-lg bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/30 p-1.5 text-[11px] font-bold hover:bg-rose-500/20 transition"
+                              title={`Delete unit ${unit.unitName}`}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
                             </button>
                           </div>
                         )}
@@ -1024,6 +1258,357 @@ export const DepartmentLeadershipManager: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: EDIT / MODIFY DEPARTMENT */}
+      {editDeptModal.open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm overflow-y-auto">
+          <div className="w-full max-w-xl rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="font-extrabold text-base flex items-center gap-2">
+                <Edit3 className="h-5 w-5 text-amber-500" />
+                Modify Department & Units: {editDeptModal.originalDeptName}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setEditDeptModal({ open: false, originalDeptName: '', departmentName: '', departmentCode: '', headEmpId: '', units: [] })}
+                className="text-slate-400 hover:text-slate-600 p-1 text-sm font-bold"
+              >
+                ✕
+              </button>
+            </div>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
+              Update department governance parameters, rename department, modify code, reassign Department Head (HOD), and edit clinical units.
+            </p>
+
+            <form onSubmit={handleSaveEditDept} className="space-y-4 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="sm:col-span-2">
+                  <label className="block font-bold mb-1 text-slate-700 dark:text-slate-300">Department Name *</label>
+                  <input
+                    type="text"
+                    required
+                    value={editDeptModal.departmentName}
+                    onChange={(e) => setEditDeptModal({ ...editDeptModal, departmentName: e.target.value })}
+                    className="w-full rounded-xl border border-slate-300 dark:border-slate-700 p-2.5 dark:bg-slate-800 font-semibold focus:ring-2 focus:ring-amber-500 outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold mb-1 text-slate-700 dark:text-slate-300">Department Code</label>
+                  <input
+                    type="text"
+                    value={editDeptModal.departmentCode}
+                    onChange={(e) => setEditDeptModal({ ...editDeptModal, departmentCode: e.target.value })}
+                    className="w-full rounded-xl border border-slate-300 dark:border-slate-700 p-2.5 dark:bg-slate-800 font-mono focus:ring-2 focus:ring-amber-500 outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold mb-1 text-slate-700 dark:text-slate-300">
+                  Head of Department (HOD - Tier 2 Approver)
+                </label>
+                <select
+                  value={editDeptModal.headEmpId}
+                  onChange={(e) => setEditDeptModal({ ...editDeptModal, headEmpId: e.target.value })}
+                  className="w-full rounded-xl border border-slate-300 dark:border-slate-700 p-2.5 dark:bg-slate-800 font-medium focus:ring-2 focus:ring-amber-500 outline-none"
+                >
+                  <option value="">-- Unassigned (Select HOD) --</option>
+                  {employees.map((emp) => (
+                    <option key={emp.id} value={emp.id}>
+                      {emp.firstName} {emp.lastName} ({emp.jobTitle} • {emp.department})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Units section */}
+              <div className="pt-2 border-t border-slate-200 dark:border-slate-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="font-extrabold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                      <FolderPlus className="h-4 w-4 text-amber-500" />
+                      Department Units & Assigned Unit Heads (HOU)
+                    </h4>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      Add, rename, or reassign Unit Heads for units in this department.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleEditAddUnitRow}
+                    className="flex items-center gap-1 px-3 py-1.5 text-[11px] font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30 rounded-xl hover:bg-amber-500/20 transition"
+                  >
+                    <Plus className="h-3.5 w-3.5" /> Add Unit
+                  </button>
+                </div>
+
+                <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
+                  {editDeptModal.units.map((unitItem, index) => (
+                    <div
+                      key={unitItem.id || index}
+                      className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-2 relative"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-extrabold text-slate-600 dark:text-slate-300">
+                          Unit #{index + 1}
+                        </span>
+                        {editDeptModal.units.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => handleEditRemoveUnitRow(index)}
+                            className="text-red-500 hover:text-red-600 p-1 rounded-lg hover:bg-red-500/10 transition"
+                            title="Remove unit"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 mb-0.5">
+                            Unit Name *
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={unitItem.unitName}
+                            onChange={(e) => handleEditUpdateUnitRow(index, 'unitName', e.target.value)}
+                            className="w-full rounded-lg border border-slate-300 dark:border-slate-700 p-2 dark:bg-slate-900 font-medium focus:ring-2 focus:ring-amber-500 outline-none"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 mb-0.5">
+                            Assigned Unit Head (HOU - Tier 1)
+                          </label>
+                          <select
+                            value={unitItem.unitHeadId}
+                            onChange={(e) => handleEditUpdateUnitRow(index, 'unitHeadId', e.target.value)}
+                            className="w-full rounded-lg border border-slate-300 dark:border-slate-700 p-2 dark:bg-slate-900 font-medium focus:ring-2 focus:ring-amber-500 outline-none"
+                          >
+                            <option value="">-- Select Unit Head --</option>
+                            {employees.map((emp) => (
+                              <option key={emp.id} value={emp.id}>
+                                {emp.firstName} {emp.lastName} ({emp.jobTitle})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-3 border-t border-slate-200 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setEditDeptModal({ open: false, originalDeptName: '', departmentName: '', departmentCode: '', headEmpId: '', units: [] })}
+                  className="rounded-xl border border-slate-300 dark:border-slate-700 px-4 py-2 font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="rounded-xl bg-amber-500 hover:bg-amber-400 px-5 py-2 font-bold text-slate-950 shadow transition flex items-center gap-1.5"
+                >
+                  <CheckCircle2 className="h-4 w-4" />
+                  Save Department Changes
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: DELETE DEPARTMENT CONFIRMATION */}
+      {deleteDeptModal.open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-900 border border-rose-500/30 text-slate-900 dark:text-slate-100 space-y-4">
+            <div className="flex items-center gap-3 pb-3 border-b border-slate-200 dark:border-slate-800">
+              <div className="p-2.5 rounded-xl bg-rose-500/15 text-rose-500">
+                <AlertTriangle className="h-6 w-6" />
+              </div>
+              <div>
+                <h3 className="font-extrabold text-base text-slate-900 dark:text-slate-100">
+                  Delete Department: {deleteDeptModal.departmentName}
+                </h3>
+                <p className="text-xs text-rose-600 dark:text-rose-400 font-semibold">
+                  HR Administrative Action
+                </p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+              Are you sure you want to permanently delete the department <strong>{deleteDeptModal.departmentName}</strong> ({deleteDeptModal.departmentCode})? All operational unit structures under it will be removed.
+            </p>
+
+            {deleteDeptModal.staffCount > 0 ? (
+              <div className="p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/40 rounded-xl space-y-2 text-xs">
+                <div className="font-bold text-amber-800 dark:text-amber-300">
+                  ⚠️ {deleteDeptModal.staffCount} Staff Member(s) Currently Attached:
+                </div>
+                <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                  Please select the destination department to automatically reassign affected staff members to:
+                </p>
+                <select
+                  value={deleteDeptModal.reassignToDept}
+                  onChange={(e) => setDeleteDeptModal({ ...deleteDeptModal, reassignToDept: e.target.value })}
+                  className="w-full rounded-lg border border-amber-300 dark:border-amber-700 p-2 bg-white dark:bg-slate-800 font-semibold text-slate-800 dark:text-slate-200"
+                >
+                  {departmentLeadership
+                    .filter((d) => d.departmentName.toLowerCase() !== deleteDeptModal.departmentName.toLowerCase())
+                    .map((d) => (
+                      <option key={d.id} value={d.departmentName}>
+                        {d.departmentName} ({d.departmentCode})
+                      </option>
+                    ))}
+                </select>
+              </div>
+            ) : (
+              <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl text-xs text-slate-500 dark:text-slate-400">
+                ✓ No active staff are currently assigned solely to this department.
+              </div>
+            )}
+
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setDeleteDeptModal({ open: false, departmentName: '', departmentCode: '', staffCount: 0, reassignToDept: 'General Medicine' })}
+                className="rounded-xl border border-slate-300 dark:border-slate-700 px-4 py-2 font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition text-xs"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDeleteDept}
+                className="rounded-xl bg-rose-600 hover:bg-rose-500 px-5 py-2 font-bold text-white shadow-lg shadow-rose-600/30 transition text-xs flex items-center gap-1.5"
+              >
+                <Trash2 className="h-4 w-4" />
+                Confirm & Delete Department
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: DELETE CLINICAL UNIT CONFIRMATION */}
+      {deleteUnitModal.open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl dark:bg-slate-900 border border-rose-500/30 text-slate-900 dark:text-slate-100 space-y-3">
+            <div className="flex items-center gap-2.5 pb-2 border-b border-slate-200 dark:border-slate-800 text-rose-500">
+              <Trash2 className="h-5 w-5" />
+              <h3 className="font-extrabold text-sm text-slate-900 dark:text-slate-100">
+                Remove Unit
+              </h3>
+            </div>
+
+            <p className="text-xs text-slate-600 dark:text-slate-300">
+              Are you sure you want to remove unit <strong>{deleteUnitModal.unitName}</strong> from department <strong>{deleteUnitModal.departmentName}</strong>?
+            </p>
+
+            <div className="flex justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setDeleteUnitModal({ open: false, departmentName: '', unitIdOrName: '', unitName: '' })}
+                className="rounded-xl border border-slate-300 dark:border-slate-700 px-3.5 py-1.5 font-bold text-slate-600 dark:text-slate-300 text-xs"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDeleteUnit}
+                className="rounded-xl bg-rose-600 hover:bg-rose-500 px-4 py-1.5 font-bold text-white text-xs shadow"
+              >
+                Delete Unit
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: DELETE ALL DEPARTMENTS CONFIRMATION */}
+      {isClearAllDeptsModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm animate-in fade-in">
+          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl dark:bg-slate-900 border border-rose-500/40 text-slate-900 dark:text-slate-100 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
+              <div className="flex items-center gap-2.5 text-rose-500">
+                <div className="p-2.5 rounded-2xl bg-rose-500/10 border border-rose-500/30">
+                  <Trash2 className="h-6 w-6" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-base text-slate-900 dark:text-slate-100">
+                    Delete All Departments
+                  </h3>
+                  <p className="text-xs text-rose-500 font-semibold">
+                    Complete Hospital Structure Reset
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsClearAllDeptsModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-white p-1"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+              Are you sure you want to delete all <strong>{departmentLeadership.length}</strong> department(s) from the hospital system? This action will remove all organizational departments and clinical units from the local database and synchronize with Cloud Firestore.
+            </p>
+
+            <div className="p-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-xs text-rose-800 dark:text-rose-200 space-y-1">
+              <p className="font-bold flex items-center gap-1.5">
+                <AlertCircle className="h-4 w-4 text-rose-500 shrink-0" />
+                What happens next:
+              </p>
+              <ul className="list-disc list-inside space-y-0.5 text-[11px] text-slate-600 dark:text-slate-300">
+                <li>Existing departments and units will be removed.</li>
+                <li>HR can immediately start adding brand new departments.</li>
+                <li>Automatic cloud synchronization will update in real-time.</li>
+              </ul>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsClearAllDeptsModalOpen(false)}
+                disabled={isClearingAllDepts}
+                className="rounded-xl border border-slate-300 dark:border-slate-700 px-4 py-2.5 font-bold text-slate-600 dark:text-slate-300 text-xs"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                id="btn-confirm-delete-all-depts"
+                disabled={isClearingAllDepts}
+                onClick={async () => {
+                  setIsClearingAllDepts(true);
+                  try {
+                    await clearAllDepartments();
+                    setIsClearAllDeptsModalOpen(false);
+                    showToast('All departments successfully deleted. You can now add new departments.');
+                  } finally {
+                    setIsClearingAllDepts(false);
+                  }
+                }}
+                className="rounded-xl bg-rose-600 hover:bg-rose-500 px-5 py-2.5 font-bold text-white text-xs shadow-lg shadow-rose-600/30 transition flex items-center gap-2"
+              >
+                {isClearingAllDepts ? (
+                  <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <>
+                    <Trash2 className="h-4 w-4" />
+                    <span>Yes, Delete All Departments</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

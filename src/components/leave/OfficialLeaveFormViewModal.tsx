@@ -9,21 +9,30 @@ import {
   FileText,
   Building,
   Calendar,
+  CalendarDays,
   Phone,
   User,
   BadgeAlert,
   Award,
   Download,
+  Sparkles,
+  Trash2,
 } from 'lucide-react';
 import { LeaveRequest } from '../../types/hrms';
 import { PjpiimcLogo } from '../common/PjpiimcLogo';
 import { formatLeaveDaysText, calculateResumptionDate } from '../../lib/leaveUtils';
+import { downloadLeaveFormPdf } from '../../lib/leavePdfGenerator';
 
 interface OfficialLeaveFormViewModalProps {
   isOpen: boolean;
   onClose: () => void;
   leave: LeaveRequest | null;
   hospitalName?: string;
+  employee?: any;
+  onOpenHolidayAdjustment?: (leave: LeaveRequest) => void;
+  isHRorAdmin?: boolean;
+  onDeleteLeave?: (leave: LeaveRequest) => void;
+  canDeleteLeave?: boolean;
 }
 
 export const OfficialLeaveFormViewModal: React.FC<OfficialLeaveFormViewModalProps> = ({
@@ -31,6 +40,11 @@ export const OfficialLeaveFormViewModal: React.FC<OfficialLeaveFormViewModalProp
   onClose,
   leave,
   hospitalName = 'POPE JOHN PAUL II MEDICAL CENTRE',
+  employee,
+  onOpenHolidayAdjustment,
+  isHRorAdmin = false,
+  onDeleteLeave,
+  canDeleteLeave = false,
 }) => {
   const resolvedHospitalName = typeof hospitalName === 'object' ? (hospitalName as any)?.name || 'POPE JOHN PAUL II MEDICAL CENTRE' : hospitalName || 'POPE JOHN PAUL II MEDICAL CENTRE';
   if (!isOpen || !leave) return null;
@@ -443,13 +457,27 @@ export const OfficialLeaveFormViewModal: React.FC<OfficialLeaveFormViewModalProp
     <div class="grid-4" style="margin-bottom: 6px;">
       <div class="box"><span class="box-label">OUTSTANDING DAYS</span><span class="box-val">${formatLeaveDaysText(leave.outstandingLeaveDays ?? Math.max(0, (leave.leaveEntitlement || 30) - leave.totalDays), leave.leaveType)}</span></div>
       <div class="box"><span class="box-label">START DATE</span><span class="box-val">${leave.validatedStartDate || leave.startDate}</span></div>
-      <div class="box"><span class="box-label">END DATE</span><span class="box-val">${leave.validatedEndDate || leave.endDate}</span></div>
+      <div class="box"><span class="box-label">${leave.isHolidayAdjusted ? 'REVISED END DATE' : 'END DATE'}</span><span class="box-val" style="${leave.isHolidayAdjusted ? 'color: #4f46e5; font-weight: bold;' : ''}">${leave.validatedEndDate || leave.endDate}</span></div>
       <div class="box" style="background-color: #ecfdf5;"><span class="box-label" style="color: #047857;">RESUMPTION DATE</span><span class="box-val" style="color: #047857;">${leave.dateOfResumption || calculateResumptionDate(leave.validatedEndDate || leave.endDate)}</span></div>
     </div>
+    ${leave.isHolidayAdjusted || leave.hrAdjustmentRemarks ? `
+    <div class="box" style="margin-bottom: 6px; background-color: #fffbeb; border: 1px solid #fde68a;">
+      <span class="box-label" style="color: #b45309;">PUBLIC HOLIDAY END DATE ADJUSTMENT & HR REMARKS</span>
+      <div style="font-size: 9px; color: #78350f; font-weight: 500; line-height: 1.4;">
+        ${leave.hrAdjustmentRemarks || leave.holidayAdjustmentReason || leave.hrRemarks}
+      </div>
+      ${leave.holidayNames && leave.holidayNames.length > 0 ? `
+      <div style="font-size: 8px; color: #92400e; margin-top: 3px;">
+        <strong>Compensated Public Holidays:</strong> ${leave.holidayNames.join(', ')}
+      </div>` : ''}
+      <div style="font-size: 8px; color: #b45309; margin-top: 2px;">
+        <strong>Adjusted By:</strong> ${leave.adjustedByHrName || 'HR Directorate'} • <strong>Original End Date:</strong> ${leave.originalEndDate || 'N/A'}
+      </div>
+    </div>` : `
     <div class="box" style="margin-bottom: 6px;">
       <span class="box-label">REMARKS (HR DEPARTMENT)</span>
       <div>${leave.hrRemarks || leave.workflow?.hrStep?.comments || 'All personnel records, leave entitlements, and CME balances verified in accordance with hospital policy.'}</div>
-    </div>
+    </div>`}
     <div style="text-align: right; padding-top: 4px; border-top: 1px solid #cbd5e1;">
       <span class="box-label">HUMAN RESOURCE MANAGER SIGNATURE</span>
       <div>${isPartCApproved ? `
@@ -606,19 +634,45 @@ export const OfficialLeaveFormViewModal: React.FC<OfficialLeaveFormViewModalProp
           </div>
 
           <div className="flex items-center gap-2">
+            {canDeleteLeave && onDeleteLeave && (
+              <button
+                type="button"
+                onClick={() => onDeleteLeave(leave)}
+                className="px-3 py-2 rounded-2xl bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 font-bold text-xs transition flex items-center gap-1.5 border border-rose-500/40 shadow-sm active:scale-95"
+                title="HR Permission: Permanently delete this leave application"
+              >
+                <Trash2 className="h-4 w-4 text-rose-400" /> Delete Application
+              </button>
+            )}
+            {onOpenHolidayAdjustment && isHRorAdmin && (
+              <button
+                onClick={() => onOpenHolidayAdjustment(leave)}
+                className="px-3.5 py-2 rounded-2xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-bold text-xs transition flex items-center gap-1.5 border border-amber-500/40 shadow-sm active:scale-95"
+                title="Adjust Leave End Date to compensate for Public Holidays"
+              >
+                <CalendarDays className="h-4 w-4 text-amber-400" /> Adjust End Date (Holidays)
+              </button>
+            )}
+            <button
+              onClick={() => downloadLeaveFormPdf(leave, employee, resolvedHospitalName)}
+              className="px-3.5 py-2 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs transition flex items-center gap-1.5 shadow-md active:scale-95"
+              title="Download official rendered PDF document"
+            >
+              <Download className="h-4 w-4" /> Download PDF
+            </button>
             <button
               onClick={handlePrint}
-              className="px-4 py-2 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition flex items-center gap-1.5 shadow-md active:scale-95"
-              title="Print directly or save as PDF via print dialog"
+              className="px-3.5 py-2 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs transition flex items-center gap-1.5 shadow-md active:scale-95"
+              title="Print directly or save via print dialog"
             >
-              <Printer className="h-4 w-4" /> Print / Save PDF
+              <Printer className="h-4 w-4" /> Print Form
             </button>
             <button
               onClick={handleDownloadHtml}
               className="px-3 py-2 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs transition flex items-center gap-1.5 border border-slate-700 active:scale-95"
               title="Download standalone HTML document file"
             >
-              <Download className="h-4 w-4 text-cyan-400" /> Export File
+              <FileText className="h-4 w-4 text-cyan-400" /> HTML
             </button>
             <button
               onClick={onClose}
@@ -888,8 +942,17 @@ export const OfficialLeaveFormViewModal: React.FC<OfficialLeaveFormViewModalProp
               </div>
 
               <div className="p-2.5 rounded-xl bg-slate-900 print:bg-gray-100 border border-slate-800 print:border-gray-400">
-                <span className="text-[9px] text-slate-400 print:text-gray-800 block font-bold">VALIDATED END DATE</span>
-                <span className="font-black text-white print:text-black text-xs">{leave.validatedEndDate || leave.endDate}</span>
+                <span className="text-[9px] text-slate-400 print:text-gray-800 block font-bold">
+                  {leave.isHolidayAdjusted ? 'REVISED END DATE' : 'VALIDATED END DATE'}
+                </span>
+                <span className={`font-black text-xs ${leave.isHolidayAdjusted ? 'text-indigo-400 print:text-black font-mono' : 'text-white print:text-black'}`}>
+                  {leave.validatedEndDate || leave.endDate}
+                </span>
+                {leave.isHolidayAdjusted && leave.originalEndDate && (
+                  <span className="block text-[9px] text-slate-500 line-through">
+                    Was: {leave.originalEndDate}
+                  </span>
+                )}
               </div>
 
               <div className="p-2.5 rounded-xl bg-emerald-500/10 print:bg-gray-100 border border-emerald-500/20 print:border-gray-400">
@@ -900,12 +963,45 @@ export const OfficialLeaveFormViewModal: React.FC<OfficialLeaveFormViewModalProp
               </div>
             </div>
 
-            <div className="p-2.5 rounded-xl bg-slate-900 print:bg-gray-100 border border-slate-800 print:border-gray-400 space-y-0.5">
-              <span className="text-[9px] text-slate-400 print:text-gray-800 font-bold block">REMARKS (HR Department)</span>
-              <p className="font-medium text-slate-200 print:text-black text-xs">
-                {leave.hrRemarks || leave.workflow?.hrStep?.comments || 'All personnel records, leave entitlements, and CME balances verified in accordance with hospital policy.'}
-              </p>
-            </div>
+            {/* Public Holiday Adjustment Alert & HR Remarks Banner */}
+            {leave.isHolidayAdjusted || leave.hrAdjustmentRemarks ? (
+              <div className="p-3 rounded-xl bg-amber-500/10 dark:bg-amber-950/30 print:bg-amber-50 border border-amber-500/30 print:border-amber-400 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-amber-400 print:text-amber-900 flex items-center gap-1.5">
+                    <CalendarDays className="h-3.5 w-3.5 text-amber-500" />
+                    Public Holiday End Date Adjustment & HR Remarks
+                  </span>
+                  {leave.adjustedByHrName && (
+                    <span className="text-[9px] text-amber-300/80 print:text-amber-800 font-mono">
+                      By: {leave.adjustedByHrName} ({leave.adjustedAt?.slice(0, 10) || 'HR Record'})
+                    </span>
+                  )}
+                </div>
+                <p className="font-medium text-amber-200 print:text-amber-950 text-xs leading-relaxed">
+                  {leave.hrAdjustmentRemarks || leave.holidayAdjustmentReason || leave.hrRemarks}
+                </p>
+                {leave.holidayNames && leave.holidayNames.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-1 pt-1">
+                    <span className="text-[9px] font-bold text-amber-400 print:text-amber-900 mr-1">Compensated Holidays:</span>
+                    {leave.holidayNames.map((name, i) => (
+                      <span
+                        key={i}
+                        className="px-2 py-0.5 rounded-md bg-amber-500/20 print:bg-amber-200 text-amber-300 print:text-amber-900 text-[9px] font-semibold"
+                      >
+                        ✓ {name}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="p-2.5 rounded-xl bg-slate-900 print:bg-gray-100 border border-slate-800 print:border-gray-400 space-y-0.5">
+                <span className="text-[9px] text-slate-400 print:text-gray-800 font-bold block">REMARKS (HR Department)</span>
+                <p className="font-medium text-slate-200 print:text-black text-xs">
+                  {leave.hrRemarks || leave.workflow?.hrStep?.comments || 'All personnel records, leave entitlements, and CME balances verified in accordance with hospital policy.'}
+                </p>
+              </div>
+            )}
 
             <div className="pt-1 flex items-center justify-end">
               <div className="p-2.5 rounded-xl bg-slate-900/80 print:bg-gray-50 border border-slate-800 print:border-gray-400 text-right space-y-0.5 min-w-[260px]">

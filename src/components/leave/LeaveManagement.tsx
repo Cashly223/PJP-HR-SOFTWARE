@@ -23,13 +23,18 @@ import {
   Lock,
   PenTool,
   Award,
+  Download,
+  Trash2,
 } from 'lucide-react';
 import { useHrms } from '../../context/HrmsContext';
 import { LeaveRequest, WorkflowStage, UserRole } from '../../types/hrms';
 import { OfficialLeaveFormViewModal } from './OfficialLeaveFormViewModal';
 import { AnnualUnitLeaveRoasterManager } from './AnnualUnitLeaveRoasterManager';
 import { HRSignatureVaultModal } from './HRSignatureVaultModal';
+import { AdjustLeaveHolidayModal } from './AdjustLeaveHolidayModal';
+import { StaffLeaveAndAttendantReportModal } from './StaffLeaveAndAttendantReportModal';
 import { CalendarDays } from 'lucide-react';
+import { downloadLeaveFormPdf } from '../../lib/leavePdfGenerator';
 import {
   calculateLeaveDays,
   calculateEndDateFromDays,
@@ -44,15 +49,19 @@ export const LeaveManagement: React.FC = () => {
   const {
     leaves,
     employees,
+    attendance,
     departmentLeadership,
     addLeaveRequest,
+    deleteLeaveRequest,
     processLeaveWorkflowStep,
+    adjustLeaveEndDate,
     activeRole,
     setActiveRole,
     currentUser,
     updateEmployee,
     uploadEmployeeDigitalSignature,
     selectedHospital,
+    isHeadOfFacilityOrHr,
   } = useHrms();
 
   const [activeTabMode, setActiveTabMode] = useState<'applications' | 'entitlements' | 'report' | 'annual_roaster' | 'signatures'>('applications');
@@ -60,6 +69,10 @@ export const LeaveManagement: React.FC = () => {
   const [reportDeptFilter, setReportDeptFilter] = useState('All');
   const [reportStatusFilter, setReportStatusFilter] = useState('All');
   const [isReportPrintModalOpen, setIsReportPrintModalOpen] = useState(false);
+  const [isStaffLeaveAttendantModalOpen, setIsStaffLeaveAttendantModalOpen] = useState(false);
+  const [selectedStaffDossierId, setSelectedStaffDossierId] = useState<string>('');
+  const [staffModalMode, setStaffModalMode] = useState<'master' | 'individual'>('master');
+  const [staffReportScope, setStaffReportScope] = useState<'all' | 'leaves' | 'attendance'>('all');
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
   const [selectedEmpId, setSelectedEmpId] = useState(employees[0]?.id || '');
   
@@ -82,26 +95,45 @@ export const LeaveManagement: React.FC = () => {
   const [leaveEntitlement, setLeaveEntitlement] = useState<number>(30);
   const [deferredLeaveDaysDue, setDeferredLeaveDaysDue] = useState<number>(0);
   const [leaveDaysEarned, setLeaveDaysEarned] = useState<number>(30);
-  const [days, setDays] = useState(7);
-  const [startDate, setStartDate] = useState(() => formatDateParts(new Date()));
-  const [endDate, setEndDate] = useState(() => {
-    const today = formatDateParts(new Date());
-    return calculateEndDateFromDays(today, 7, 'Annual Leave');
-  });
-  const [resumptionDate, setResumptionDate] = useState(() => {
-    const today = formatDateParts(new Date());
-    const initialEnd = calculateEndDateFromDays(today, 7, 'Annual Leave');
-    return calculateResumptionDate(initialEnd);
-  });
+  // Leave Commence Date, End Date, and Reporting Date start BLANK for new applications
+  const [days, setDays] = useState<number | ''>('');
+  const [startDate, setStartDate] = useState<string>('');
+  const [endDate, setEndDate] = useState<string>('');
+  const [resumptionDate, setResumptionDate] = useState<string>('');
   const [addressOnLeave, setAddressOnLeave] = useState('Hospital Staff Residence Quarters House 14');
   const [phoneOnLeave, setPhoneOnLeave] = useState('+233 20 555 0192');
   const [reason, setReason] = useState('Annual leave application & mandatory rest duration.');
+
+  // Open New Leave Modal with completely blank commence, end, and reporting dates
+  const handleOpenNewLeaveModal = (targetEmpId?: string) => {
+    if (targetEmpId) {
+      setSelectedEmpId(targetEmpId);
+    }
+    setStartDate('');
+    setEndDate('');
+    setResumptionDate('');
+    setDays('');
+    setIsNewModalOpen(true);
+  };
 
   // Official Form Modal State
   const [officialFormModal, setOfficialFormModal] = useState<{
     open: boolean;
     leave: LeaveRequest | null;
   }>({ open: false, leave: null });
+
+  // Public Holiday End Date Adjustment Modal State
+  const [holidayAdjustModal, setHolidayAdjustModal] = useState<{
+    open: boolean;
+    leave: LeaveRequest | null;
+  }>({ open: false, leave: null });
+
+  // Delete Leave Confirmation Modal State (HR Permission)
+  const [deleteConfirmModal, setDeleteConfirmModal] = useState<{
+    open: boolean;
+    leave: LeaveRequest | null;
+    isDeleting: boolean;
+  }>({ open: false, leave: null, isDeleting: false });
 
   // Computed Outstanding Days
   const [outstandingLeaveDays, setOutstandingLeaveDays] = useState<number>(30);
@@ -141,17 +173,21 @@ export const LeaveManagement: React.FC = () => {
     }
   }, [selectedEmpId, employees, leaves]);
 
-  // Synchronize when Start Date changes
+  // Synchronize when Start Date (Commence Date) changes:
+  // If staff has already selected days requested, automatically compute end date and reporting date!
   const handleStartDateChange = (newStart: string) => {
     setStartDate(newStart);
-    if (newStart && days > 0) {
-      const computedEnd = calculateEndDateFromDays(newStart, days, leaveType);
+    if (newStart && days && Number(days) > 0) {
+      const computedEnd = calculateEndDateFromDays(newStart, Number(days), leaveType);
       setEndDate(computedEnd);
       setResumptionDate(calculateResumptionDate(computedEnd));
+    } else if (!newStart) {
+      setEndDate('');
+      setResumptionDate('');
     }
   };
 
-  // Synchronize when Leave End Date (last day of leave) changes
+  // Synchronize when Leave End Date (last day of leave) is adjusted (can be adjusted by HR)
   const handleEndDateChange = (newEnd: string) => {
     setEndDate(newEnd);
     if (newEnd) {
@@ -161,10 +197,12 @@ export const LeaveManagement: React.FC = () => {
         const computedDays = calculateLeaveDays(startDate, newEnd, leaveType);
         setDays(computedDays);
       }
+    } else {
+      setResumptionDate('');
     }
   };
 
-  // Synchronize when Resumption Date (+1 Day of Leave End Date) changes
+  // Synchronize when Reporting Date / Resumption Date (+1 Day of Leave End Date) is adjusted (can be adjusted by HR)
   const handleResumptionDateChange = (newResumption: string) => {
     setResumptionDate(newResumption);
     if (newResumption) {
@@ -177,21 +215,32 @@ export const LeaveManagement: React.FC = () => {
     }
   };
 
-  // Synchronize when requested days count is directly changed
-  const handleDaysChange = (newDays: number) => {
-    const safeDays = Math.max(1, newDays);
+  // Synchronize when requested days count is selected or entered:
+  // If staff has selected commence date, the system immediately calculates end date and reporting date!
+  const handleDaysChange = (newDays: number | '') => {
+    if (newDays === '' || isNaN(Number(newDays)) || Number(newDays) <= 0) {
+      setDays('');
+      setEndDate('');
+      setResumptionDate('');
+      return;
+    }
+    const safeDays = Number(newDays);
     setDays(safeDays);
-    if (startDate && safeDays > 0) {
+    if (startDate) {
       const computedEnd = calculateEndDateFromDays(startDate, safeDays, leaveType);
       setEndDate(computedEnd);
       setResumptionDate(calculateResumptionDate(computedEnd));
+    } else {
+      // Commence date is blank: leave end date and reporting date blank until commence date is selected
+      setEndDate('');
+      setResumptionDate('');
     }
   };
 
   // Synchronize when Leave Type changes (e.g. Maternity = 90 calendar days)
   const handleLeaveTypeChange = (selectedType: LeaveRequest['leaveType']) => {
     setLeaveType(selectedType);
-    let targetDays = days;
+    let targetDays: number | '' = days;
     if (isMaternityLeave(selectedType)) {
       setLeaveEntitlement(90);
       targetDays = 90;
@@ -201,8 +250,8 @@ export const LeaveManagement: React.FC = () => {
       targetDays = 30;
       setDays(30);
     }
-    if (startDate) {
-      const computedEnd = calculateEndDateFromDays(startDate, targetDays, selectedType);
+    if (startDate && targetDays && Number(targetDays) > 0) {
+      const computedEnd = calculateEndDateFromDays(startDate, Number(targetDays), selectedType);
       setEndDate(computedEnd);
       setResumptionDate(calculateResumptionDate(computedEnd));
     }
@@ -217,6 +266,8 @@ export const LeaveManagement: React.FC = () => {
 
   const [approvalComments, setApprovalComments] = useState('');
   const [customApproverName, setCustomApproverName] = useState('');
+  const [reviewEndDate, setReviewEndDate] = useState('');
+  const [reviewResumptionDate, setReviewResumptionDate] = useState('');
 
   // Filtering
   const [stageFilter, setStageFilter] = useState<'All' | 'MyAction' | WorkflowStage>('All');
@@ -465,6 +516,21 @@ export const LeaveManagement: React.FC = () => {
 
     const applicantSignature = emp.digitalSignatureUrl || undefined;
 
+    if (!startDate) {
+      showToast('Leave Commence Date is blank. Please select a valid commencement date.');
+      return;
+    }
+    if (!days || Number(days) <= 0) {
+      showToast('Please select or enter the number of Days Requested.');
+      return;
+    }
+    if (!endDate) {
+      showToast('Leave End Date is blank. Please specify days requested to calculate end date.');
+      return;
+    }
+
+    const calculatedReporting = resumptionDate || calculateResumptionDate(endDate);
+
     addLeaveRequest({
       employeeId: emp.id,
       employeeName: `${emp.firstName} ${emp.lastName}`,
@@ -481,7 +547,8 @@ export const LeaveManagement: React.FC = () => {
       totalDays: Number(days),
       startDate,
       endDate,
-      dateOfResumption: resumptionDate || calculateResumptionDate(endDate),
+      dateOfResumption: calculatedReporting,
+      reportingDate: calculatedReporting,
       addressOnLeave,
       phoneOnLeave,
       reason,
@@ -504,6 +571,9 @@ export const LeaveManagement: React.FC = () => {
         : `Request cannot be approved at ${leave.currentStage || 'Unit Head'} stage due to critical shift headcount requirements.`
     );
     setCustomApproverName('');
+    const curEnd = leave.validatedEndDate || leave.endDate || '';
+    setReviewEndDate(curEnd);
+    setReviewResumptionDate(leave.reportingDate || leave.dateOfResumption || (curEnd ? calculateResumptionDate(curEnd) : ''));
   };
 
   const handleConfirmReview = (e: React.FormEvent) => {
@@ -512,6 +582,17 @@ export const LeaveManagement: React.FC = () => {
 
     const currentStage = reviewModal.leave.currentStage || 'Unit Head';
     
+    // If HR/Approver adjusted End Date or Reporting Date during review, persist adjustments
+    if (reviewModal.action === 'Approve' && reviewEndDate && reviewEndDate !== reviewModal.leave.endDate) {
+      adjustLeaveEndDate(reviewModal.leave.id, {
+        newEndDate: reviewEndDate,
+        newResumptionDate: reviewResumptionDate || calculateResumptionDate(reviewEndDate),
+        originalEndDate: reviewModal.leave.originalEndDate || reviewModal.leave.endDate,
+        remarks: `End date and reporting date adjusted by HR/Approver during ${currentStage} review.`,
+        adjustedBy: customApproverName.trim() || currentUser?.name || 'HR Management Directorate',
+      });
+    }
+
     // Resolve approver's digital signature from their HR staff profile
     const approverEmp = employees.find((e) => 
       (currentUser?.id && e.id === currentUser.id) ||
@@ -551,8 +632,40 @@ export const LeaveManagement: React.FC = () => {
     return false;
   };
 
-  const isHRDirectorOrSuperAdmin = ['super_admin', 'facility_head', 'hr_director', 'hr_manager'].includes(activeRole);
-  const isHRorAdmin = ['super_admin', 'facility_head', 'hr_director', 'hr_manager', 'dept_head', 'unit_head'].includes(activeRole);
+  const isHRDirectorOrSuperAdmin =
+    ['super_admin', 'facility_head', 'hr_director', 'hr_manager', 'admin'].includes(activeRole) ||
+    currentUser?.email?.toLowerCase() === 'attasam223@gmail.com' ||
+    isHeadOfFacilityOrHr;
+  const isHRorAdmin =
+    isHRDirectorOrSuperAdmin ||
+    ['super_admin', 'facility_head', 'hr_director', 'hr_manager', 'dept_head', 'unit_head', 'admin'].includes(activeRole);
+  const isHR =
+    isHRDirectorOrSuperAdmin ||
+    ['super_admin', 'facility_head', 'hr_director', 'hr_manager', 'admin'].includes(currentUser?.role || '') ||
+    (currentUser?.role || '').toLowerCase().includes('hr') ||
+    (currentUser?.role || '').toLowerCase().includes('admin') ||
+    (activeRole || '').toLowerCase().includes('hr') ||
+    (activeRole || '').toLowerCase().includes('admin');
+  const canDeleteLeave = isHR;
+
+  const handleConfirmDelete = async () => {
+    if (!deleteConfirmModal.leave) return;
+    setDeleteConfirmModal((prev) => ({ ...prev, isDeleting: true }));
+    try {
+      const ok = await deleteLeaveRequest(deleteConfirmModal.leave.id);
+      if (ok) {
+        if (officialFormModal.leave?.id === deleteConfirmModal.leave.id) {
+          setOfficialFormModal({ open: false, leave: null });
+        }
+        setDeleteConfirmModal({ open: false, leave: null, isDeleting: false });
+      } else {
+        setDeleteConfirmModal((prev) => ({ ...prev, isDeleting: false }));
+      }
+    } catch (err) {
+      console.error('Failed to delete leave request:', err);
+      setDeleteConfirmModal((prev) => ({ ...prev, isDeleting: false }));
+    }
+  };
   const currentEmpName = currentUser?.name || '';
   const currentEmpEmail = currentUser?.email || '';
 
@@ -636,7 +749,7 @@ export const LeaveManagement: React.FC = () => {
             </div>
 
             <button
-              onClick={() => setIsNewModalOpen(true)}
+              onClick={() => handleOpenNewLeaveModal()}
               className="flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-semibold text-white shadow hover:bg-emerald-500 transition active:scale-95"
             >
               <Plus className="h-4 w-4" /> Apply for Staff Leave
@@ -694,7 +807,7 @@ export const LeaveManagement: React.FC = () => {
                   : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
               }`}
             >
-              <FileText className="h-4 w-4 text-purple-300" /> HR Staff Leave Report
+              <FileText className="h-4 w-4 text-purple-300" /> Staff Leave & Attendant Report
             </button>
           )}
           <button
@@ -985,23 +1098,31 @@ export const LeaveManagement: React.FC = () => {
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-4">
             <div>
               <span className="text-[10px] font-extrabold uppercase tracking-widest text-purple-600 dark:text-purple-400 block">
-                Human Resources Audit & Leave Liabilities
+                Human Resources Audit • Attendance & Leave Liabilities
               </span>
               <h3 className="text-lg font-black text-slate-900 dark:text-slate-100 flex items-center gap-2">
                 <FileText className="h-5 w-5 text-purple-600 dark:text-purple-400" />
-                PJPIIMC Staff Leave Master Report
+                PJPIIMC Staff Leave & Attendant Master Report
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                Pope John Paul II Medical Centre - Comprehensive staff leave breakdown, entitlement tracking, approved leave utilization, and remaining balances.
+                Pope John Paul II Medical Centre - Comprehensive workforce attendance presence, biometric duty clock-in logs, approved leave utilization, and remaining leave liabilities audit.
               </p>
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
               <button
+                onClick={() => setIsStaffLeaveAttendantModalOpen(true)}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-700 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-black transition shadow-lg shadow-purple-950/30 active:scale-95"
+                title="Open comprehensive interactive Staff Leave and Attendant Report generator"
+              >
+                <Sparkles className="h-4 w-4 text-amber-300" />
+                <span>Generate Staff Leave & Attendant Report</span>
+              </button>
+              <button
                 onClick={handleExportStaffLeaveReportCSV}
                 className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-200 text-xs font-bold transition border border-slate-200 dark:border-slate-700"
               >
-                <FileText className="h-4 w-4 text-emerald-500" /> Export CSV Report
+                <FileText className="h-4 w-4 text-emerald-500" /> Export CSV
               </button>
               <button
                 onClick={handlePrintStaffLeaveMasterReport}
@@ -1057,6 +1178,91 @@ export const LeaveManagement: React.FC = () => {
             </div>
           </div>
 
+          {/* Individual Staff Leave & Attendance Generator Quick Selector Card */}
+          <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-purple-900/10 via-indigo-900/10 to-emerald-900/10 border-2 border-purple-300/80 dark:border-purple-700/80 shadow-sm flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
+            <div className="flex items-center gap-3.5">
+              <div className="p-3 rounded-2xl bg-purple-600 text-white shadow-md shadow-purple-900/40 shrink-0">
+                <UserCheck className="h-6 w-6 text-amber-300" />
+              </div>
+              <div>
+                <span className="text-[10px] font-extrabold uppercase tracking-wider text-purple-700 dark:text-purple-300 block">
+                  Individual Personnel Record & Biometric Attendance Audit
+                </span>
+                <h4 className="text-sm font-black text-slate-900 dark:text-white">
+                  Select Staff to Generate Complete Leave History & Attendance Dossier
+                </h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Select any staff member to generate an official confidential report containing their full leave history ledger, biometric attendance records, delay minutes, and official sign-off certificates.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0">
+              <select
+                value={selectedStaffDossierId}
+                onChange={(e) => setSelectedStaffDossierId(e.target.value)}
+                className="px-3 py-2 rounded-xl bg-white dark:bg-slate-800 border-2 border-purple-300 dark:border-purple-600 text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500 min-w-[210px]"
+              >
+                <option value="">-- Select Staff Member --</option>
+                {(employees || []).filter(Boolean).map((emp) => (
+                  <option key={emp.id} value={emp.id}>
+                    [{emp.employeeCode || emp.empCode || 'STF-100'}] {emp.firstName} {emp.lastName} ({emp.department})
+                  </option>
+                ))}
+              </select>
+
+              <div className="flex items-center gap-1 bg-white dark:bg-slate-800 p-1 rounded-xl border border-purple-300 dark:border-purple-700 shadow-sm">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const targetId = selectedStaffDossierId || employees[0]?.id || '';
+                    setSelectedStaffDossierId(targetId);
+                    setStaffReportScope('leaves');
+                    setStaffModalMode('individual');
+                    setIsStaffLeaveAttendantModalOpen(true);
+                  }}
+                  className="px-2.5 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 text-xs font-bold transition flex items-center gap-1 whitespace-nowrap active:scale-95"
+                  title="Generate Leave History Report for selected staff"
+                >
+                  <PlaneTakeoff className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                  <span>Leave History</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const targetId = selectedStaffDossierId || employees[0]?.id || '';
+                    setSelectedStaffDossierId(targetId);
+                    setStaffReportScope('attendance');
+                    setStaffModalMode('individual');
+                    setIsStaffLeaveAttendantModalOpen(true);
+                  }}
+                  className="px-2.5 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 text-xs font-bold transition flex items-center gap-1 whitespace-nowrap active:scale-95"
+                  title="Generate Attendance Audit Report for selected staff"
+                >
+                  <Clock className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                  <span>Attendance</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const targetId = selectedStaffDossierId || employees[0]?.id || '';
+                    setSelectedStaffDossierId(targetId);
+                    setStaffReportScope('all');
+                    setStaffModalMode('individual');
+                    setIsStaffLeaveAttendantModalOpen(true);
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition flex items-center gap-1 shadow-sm whitespace-nowrap active:scale-95"
+                  title="Generate Unified Dossier (both Leave and Attendance)"
+                >
+                  <UserCheck className="h-3.5 w-3.5 text-amber-300" />
+                  <span>Full Dossier</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
           {/* Filters Bar */}
           <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between bg-slate-50 dark:bg-slate-950 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800">
             <div className="relative flex-1">
@@ -1077,11 +1283,11 @@ export const LeaveManagement: React.FC = () => {
                 className="px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs focus:border-purple-500 focus:outline-none"
               >
                 <option value="All">All Departments</option>
-                <option value="Intensive Care Unit (ICU)">ICU & Critical Care</option>
-                <option value="Cardiology & Intensive Care">Cardiology</option>
-                <option value="Emergency & Trauma">Emergency & Trauma</option>
-                <option value="Surgical Services & OT">Surgical Services</option>
-                <option value="Human Resources & Workforce">Human Resources</option>
+                {(departmentLeadership || []).map((dept) => (
+                  <option key={dept.departmentName} value={dept.departmentName}>
+                    {dept.departmentName}
+                  </option>
+                ))}
               </select>
 
               <select
@@ -1110,6 +1316,7 @@ export const LeaveManagement: React.FC = () => {
                   <th className="px-4 py-3.5 text-center">Outstanding</th>
                   <th className="px-4 py-3.5">Utilization Bar</th>
                   <th className="px-4 py-3.5 text-center">Leave Status</th>
+                  <th className="px-4 py-3.5 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 dark:divide-slate-800 bg-white dark:bg-slate-900">
@@ -1224,6 +1431,68 @@ export const LeaveManagement: React.FC = () => {
                             </span>
                           )}
                         </td>
+
+                        <td className="px-4 py-3.5 text-right">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActiveTabMode('applications');
+                              setSearchTerm(emp.firstName);
+                            }}
+                            className="px-2.5 py-1 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 dark:bg-purple-950/50 dark:hover:bg-purple-900/60 dark:text-purple-300 font-bold text-[11px] border border-purple-200 dark:border-purple-800 transition inline-flex items-center gap-1"
+                            title="Manage & Review Leave Requests"
+                          >
+                            <FileText className="h-3 w-3 text-purple-500" />
+                            <span>Manage</span>
+                          </button>
+
+                          <div className="inline-flex items-center gap-1 ml-1.5">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedStaffDossierId(emp.id);
+                                setStaffReportScope('leaves');
+                                setStaffModalMode('individual');
+                                setIsStaffLeaveAttendantModalOpen(true);
+                              }}
+                              className="px-2 py-1 rounded-xl bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 font-bold text-[10px] border border-emerald-200 dark:border-emerald-800 transition inline-flex items-center gap-1 active:scale-95"
+                              title={`Generate Leave History report for ${emp.firstName} ${emp.lastName}`}
+                            >
+                              <PlaneTakeoff className="h-3 w-3 text-emerald-600 dark:text-emerald-400" />
+                              <span>Leaves</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedStaffDossierId(emp.id);
+                                setStaffReportScope('attendance');
+                                setStaffModalMode('individual');
+                                setIsStaffLeaveAttendantModalOpen(true);
+                              }}
+                              className="px-2 py-1 rounded-xl bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 font-bold text-[10px] border border-indigo-200 dark:border-indigo-800 transition inline-flex items-center gap-1 active:scale-95"
+                              title={`Generate Attendance audit for ${emp.firstName} ${emp.lastName}`}
+                            >
+                              <Clock className="h-3 w-3 text-indigo-600 dark:text-indigo-400" />
+                              <span>Attendance</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedStaffDossierId(emp.id);
+                                setStaffReportScope('all');
+                                setStaffModalMode('individual');
+                                setIsStaffLeaveAttendantModalOpen(true);
+                              }}
+                              className="px-2.5 py-1 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-[10px] shadow-sm transition inline-flex items-center gap-1 active:scale-95"
+                              title={`Generate unified Leave & Attendance dossier for ${emp.firstName} ${emp.lastName}`}
+                            >
+                              <UserCheck className="h-3 w-3 text-amber-300" />
+                              <span>Both</span>
+                            </button>
+                          </div>
+                        </td>
                       </tr>
                     );
                   })}
@@ -1267,10 +1536,7 @@ export const LeaveManagement: React.FC = () => {
 
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={() => {
-                      setSelectedEmpId(currentUserEmployee.id);
-                      setIsNewModalOpen(true);
-                    }}
+                    onClick={() => handleOpenNewLeaveModal(currentUserEmployee.id)}
                     className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md transition flex items-center gap-2"
                   >
                     <PlaneTakeoff className="h-4 w-4" /> Apply for Leave
@@ -1387,6 +1653,7 @@ export const LeaveManagement: React.FC = () => {
                                 <th className="p-3">Resumption</th>
                                 <th className="p-3">Current Status</th>
                                 <th className="p-3">Four-Tier Stage</th>
+                                <th className="p-3 text-right">Digital File / PDF</th>
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -1421,6 +1688,38 @@ export const LeaveManagement: React.FC = () => {
                                     </td>
                                     <td className="p-3 text-[11px] font-semibold text-slate-600 dark:text-slate-400">
                                       {l.currentStage || 'Completed'}
+                                    </td>
+                                    <td className="p-3 text-right">
+                                      <div className="flex items-center justify-end gap-1.5">
+                                        <button
+                                          onClick={() => setOfficialFormModal({ open: true, leave: l })}
+                                          className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-[11px] font-bold transition flex items-center gap-1 border border-slate-200 dark:border-slate-700"
+                                          title="View Official Form"
+                                        >
+                                          <FileText className="h-3 w-3 text-amber-500" /> Form
+                                        </button>
+                                        {l.status === 'Approved' && (
+                                          <button
+                                            onClick={() => {
+                                              downloadLeaveFormPdf(l, currentUserEmployee, selectedHospital?.name);
+                                            }}
+                                            className="px-2.5 py-1 rounded-lg bg-emerald-600/15 hover:bg-emerald-600/25 text-emerald-700 dark:text-emerald-300 text-[11px] font-bold transition flex items-center gap-1 border border-emerald-500/30"
+                                            title="Download Official Approved PDF Form (Stored in Staff Digital File)"
+                                          >
+                                            <Download className="h-3 w-3 text-emerald-500" /> PDF
+                                          </button>
+                                        )}
+                                        {canDeleteLeave && (
+                                          <button
+                                            type="button"
+                                            onClick={() => setDeleteConfirmModal({ open: true, leave: l, isDeleting: false })}
+                                            className="px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 dark:text-rose-300 text-[11px] font-bold transition flex items-center gap-1 border border-rose-200 dark:border-rose-900/60"
+                                            title="HR Permission: Permanently delete this leave application"
+                                          >
+                                            <Trash2 className="h-3 w-3 text-rose-600 dark:text-rose-400" /> Delete
+                                          </button>
+                                        )}
+                                      </div>
                                     </td>
                                   </tr>
                                 ))}
@@ -1722,6 +2021,21 @@ export const LeaveManagement: React.FC = () => {
         </div>
       </div>
 
+      {/* HR Governance Privilege Banner */}
+      {canDeleteLeave && (
+        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 rounded-2xl bg-gradient-to-r from-rose-50/70 via-slate-50 to-rose-50/70 dark:from-rose-950/20 dark:via-slate-900 dark:to-rose-950/20 border border-rose-200/60 dark:border-rose-900/40 text-xs">
+          <div className="flex items-center gap-2 text-slate-700 dark:text-slate-200">
+            <ShieldCheck className="h-4 w-4 text-rose-600 dark:text-rose-400 shrink-0" />
+            <span>
+              <strong>HR Administrative Authority:</strong> You have permission to review, adjust public holidays, and <strong>delete leave requests</strong> across all hospital departments.
+            </span>
+          </div>
+          <span className="text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300 border border-rose-200 dark:border-rose-800">
+            HR Deletion Enabled
+          </span>
+        </div>
+      )}
+
       {/* Leave Request Cards with 4-Tier Workflow Visual Stepper */}
       <div className="space-y-4">
         {filteredLeaves.length === 0 ? (
@@ -1766,12 +2080,45 @@ export const LeaveManagement: React.FC = () => {
                   <div className="flex flex-wrap items-center gap-2">
                     <button
                       onClick={() => setOfficialFormModal({ open: true, leave })}
-                      className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition flex items-center gap-1.5 border border-slate-200 dark:border-slate-700"
+                      className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition flex items-center gap-1.5 border border-slate-200 dark:border-slate-700 active:scale-95"
                       title="View or Print Official 4-Part HR Leave Form"
                     >
                       <FileText className="h-3.5 w-3.5 text-amber-500" />
                       View Official Form
                     </button>
+
+                    {/* Public Holiday Adjustment Button */}
+                    <button
+                      onClick={() => setHolidayAdjustModal({ open: true, leave })}
+                      className="px-3 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 text-xs font-bold transition flex items-center gap-1.5 border border-amber-500/30 shadow-sm active:scale-95"
+                      title="Adjust Leave End Date and log remarks for Public Holidays"
+                    >
+                      <CalendarDays className="h-3.5 w-3.5 text-amber-500" />
+                      Adjust for Holidays
+                    </button>
+
+                    {leave.status === 'Approved' && (
+                      <>
+                        <button
+                          onClick={() => {
+                            const emp = employees.find((e) => e.id === leave.employeeId);
+                            downloadLeaveFormPdf(leave, emp, selectedHospital?.name);
+                          }}
+                          className="px-3 py-1.5 rounded-xl bg-emerald-600/10 hover:bg-emerald-600/20 text-emerald-700 dark:text-emerald-300 text-xs font-bold transition flex items-center gap-1.5 border border-emerald-500/30 shadow-sm"
+                          title="Download Official Approved Leave PDF Document"
+                        >
+                          <Download className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                          Download PDF
+                        </button>
+
+                        <span
+                          className="hidden md:inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25"
+                          title="This approved leave form is securely archived in the staff digital vault"
+                        >
+                          <ShieldCheck className="h-3 w-3 text-emerald-500" /> Stored in Digital File
+                        </span>
+                      </>
+                    )}
 
                     <span
                       className={`px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider ${
@@ -1784,6 +2131,19 @@ export const LeaveManagement: React.FC = () => {
                     >
                       {leave.status === 'Pending' ? `Workflow Stage: ${currentStage}` : leave.status}
                     </span>
+
+                    {/* HR Delete Permission Button */}
+                    {canDeleteLeave && (
+                      <button
+                        type="button"
+                        onClick={() => setDeleteConfirmModal({ open: true, leave, isDeleting: false })}
+                        className="px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 dark:text-rose-300 text-xs font-bold transition flex items-center gap-1.5 border border-rose-200 dark:border-rose-900/60 shadow-sm active:scale-95"
+                        title="HR Permission: Permanently delete this leave application"
+                      >
+                        <Trash2 className="h-3.5 w-3.5 text-rose-600 dark:text-rose-400" />
+                        Delete Request
+                      </button>
+                    )}
 
                     {/* Action buttons if user is authorized at current stage */}
                     {canUserApproveThis && (
@@ -1807,14 +2167,56 @@ export const LeaveManagement: React.FC = () => {
                 </div>
 
                 {/* Reason & Leave Dates */}
-                <div className="text-xs bg-slate-50 dark:bg-slate-800/40 p-3 rounded-xl border border-slate-100 dark:border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <div>
-                    <span className="font-bold text-slate-500 dark:text-slate-400">Reason for Application: </span>
-                    <span className="font-medium text-slate-800 dark:text-slate-200">{leave.reason}</span>
+                <div className="space-y-2">
+                  <div className="text-xs bg-slate-50 dark:bg-slate-800/40 p-3 rounded-xl border border-slate-100 dark:border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div>
+                      <span className="font-bold text-slate-500 dark:text-slate-400">Reason for Application: </span>
+                      <span className="font-medium text-slate-800 dark:text-slate-200">{leave.reason}</span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="font-mono font-bold text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
+                        📅 {leave.startDate} to {leave.endDate}
+                      </div>
+                      {leave.isHolidayAdjusted && (
+                        <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300 font-extrabold text-[10px] border border-amber-500/30 flex items-center gap-1">
+                          <CalendarDays className="h-3 w-3 text-amber-500" />
+                          Public Holiday Adjusted (+{leave.holidayAdjustmentDays || 1}d)
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <div className="font-mono font-bold text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
-                    📅 {leave.startDate} to {leave.endDate}
-                  </div>
+
+                  {/* Public Holiday Adjustment Notice Banner if adjusted */}
+                  {(leave.isHolidayAdjusted || leave.hrAdjustmentRemarks) && (
+                    <div className="p-3 rounded-xl bg-amber-50/90 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/60 text-xs space-y-1">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5 font-bold text-amber-900 dark:text-amber-200">
+                          <CalendarDays className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+                          <span>Public Holiday Adjustment & HR Remarks:</span>
+                        </div>
+                        <button
+                          onClick={() => setHolidayAdjustModal({ open: true, leave })}
+                          className="text-[11px] font-bold text-amber-700 hover:text-amber-800 dark:text-amber-300 dark:hover:text-amber-200 underline"
+                        >
+                          Modify Adjustment
+                        </button>
+                      </div>
+                      <p className="text-amber-800 dark:text-amber-300 font-medium">
+                        {leave.hrAdjustmentRemarks || leave.holidayAdjustmentReason || 'Leave end date revised to compensate for public holidays falling on working days.'}
+                      </p>
+                      <div className="flex flex-wrap items-center gap-3 pt-0.5 text-[10px] text-amber-700/90 dark:text-amber-400 font-mono">
+                        {leave.originalEndDate && (
+                          <span>Original End Date: <strong className="line-through">{leave.originalEndDate}</strong> → Revised: <strong>{leave.endDate}</strong></span>
+                        )}
+                        {leave.holidayNames && leave.holidayNames.length > 0 && (
+                          <span>Holidays: {leave.holidayNames.join(', ')}</span>
+                        )}
+                        {leave.adjustedByHrName && (
+                          <span>Adjusted By: {leave.adjustedByHrName}</span>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* VISUAL 4-TIER WORKFLOW STEPPER */}
@@ -1919,6 +2321,17 @@ export const LeaveManagement: React.FC = () => {
                 </strong>
               </div>
               <div>
+                <span className="text-slate-400 font-semibold">Current Dates:</span>{' '}
+                <span className="font-mono text-slate-700 dark:text-slate-300">
+                  {reviewModal.leave.startDate} to {reviewModal.leave.endDate}
+                </span>
+                {reviewModal.leave.isHolidayAdjusted && (
+                  <span className="ml-2 text-[10px] bg-amber-500/20 text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded-full font-bold">
+                    Holiday Adjusted
+                  </span>
+                )}
+              </div>
+              <div>
                 <span className="text-slate-400 font-semibold">Department / Unit:</span>{' '}
                 <span className="text-slate-700 dark:text-slate-300">
                   {reviewModal.leave.department} ({reviewModal.leave.unit || 'General Unit'})
@@ -1926,7 +2339,79 @@ export const LeaveManagement: React.FC = () => {
               </div>
             </div>
 
+            {/* Public Holiday Quick Adjustment Action */}
+            <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 mb-4 flex items-center justify-between gap-3 text-xs">
+              <div className="flex items-center gap-2">
+                <CalendarDays className="h-4 w-4 text-amber-500 shrink-0" />
+                <div className="text-[11px] text-amber-900 dark:text-amber-200">
+                  <span className="font-bold">Public Holidays affect these dates?</span>
+                  <p className="text-[10px] text-amber-800 dark:text-amber-300">
+                    HR can extend the end date & record official statutory compensation remarks.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const targetLeave = reviewModal.leave;
+                  if (targetLeave) {
+                    setHolidayAdjustModal({ open: true, leave: targetLeave });
+                  }
+                }}
+                className="px-2.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-bold text-[11px] whitespace-nowrap shadow-sm active:scale-95 flex items-center gap-1 shrink-0"
+              >
+                <CalendarDays className="h-3 w-3" /> Holiday Wizard
+              </button>
+            </div>
+
             <form onSubmit={handleConfirmReview} className="space-y-4 text-xs">
+              {/* HR Direct Date Adjustment Fields (Can be adjusted by HR) */}
+              {reviewModal.action === 'Approve' && (
+                <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-[11px] text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                      <Clock className="h-3.5 w-3.5 text-indigo-500" />
+                      HR Leave Schedule Adjustment:
+                    </span>
+                    <span className="text-[9px] font-extrabold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 px-2 py-0.5 rounded border border-indigo-200 dark:border-indigo-800">
+                      HR Adjustable
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-600 dark:text-slate-400 mb-1">
+                        ADJUSTED END DATE:
+                      </label>
+                      <input
+                        type="date"
+                        value={reviewEndDate}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setReviewEndDate(val);
+                          if (val) setReviewResumptionDate(calculateResumptionDate(val));
+                        }}
+                        className="w-full rounded-lg border border-slate-300 dark:border-slate-700 p-1.5 dark:bg-slate-900 font-medium text-xs focus:ring-2 focus:ring-emerald-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-600 dark:text-slate-400 mb-1">
+                        REPORTING DATE (RESUMPTION):
+                      </label>
+                      <input
+                        type="date"
+                        value={reviewResumptionDate}
+                        onChange={(e) => setReviewResumptionDate(e.target.value)}
+                        className="w-full rounded-lg border border-emerald-500/50 p-1.5 dark:bg-slate-900 font-medium text-xs text-emerald-600 dark:text-emerald-400 focus:ring-2 focus:ring-emerald-500"
+                      />
+                    </div>
+                  </div>
+                  {reviewEndDate !== reviewModal.leave.endDate && (
+                    <p className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold">
+                      ℹ️ End date modified from original {reviewModal.leave.endDate} to {reviewEndDate}. Staff reports on {reviewResumptionDate}.
+                    </p>
+                  )}
+                </div>
+              )}
               <div>
                 <label className="block font-bold mb-1 text-slate-700 dark:text-slate-300">
                   Authorized Reviewer Name / Title
@@ -2210,88 +2695,201 @@ export const LeaveManagement: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                  <div>
-                    <label className="block font-bold mb-1 text-[10px] text-slate-700 dark:text-slate-300">
-                      COMMENCEMENT DATE (START)
-                    </label>
-                    <input
-                      type="date"
-                      value={startDate}
-                      onChange={(e) => handleStartDateChange(e.target.value)}
-                      className="w-full rounded-xl border border-slate-300 dark:border-slate-700 p-2 dark:bg-slate-800 font-medium text-xs focus:ring-2 focus:ring-emerald-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block font-bold mb-1 text-[10px] text-slate-700 dark:text-slate-300">
-                      LEAVE END DATE (LAST DAY)
-                    </label>
-                    <input
-                      type="date"
-                      value={endDate}
-                      onChange={(e) => handleEndDateChange(e.target.value)}
-                      className="w-full rounded-xl border border-slate-300 dark:border-slate-700 p-2 dark:bg-slate-800 font-medium text-xs focus:ring-2 focus:ring-emerald-500"
-                    />
-                  </div>
-
-                  <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <label className="block font-bold text-[10px] text-emerald-700 dark:text-emerald-400">
-                        RESUMPTION / RETURN DATE
-                      </label>
-                      <span className="text-[9px] text-emerald-700 dark:text-emerald-300 font-black bg-emerald-500/20 px-1.5 py-0.5 rounded border border-emerald-500/30">
-                        +1 Day
+                {/* Leave Date Calculation Status & Guidance Banner */}
+                {!startDate && !endDate ? (
+                  <div className="p-3 rounded-xl bg-blue-500/10 border border-blue-500/30 text-[11px] text-blue-900 dark:text-blue-200 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <CalendarDays className="h-4 w-4 text-blue-600 dark:text-blue-400 shrink-0" />
+                      <span>
+                        <strong>Blank Date Policy:</strong> Leave commence date and end date start blank. Select your <strong>Commencement Date</strong>, then select or enter <strong>Days Requested</strong> — the system will automatically calculate the <strong>End Date</strong> and <strong>Reporting Date</strong> (which can be adjusted by HR).
                       </span>
+                    </div>
+                  </div>
+                ) : !startDate && days ? (
+                  <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-[11px] text-amber-900 dark:text-amber-200 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                      <span>
+                        <strong>{days} Days Requested</strong> selected. Please select your <strong>Commencement Date (Start)</strong> below to compute the End Date and Reporting Date.
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleStartDateChange(formatDateParts(new Date()))}
+                      className="px-2 py-1 bg-amber-600 hover:bg-amber-500 text-white rounded text-[10px] font-bold whitespace-nowrap shadow-sm"
+                    >
+                      Set Today as Start
+                    </button>
+                  </div>
+                ) : startDate && !days ? (
+                  <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-[11px] text-amber-900 dark:text-amber-200 flex items-center gap-2">
+                    <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                    <span>
+                      Commence Date chosen (<strong>{startDate}</strong>). Please select or enter <strong>Days Requested</strong> below to calculate End Date and Reporting Date.
+                    </span>
+                  </div>
+                ) : (
+                  <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-[11px] text-emerald-900 dark:text-emerald-200 flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                      <span>
+                        <strong>System Calculated:</strong> From <strong>{startDate}</strong> for <strong>{days} {Number(days) === 1 ? 'Day' : 'Days'}</strong> ({isMaternityLeave(leaveType) ? 'Calendar Days' : 'Working Days'}) ➔ Last day of leave: <strong>{endDate}</strong>, Reporting Date for duty: <strong className="text-emerald-700 dark:text-emerald-300 font-extrabold">{resumptionDate || calculateResumptionDate(endDate)}</strong>.
+                      </span>
+                    </div>
+                    <span className="text-[9px] font-extrabold bg-amber-500/15 text-amber-700 dark:text-amber-300 px-2 py-0.5 rounded-full border border-amber-500/30">
+                      Dates Adjustable by HR
+                    </span>
+                  </div>
+                )}
+
+                {/* Primary 4-Field Leave Scheduling Inputs */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                  {/* Field 1: Leave Commencement Date (Starts Blank) */}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <label className="block font-bold text-[10px] text-slate-700 dark:text-slate-300">
+                        COMMENCE DATE (START) *
+                      </label>
+                      {!startDate && (
+                        <button
+                          type="button"
+                          onClick={() => handleStartDateChange(formatDateParts(new Date()))}
+                          className="text-[9px] text-emerald-600 dark:text-emerald-400 hover:underline font-bold"
+                          title="Click to quickly fill with today's date"
+                        >
+                          Use Today
+                        </button>
+                      )}
                     </div>
                     <input
                       type="date"
-                      value={resumptionDate}
-                      onChange={(e) => handleResumptionDateChange(e.target.value)}
-                      className="w-full rounded-xl border border-emerald-500/60 bg-emerald-50/50 dark:bg-emerald-950/30 p-2 text-emerald-800 dark:text-emerald-300 font-black text-xs focus:ring-2 focus:ring-emerald-500"
+                      required
+                      value={startDate}
+                      onChange={(e) => handleStartDateChange(e.target.value)}
+                      placeholder="YYYY-MM-DD"
+                      className="w-full rounded-xl border border-slate-300 dark:border-slate-700 p-2 dark:bg-slate-800 font-medium text-xs focus:ring-2 focus:ring-emerald-500"
                     />
+                    <span className="text-[9px] text-slate-400 block">
+                      {startDate ? `Commences on ${startDate}` : 'Starts blank — select start date'}
+                    </span>
                   </div>
 
-                  <div>
-                    <label className="block font-bold mb-1 text-[10px] text-slate-700 dark:text-slate-300">
-                      CALCULATED DURATION (DAYS)
-                    </label>
+                  {/* Field 2: Days Requested (Selectable / Input) */}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <label className="block font-bold text-[10px] text-emerald-700 dark:text-emerald-400">
+                        DAYS REQUESTED *
+                      </label>
+                      <span className="text-[9px] text-slate-400">
+                        {isMaternityLeave(leaveType) ? 'Calendar Days' : 'Working Days'}
+                      </span>
+                    </div>
                     <input
                       type="number"
                       min={1}
                       max={120}
+                      required
+                      placeholder="e.g. 7"
                       value={days}
-                      onChange={(e) => handleDaysChange(Number(e.target.value))}
+                      onChange={(e) => handleDaysChange(e.target.value === '' ? '' : Number(e.target.value))}
                       className="w-full rounded-xl border border-emerald-500/50 bg-emerald-50/60 dark:bg-slate-800 p-2 font-black text-emerald-600 dark:text-emerald-400 text-sm focus:ring-2 focus:ring-emerald-500"
                     />
+                    {/* Quick Selection Buttons for Staff */}
+                    <div className="flex flex-wrap items-center gap-1 pt-0.5">
+                      <span className="text-[9px] text-slate-400 font-bold">Quick:</span>
+                      {[3, 5, 7, 10, 14, 21, 30].map((d) => (
+                        <button
+                          key={d}
+                          type="button"
+                          onClick={() => handleDaysChange(d)}
+                          className={`px-1.5 py-0.5 rounded text-[9px] font-bold border transition ${
+                            Number(days) === d
+                              ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                              : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                          }`}
+                        >
+                          {d}d
+                        </button>
+                      ))}
+                      {isMaternityLeave(leaveType) && (
+                        <button
+                          type="button"
+                          onClick={() => handleDaysChange(90)}
+                          className={`px-1.5 py-0.5 rounded text-[9px] font-bold border transition ${
+                            Number(days) === 90
+                              ? 'bg-purple-600 text-white border-purple-600'
+                              : 'bg-purple-50 text-purple-700 border-purple-200'
+                          }`}
+                        >
+                          90d
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Field 3: Leave End Date (Starts Blank, System Calculates, HR Adjustable) */}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <label className="block font-bold text-[10px] text-slate-700 dark:text-slate-300">
+                        LEAVE END DATE (LAST DAY) *
+                      </label>
+                      <span className="text-[8px] font-bold bg-amber-500/20 text-amber-700 dark:text-amber-300 px-1.5 py-0.5 rounded">
+                        HR Adjustable
+                      </span>
+                    </div>
+                    <input
+                      type="date"
+                      required
+                      value={endDate}
+                      onChange={(e) => handleEndDateChange(e.target.value)}
+                      placeholder="YYYY-MM-DD"
+                      className="w-full rounded-xl border border-slate-300 dark:border-slate-700 p-2 dark:bg-slate-800 font-medium text-xs focus:ring-2 focus:ring-emerald-500"
+                    />
+                    <span className="text-[9px] text-slate-400 block">
+                      {endDate ? `Calculated last day: ${endDate}` : 'Starts blank — calculated from days'}
+                    </span>
+                  </div>
+
+                  {/* Field 4: Reporting Date / Resumption Date (Starts Blank, System Calculates, HR Adjustable) */}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <label className="block font-bold text-[10px] text-emerald-700 dark:text-emerald-400">
+                        REPORTING DATE (RESUMPTION) *
+                      </label>
+                      <span className="text-[8px] font-bold bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 px-1.5 py-0.5 rounded">
+                        +1d / HR Adjustable
+                      </span>
+                    </div>
+                    <input
+                      type="date"
+                      required
+                      value={resumptionDate}
+                      onChange={(e) => handleResumptionDateChange(e.target.value)}
+                      placeholder="YYYY-MM-DD"
+                      className="w-full rounded-xl border border-emerald-500/60 bg-emerald-50/50 dark:bg-emerald-950/30 p-2 text-emerald-800 dark:text-emerald-300 font-black text-xs focus:ring-2 focus:ring-emerald-500"
+                    />
+                    <span className="text-[9px] text-slate-400 block">
+                      {resumptionDate ? `Reports for duty on: ${resumptionDate}` : 'Starts blank — calculated from end date'}
+                    </span>
                   </div>
                 </div>
 
-                <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-900 dark:text-amber-200 font-medium flex flex-wrap items-center justify-between gap-2.5">
-                  <div className="flex items-center gap-2">
-                    <Clock className="h-4 w-4 text-amber-500 shrink-0" />
-                    <span>
-                      Auto-Calculated Duration: <strong className="text-amber-950 dark:text-amber-100 font-black">{days} {days === 1 ? 'Day' : 'Days'}</strong>
-                      {isMaternityLeave(leaveType) ? (
-                        <span className="ml-2 text-[10px] text-purple-700 dark:text-purple-300 bg-purple-500/15 px-2 py-0.5 rounded-lg font-bold border border-purple-500/30">
-                          Maternity Leave: Calendar Days (Mon–Sun)
-                        </span>
-                      ) : (
-                        <span className="ml-2 text-[10px] text-emerald-700 dark:text-emerald-300 bg-emerald-500/15 px-2 py-0.5 rounded-lg font-bold border border-emerald-500/30">
-                          Working Days Only (Excl. Weekends)
-                        </span>
-                      )}
-                    </span>
+                {/* Date Summary Tag */}
+                {startDate && endDate && (
+                  <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 flex flex-wrap items-center justify-between text-[11px] text-slate-600 dark:text-slate-300">
+                    <div className="flex items-center gap-2">
+                      <Clock className="h-4 w-4 text-emerald-600" />
+                      <span>
+                        Effective Leave Span: <strong className="text-slate-800 dark:text-slate-100">{startDate}</strong> to <strong className="text-slate-800 dark:text-slate-100">{endDate}</strong> ({days} {Number(days) === 1 ? 'day' : 'days'})
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-bold border border-emerald-500/30">
+                        Staff Reports for Duty: {resumptionDate || calculateResumptionDate(endDate)}
+                      </span>
+                    </div>
                   </div>
-                  <div className="flex flex-wrap items-center gap-2 text-[10px] font-mono">
-                    <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-900 dark:text-amber-200">
-                      Leave Span: <strong>{startDate}</strong> to <strong>{endDate}</strong>
-                    </span>
-                    <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 font-bold border border-emerald-500/30">
-                      Resumption Date: <strong>{resumptionDate || calculateResumptionDate(endDate)}</strong> (+1 Day)
-                    </span>
-                  </div>
-                </div>
+                )}
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
@@ -2430,6 +3028,27 @@ export const LeaveManagement: React.FC = () => {
         onClose={() => setOfficialFormModal({ open: false, leave: null })}
         leave={officialFormModal.leave}
         hospitalName="POPE JOHN PAUL II MEDICAL CENTRE"
+        onOpenHolidayAdjustment={(l) => {
+          setOfficialFormModal({ open: false, leave: null });
+          setHolidayAdjustModal({ open: true, leave: l });
+        }}
+        isHRorAdmin={isHRorAdmin}
+        canDeleteLeave={canDeleteLeave}
+        onDeleteLeave={(l) => {
+          setDeleteConfirmModal({ open: true, leave: l, isDeleting: false });
+        }}
+      />
+
+      {/* Public Holiday End Date Adjustment Modal */}
+      <AdjustLeaveHolidayModal
+        isOpen={holidayAdjustModal.open}
+        onClose={() => setHolidayAdjustModal({ open: false, leave: null })}
+        leave={holidayAdjustModal.leave}
+        onSaveAdjustment={(leaveId, data) => {
+          adjustLeaveEndDate(leaveId, data);
+          showToast(`Adjusted Leave End Date to ${data.newEndDate} for ${holidayAdjustModal.leave?.employeeName || 'Staff Member'} with Public Holiday remarks.`);
+        }}
+        currentUserName={currentUser?.name || (activeRole === 'hr_director' || activeRole === 'hr_manager' ? 'HR Directorate Manager' : 'HR Officer')}
       />
 
       {/* HR Digital Signature Vault Modal (HR Directorate Only) */}
@@ -2440,6 +3059,145 @@ export const LeaveManagement: React.FC = () => {
           setVaultTargetEmp(null);
         }}
         targetEmployee={vaultTargetEmp}
+      />
+
+      {/* HR Delete Leave Confirmation Modal */}
+      {deleteConfirmModal.open && deleteConfirmModal.leave && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm p-4 animate-in fade-in">
+          <div className="relative w-full max-w-lg rounded-3xl border border-rose-200 dark:border-rose-900/60 bg-white dark:bg-slate-900 shadow-2xl overflow-hidden">
+            {/* Top Red Accent Band */}
+            <div className="h-2 bg-gradient-to-r from-rose-500 via-red-600 to-rose-700" />
+
+            <div className="p-6 space-y-5">
+              {/* Header with Icon */}
+              <div className="flex items-start gap-4">
+                <div className="p-3 rounded-2xl bg-rose-100 text-rose-600 dark:bg-rose-950/80 dark:text-rose-400 shrink-0 border border-rose-200 dark:border-rose-800">
+                  <Trash2 className="h-6 w-6" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300 border border-rose-200 dark:border-rose-800">
+                      HR Authorization
+                    </span>
+                    <span className="text-[10px] font-mono text-slate-500">
+                      ID: {deleteConfirmModal.leave.id}
+                    </span>
+                  </div>
+                  <h3 className="text-lg font-black text-slate-900 dark:text-slate-100 mt-1">
+                    Delete Leave Application
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Are you sure you want to permanently delete this leave application from the system?
+                  </p>
+                </div>
+              </div>
+
+              {/* Leave Application Details Summary */}
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 space-y-2.5 text-xs">
+                <div className="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-700">
+                  <span className="text-slate-500 font-semibold">Staff Member:</span>
+                  <span className="font-extrabold text-slate-900 dark:text-white">
+                    {deleteConfirmModal.leave.employeeName} ({deleteConfirmModal.leave.department})
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-700">
+                  <span className="text-slate-500 font-semibold">Leave Type & Duration:</span>
+                  <span className="font-bold text-slate-800 dark:text-slate-200">
+                    {deleteConfirmModal.leave.leaveType} • {formatLeaveDaysText(deleteConfirmModal.leave.totalDays, deleteConfirmModal.leave.leaveType)}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-700">
+                  <span className="text-slate-500 font-semibold">Leave Period:</span>
+                  <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                    {deleteConfirmModal.leave.startDate} to {deleteConfirmModal.leave.endDate}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500 font-semibold">Application Status:</span>
+                  <span
+                    className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase ${
+                      deleteConfirmModal.leave.status === 'Approved'
+                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                        : deleteConfirmModal.leave.status === 'Rejected'
+                        ? 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
+                        : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                    }`}
+                  >
+                    {deleteConfirmModal.leave.status}
+                  </span>
+                </div>
+              </div>
+
+              {/* Impact & Audit Notice */}
+              <div className="p-3.5 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 text-xs text-amber-800 dark:text-amber-300 space-y-1.5">
+                <p className="font-bold flex items-center gap-1.5">
+                  <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                  Impact of Permanent Deletion:
+                </p>
+                <ul className="list-disc list-inside space-y-1 text-[11px] text-amber-700 dark:text-amber-400/90 pl-1">
+                  {deleteConfirmModal.leave.status === 'Approved' ? (
+                    <li>
+                      <strong>Restores Leave Balance:</strong> The {deleteConfirmModal.leave.totalDays} approved days will be credited back to {deleteConfirmModal.leave.employeeName}&apos;s leave entitlement.
+                    </li>
+                  ) : (
+                    <li>
+                      <strong>Workflow Terminated:</strong> All 4 tiers of pending workflow approvals (Unit Head, HOD, HR, Facility Head) will be permanently cleared.
+                    </li>
+                  )}
+                  <li>
+                    Associated digital PDF records will be purged from the staff document vault.
+                  </li>
+                  <li>
+                    An immutable audit log entry will be recorded under your HR credentials.
+                  </li>
+                </ul>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  disabled={deleteConfirmModal.isDeleting}
+                  onClick={() => setDeleteConfirmModal({ open: false, leave: null, isDeleting: false })}
+                  className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold transition disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={deleteConfirmModal.isDeleting}
+                  onClick={handleConfirmDelete}
+                  className="px-5 py-2 rounded-xl bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 text-white text-xs font-bold transition shadow-lg shadow-rose-950/40 flex items-center gap-2 disabled:opacity-50"
+                >
+                  {deleteConfirmModal.isDeleting ? (
+                    <>
+                      <span className="h-3.5 w-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <span>Deleting...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="h-3.5 w-3.5" />
+                      <span>Permanently Delete</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Staff Leave and Attendant Master Report Modal */}
+      <StaffLeaveAndAttendantReportModal
+        isOpen={isStaffLeaveAttendantModalOpen}
+        onClose={() => setIsStaffLeaveAttendantModalOpen(false)}
+        defaultDepartment={reportDeptFilter}
+        initialStaffId={selectedStaffDossierId}
+        initialMode={staffModalMode}
+        initialReportScope={staffReportScope}
       />
     </div>
   );

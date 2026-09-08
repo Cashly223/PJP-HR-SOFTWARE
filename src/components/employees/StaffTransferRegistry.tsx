@@ -1014,6 +1014,14 @@ export const StaffTransferRegistry: React.FC<StaffTransferRegistryProps> = ({
                 />
               </div>
 
+              {/* Automatic Roster Transfer Notice */}
+              <div className="p-3 rounded-xl bg-emerald-950/40 border border-emerald-500/30 text-emerald-200 text-xs flex items-center gap-2.5">
+                <ArrowRightLeft className="h-4 w-4 text-emerald-400 shrink-0" />
+                <p className="text-[11px] leading-relaxed">
+                  <strong>Automatic Duty Roster Transfer:</strong> Saving this transfer will immediately and automatically transfer this staff member to the duty roaster of <span className="text-white font-semibold">{movementForm.newDepartment || 'the target department'}</span> and synchronize unit rosters.
+                </p>
+              </div>
+
               {/* Action Buttons */}
               <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
                 <button
@@ -1027,7 +1035,7 @@ export const StaffTransferRegistry: React.FC<StaffTransferRegistryProps> = ({
                   type="submit"
                   className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-2 transition shadow-lg shadow-emerald-950/50"
                 >
-                  <CheckCircle2 className="h-4 w-4" /> Save Movement Record & Update Profile
+                  <CheckCircle2 className="h-4 w-4" /> Save Movement Record & Transfer to Roster
                 </button>
               </div>
             </form>

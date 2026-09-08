@@ -44,12 +44,15 @@ export const SubordinateRequestModal: React.FC<SubordinateRequestModalProps> = (
     updateExpenseClaimStatus,
     setActiveTab,
     showToast,
+    deleteLeaveRequest,
+    isHeadOfFacilityOrHr,
   } = useHrms();
 
   const [activeFilter, setActiveFilter] = useState<'all' | 'leave' | 'swap' | 'roster' | 'expense'>('all');
   const [dismissedItemIds, setDismissedItemIds] = useState<string[]>([]);
   const [commentsMap, setCommentsMap] = useState<Record<string, string>>({});
   const [processingId, setProcessingId] = useState<string | null>(null);
+  const [deleteConfirmItem, setDeleteConfirmItem] = useState<{ id: string; name: string } | null>(null);
 
   // Identify logged in employee profile
   const emp = employees.find(
@@ -76,8 +79,14 @@ export const SubordinateRequestModal: React.FC<SubordinateRequestModalProps> = (
         (d.departmentHeadEmail && currentUser?.email && d.departmentHeadEmail.toLowerCase() === currentUser.email.toLowerCase())
     );
 
-  const isHR = activeRole === 'hr_director' || activeRole === 'hr_manager';
+  const isHR =
+    activeRole === 'hr_director' ||
+    activeRole === 'hr_manager' ||
+    ['super_admin', 'facility_head', 'hr_director', 'hr_manager'].includes(currentUser?.role || '') ||
+    currentUser?.email?.toLowerCase() === 'attasam223@gmail.com' ||
+    isHeadOfFacilityOrHr;
   const isFacilityHead = activeRole === 'facility_head' || activeRole === 'super_admin';
+  const canDeleteLeave = isHR || isFacilityHead;
 
   const userDept = emp?.department;
   const userUnit = emp?.unit;
@@ -520,6 +529,17 @@ export const SubordinateRequestModal: React.FC<SubordinateRequestModalProps> = (
                   </div>
 
                   <div className="flex items-center gap-2">
+                    {item.type === 'leave' && canDeleteLeave && (
+                      <button
+                        type="button"
+                        disabled={processingId === item.id}
+                        onClick={() => setDeleteConfirmItem({ id: item.id, name: item.subordinateName })}
+                        className="flex items-center gap-1 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 px-3 py-1.5 text-xs font-bold transition disabled:opacity-50"
+                        title="HR Permission: Permanently delete this leave application"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" /> Delete
+                      </button>
+                    )}
                     <button
                       disabled={processingId === item.id}
                       onClick={() => handleReject(item)}
@@ -565,6 +585,52 @@ export const SubordinateRequestModal: React.FC<SubordinateRequestModalProps> = (
           </div>
         </div>
       </div>
+
+      {/* HR Delete Leave Confirmation Modal */}
+      {deleteConfirmItem && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
+          <div className="w-full max-w-md bg-slate-900 border border-rose-500/40 rounded-3xl p-6 shadow-2xl space-y-4 text-white">
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-rose-500/20 text-rose-400 rounded-2xl border border-rose-500/30">
+                <Trash2 className="h-6 w-6" />
+              </div>
+              <div>
+                <h3 className="text-base font-extrabold text-white">Delete Leave Request?</h3>
+                <p className="text-xs text-rose-300">HR Administrative Action</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed">
+              Are you sure you want to permanently delete the leave application for{' '}
+              <span className="font-bold text-white">{deleteConfirmItem.name}</span>? This will remove the leave from all workflows, restore entitlement balances, and log an audit record.
+            </p>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setDeleteConfirmItem(null)}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!deleteConfirmItem) return;
+                  const leaveId = deleteConfirmItem.id;
+                  setProcessingId(leaveId);
+                  setDeleteConfirmItem(null);
+                  await deleteLeaveRequest(leaveId);
+                  setProcessingId(null);
+                }}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-extrabold shadow-lg transition flex items-center gap-1.5"
+              >
+                <Trash2 className="h-4 w-4" /> Permanently Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

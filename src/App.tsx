@@ -38,13 +38,49 @@ import { BirthdayNotificationBanner } from './components/birthday/BirthdayNotifi
 import { DigitalSuggestionBox } from './components/suggestions/DigitalSuggestionBox';
 import { InformationHub } from './components/infohub/InformationHub';
 import { QuickActionsFAB } from './components/quickactions/QuickActionsFAB';
+import { IPhoneBottomNavBar } from './components/mobile/IPhoneBottomNavBar';
+import { ClinicalSessionLocker } from './components/security/ClinicalSessionLocker';
 
 const AppContent: React.FC = () => {
-  const { isAuthenticated, activeTab, currentUser, activeRole, hasModuleAccess, mobileViewActive, setMobileViewActive } = useHrms();
+  const { isAuthenticated, activeTab, currentUser, activeRole, portalMode, hasModuleAccess, mobileViewActive, setMobileViewActive } = useHrms();
   const [isAiModalOpen, setIsAiModalOpen] = useState(false);
   const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showMobileInstallPrompt, setShowMobileInstallPrompt] = useState(false);
+
+  // Popstate handler for closing modals/drawers when phone Back button is pressed
+  useEffect(() => {
+    const handleModalPopState = (e: PopStateEvent) => {
+      if (isMobileMenuOpen) {
+        setIsMobileMenuOpen(false);
+      }
+      if (isAiModalOpen) {
+        setIsAiModalOpen(false);
+      }
+      if (isChangePasswordOpen) {
+        setIsChangePasswordOpen(false);
+      }
+      if (showMobileInstallPrompt) {
+        setShowMobileInstallPrompt(false);
+      }
+    };
+
+    window.addEventListener('popstate', handleModalPopState);
+    return () => window.removeEventListener('popstate', handleModalPopState);
+  }, [isMobileMenuOpen, isAiModalOpen, isChangePasswordOpen, showMobileInstallPrompt]);
+
+  const handleOpenMobileMenu = () => {
+    setIsMobileMenuOpen(true);
+    try {
+      if (typeof window !== 'undefined' && window.history) {
+        window.history.pushState({ appModal: 'menu', appTab: activeTab }, '', window.location.pathname);
+      }
+    } catch (e) {}
+  };
+
+  const handleCloseMobileMenu = () => {
+    setIsMobileMenuOpen(false);
+  };
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -69,6 +105,7 @@ const AppContent: React.FC = () => {
   }
 
   const isExecRole = ['super_admin', 'facility_head', 'hr_director', 'hr_manager'].includes(activeRole);
+  const showExecutiveDashboard = portalMode === 'admin' && isExecRole;
 
   const renderTabContent = () => {
     // RBAC Security Check
@@ -81,7 +118,7 @@ const AppContent: React.FC = () => {
         return (
           <div className="space-y-4 sm:space-y-6">
             <BirthdayNotificationBanner />
-            {isExecRole ? <ExecutiveDashboard /> : <StaffMemberDashboard />}
+            {showExecutiveDashboard ? <ExecutiveDashboard /> : <StaffMemberDashboard />}
           </div>
         );
       case 'notice_board':
@@ -142,22 +179,31 @@ const AppContent: React.FC = () => {
   return (
     <div className="flex h-screen w-full max-w-full overflow-hidden bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
       {/* Sidebar Navigation (Desktop Persistent + Mobile Drawer) */}
-      <Sidebar isMobileOpen={isMobileMenuOpen} onCloseMobile={() => setIsMobileMenuOpen(false)} />
+      <Sidebar isMobileOpen={isMobileMenuOpen} onCloseMobile={handleCloseMobileMenu} />
 
       {/* Main Content Area Container */}
       <div className="flex flex-1 flex-col overflow-hidden min-w-0 w-full">
         {/* Header Bar with Hamburger Menu Toggle */}
         <Header
-          onToggleMobileMenu={() => setIsMobileMenuOpen((prev) => !prev)}
+          onToggleMobileMenu={() => {
+            if (isMobileMenuOpen) {
+              handleCloseMobileMenu();
+            } else {
+              handleOpenMobileMenu();
+            }
+          }}
           onOpenAIAssistant={() => setIsAiModalOpen(true)}
           onChangePasswordClick={() => setIsChangePasswordOpen(true)}
         />
 
         {/* Scrollable View Content Area */}
-        <main className="flex-1 overflow-y-auto p-3 sm:p-5 md:p-6 lg:p-8 bg-slate-50 dark:bg-slate-950 min-w-0 w-full">
+        <main className="flex-1 overflow-y-auto p-3 sm:p-5 md:p-6 lg:p-8 pb-28 lg:pb-8 bg-slate-50 dark:bg-slate-950 min-w-0 w-full overscroll-contain">
           <div className="mx-auto max-w-7xl min-w-0 w-full">{renderTabContent()}</div>
         </main>
       </div>
+
+      {/* iPhone / Mobile Native Bottom Navigation Bar */}
+      <IPhoneBottomNavBar onOpenFullMenu={handleOpenMobileMenu} />
 
       {/* Modals & Simulators */}
       <AIAssistantModal isOpen={isAiModalOpen} onClose={() => setIsAiModalOpen(false)} />
@@ -184,6 +230,9 @@ const AppContent: React.FC = () => {
 
       {/* Floating Action Button (FAB) for Quick Hospital HR Actions */}
       <QuickActionsFAB />
+
+      {/* Hospital Terminal Clinical Inactivity Session Locker (HIPAA § 164.312) */}
+      <ClinicalSessionLocker />
     </div>
   );
 };

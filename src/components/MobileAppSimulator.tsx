@@ -34,6 +34,7 @@ import {
 import { useHrms } from '../context/HrmsContext';
 import { PlayStoreDeployModal } from './mobile/PlayStoreDeployModal';
 import { MobileGeofenceFacialClockIn } from './attendance/MobileGeofenceFacialClockIn';
+import { calculateEndDateFromDays, calculateResumptionDate, calculateLeaveDays } from '../lib/leaveUtils';
 
 interface MobileAppSimulatorProps {
   onClose: () => void;
@@ -65,6 +66,7 @@ export const MobileAppSimulator: React.FC<MobileAppSimulatorProps> = ({ onClose 
 
   // States
   const [activeScreen, setActiveScreen] = useState<'home' | 'attendance' | 'roster' | 'payslip' | 'leave' | 'profile' | 'notices'>('home');
+  const [phoneModel, setPhoneModel] = useState<'iphone16pro' | 'iphone15' | 'iphonese' | 'android'>('iphone16pro');
   const [isExpandedCanvas, setIsExpandedCanvas] = useState(false);
   const [selectedStation, setSelectedStation] = useState('ICU Main Station');
   const [clockedIn, setClockedIn] = useState(false);
@@ -73,13 +75,58 @@ export const MobileAppSimulator: React.FC<MobileAppSimulatorProps> = ({ onClose 
   const [showPlayStoreModal, setShowPlayStoreModal] = useState(false);
   const [showFacialClockInModal, setShowFacialClockInModal] = useState(false);
 
-  // Leave Form State
+  // Leave Form State (Starts Blank with Dynamic Days Requested Calculation)
   const [showLeaveForm, setShowLeaveForm] = useState(false);
   const [leaveType, setLeaveType] = useState<'Annual' | 'Casual' | 'Sick' | 'Study'>('Annual');
-  const [leaveStart, setLeaveStart] = useState('2026-09-01');
-  const [leaveEnd, setLeaveEnd] = useState('2026-09-05');
+  const [leaveStart, setLeaveStart] = useState('');
+  const [leaveEnd, setLeaveEnd] = useState('');
+  const [leaveDays, setLeaveDays] = useState<number | ''>('');
+  const [leaveReportingDate, setLeaveReportingDate] = useState('');
   const [leaveReason, setLeaveReason] = useState('');
   const [leaveFormMsg, setLeaveFormMsg] = useState('');
+
+  const handleMobileStartDateChange = (val: string) => {
+    setLeaveStart(val);
+    if (val && leaveDays && Number(leaveDays) > 0) {
+      const comp = calculateEndDateFromDays(val, Number(leaveDays), leaveType === 'Casual' ? 'Casual Leave' : 'Annual Leave');
+      setLeaveEnd(comp);
+      setLeaveReportingDate(calculateResumptionDate(comp));
+    } else if (!val) {
+      setLeaveEnd('');
+      setLeaveReportingDate('');
+    }
+  };
+
+  const handleMobileDaysChange = (val: number | '') => {
+    if (val === '' || isNaN(Number(val)) || Number(val) <= 0) {
+      setLeaveDays('');
+      setLeaveEnd('');
+      setLeaveReportingDate('');
+      return;
+    }
+    const safe = Number(val);
+    setLeaveDays(safe);
+    if (leaveStart) {
+      const comp = calculateEndDateFromDays(leaveStart, safe, leaveType === 'Casual' ? 'Casual Leave' : 'Annual Leave');
+      setLeaveEnd(comp);
+      setLeaveReportingDate(calculateResumptionDate(comp));
+    } else {
+      setLeaveEnd('');
+      setLeaveReportingDate('');
+    }
+  };
+
+  const handleMobileEndDateChange = (val: string) => {
+    setLeaveEnd(val);
+    if (val) {
+      setLeaveReportingDate(calculateResumptionDate(val));
+      if (leaveStart) {
+        setLeaveDays(calculateLeaveDays(leaveStart, val, leaveType === 'Casual' ? 'Casual Leave' : 'Annual Leave'));
+      }
+    } else {
+      setLeaveReportingDate('');
+    }
+  };
 
   // Shift Swap State
   const [showSwapModal, setShowSwapModal] = useState(false);
@@ -100,7 +147,11 @@ export const MobileAppSimulator: React.FC<MobileAppSimulatorProps> = ({ onClose 
 
   const handleLeaveSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!leaveReason) return;
+    if (!leaveStart || !leaveEnd || !leaveDays || !leaveReason) {
+      setLeaveFormMsg('Please select start date, days requested, and reason.');
+      return;
+    }
+    const reporting = leaveReportingDate || calculateResumptionDate(leaveEnd);
     addLeaveRequest({
       employeeId: loggedEmp.id,
       employeeName: `${loggedEmp.firstName} ${loggedEmp.lastName}`,
@@ -108,14 +159,20 @@ export const MobileAppSimulator: React.FC<MobileAppSimulatorProps> = ({ onClose 
       type: leaveType,
       startDate: leaveStart,
       endDate: leaveEnd,
+      dateOfResumption: reporting,
+      reportingDate: reporting,
       reason: leaveReason,
       status: 'Pending',
-      totalDays: 5
+      totalDays: Number(leaveDays) || 1
     });
     setLeaveFormMsg('Leave request submitted to HR via Mobile Portal!');
     setTimeout(() => {
       setLeaveFormMsg('');
       setShowLeaveForm(false);
+      setLeaveStart('');
+      setLeaveEnd('');
+      setLeaveDays('');
+      setLeaveReportingDate('');
       setLeaveReason('');
       setActiveScreen('leave');
     }, 1500);
@@ -562,24 +619,77 @@ export const MobileAppSimulator: React.FC<MobileAppSimulatorProps> = ({ onClose 
                   </select>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="text-[10px] text-slate-400 block mb-0.5">Start Date:</label>
-                    <input
-                      type="date"
-                      value={leaveStart}
-                      onChange={(e) => setLeaveStart(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-2 py-1 text-xs text-slate-200"
-                    />
+                <div className="space-y-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[10px] text-slate-400 block mb-0.5">Commence Date *</label>
+                      <input
+                        type="date"
+                        required
+                        value={leaveStart}
+                        onChange={(e) => handleMobileStartDateChange(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-2 py-1 text-xs text-slate-200"
+                      />
+                      <span className="text-[8px] text-slate-500 block">{leaveStart || 'Starts blank'}</span>
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-emerald-400 block mb-0.5">Days Requested *</label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={90}
+                        required
+                        placeholder="e.g. 7"
+                        value={leaveDays}
+                        onChange={(e) => handleMobileDaysChange(e.target.value === '' ? '' : Number(e.target.value))}
+                        className="w-full bg-slate-950 border border-emerald-500/50 rounded-xl px-2 py-1 text-xs text-emerald-400 font-bold"
+                      />
+                      <div className="flex gap-1 mt-0.5">
+                        {[3, 5, 7, 14].map((d) => (
+                          <button
+                            key={d}
+                            type="button"
+                            onClick={() => handleMobileDaysChange(d)}
+                            className={`text-[8px] px-1 py-0.2 rounded font-bold ${
+                              Number(leaveDays) === d ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-slate-400'
+                            }`}
+                          >
+                            {d}d
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <label className="text-[10px] text-slate-400 block mb-0.5">End Date:</label>
-                    <input
-                      type="date"
-                      value={leaveEnd}
-                      onChange={(e) => setLeaveEnd(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-2 py-1 text-xs text-slate-200"
-                    />
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <label className="text-[10px] text-slate-400 block mb-0.5">End Date *</label>
+                        <span className="text-[7px] text-amber-400 bg-amber-500/10 px-1 rounded">HR Adj.</span>
+                      </div>
+                      <input
+                        type="date"
+                        required
+                        value={leaveEnd}
+                        onChange={(e) => handleMobileEndDateChange(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-2 py-1 text-xs text-slate-200"
+                      />
+                      <span className="text-[8px] text-slate-500 block">{leaveEnd || 'Calculated'}</span>
+                    </div>
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <label className="text-[10px] text-emerald-400 block mb-0.5">Reporting Date *</label>
+                        <span className="text-[7px] text-emerald-400 bg-emerald-500/10 px-1 rounded">+1d</span>
+                      </div>
+                      <input
+                        type="date"
+                        required
+                        value={leaveReportingDate}
+                        onChange={(e) => setLeaveReportingDate(e.target.value)}
+                        className="w-full bg-slate-950 border border-emerald-500/40 rounded-xl px-2 py-1 text-xs text-emerald-300 font-bold"
+                      />
+                      <span className="text-[8px] text-slate-500 block">{leaveReportingDate || 'Calculated'}</span>
+                    </div>
                   </div>
                 </div>
 
@@ -721,57 +831,127 @@ export const MobileAppSimulator: React.FC<MobileAppSimulatorProps> = ({ onClose 
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-3 sm:p-6 backdrop-blur-md transition-all">
       <div className="relative flex flex-col items-center max-w-full">
         {/* Top Control Bar */}
-        <div className="w-full max-w-md flex items-center justify-between mb-2 text-xs text-white">
+        <div className="w-full max-w-lg flex flex-wrap items-center justify-between gap-2 mb-2.5 text-xs text-white">
           <div className="flex items-center gap-2 font-bold text-emerald-400">
             <Smartphone className="h-4 w-4" />
-            <span>AuraHR Mobile Staff Portal Simulator</span>
+            <span className="hidden sm:inline">AuraHR iPhone & Mobile Simulator</span>
+            <span className="sm:hidden">Simulator</span>
           </div>
 
-          <div className="flex items-center gap-2">
+          {/* Model Switcher */}
+          <div className="flex items-center rounded-xl bg-slate-900 border border-slate-800 p-0.5 text-[10px] font-bold">
+            <button
+              onClick={() => setPhoneModel('iphone16pro')}
+              className={`px-2 py-1 rounded-lg transition ${
+                phoneModel === 'iphone16pro'
+                  ? 'bg-blue-600 text-white shadow'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              iPhone 16 Pro
+            </button>
+            <button
+              onClick={() => setPhoneModel('iphone15')}
+              className={`px-2 py-1 rounded-lg transition ${
+                phoneModel === 'iphone15'
+                  ? 'bg-blue-600 text-white shadow'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              iPhone 15
+            </button>
+            <button
+              onClick={() => setPhoneModel('iphonese')}
+              className={`px-2 py-1 rounded-lg transition ${
+                phoneModel === 'iphonese'
+                  ? 'bg-blue-600 text-white shadow'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              iPhone SE
+            </button>
+          </div>
+
+          <div className="flex items-center gap-1.5">
             <button
               onClick={() => setShowPlayStoreModal(true)}
-              className="flex items-center gap-1 rounded-lg bg-emerald-600/30 hover:bg-emerald-600 text-emerald-300 hover:text-white px-2.5 py-1 text-[11px] font-bold transition border border-emerald-500/40"
-              title="Google Play Store & Mobile Packaging Guide"
+              className="flex items-center gap-1 rounded-lg bg-emerald-600/30 hover:bg-emerald-600 text-emerald-300 hover:text-white px-2 py-1 text-[11px] font-bold transition border border-emerald-500/40"
+              title="iOS Safari & Mobile PWA Installation Guide"
             >
               <Store className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Play Store</span>
+              <span className="hidden sm:inline">Install Guide</span>
             </button>
 
             <button
               onClick={() => setIsExpandedCanvas(!isExpandedCanvas)}
-              className="flex items-center gap-1 rounded-lg bg-slate-800 px-2.5 py-1 text-[11px] font-semibold text-slate-200 hover:bg-slate-700 transition border border-slate-700"
+              className="flex items-center gap-1 rounded-lg bg-slate-800 px-2 py-1 text-[11px] font-semibold text-slate-200 hover:bg-slate-700 transition border border-slate-700"
               title="Toggle Expanded View"
             >
               {isExpandedCanvas ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
-              <span>{isExpandedCanvas ? 'Normal Size' : 'Expand'}</span>
             </button>
 
             <button
               onClick={onClose}
               className="flex items-center gap-1 rounded-lg bg-rose-600/30 hover:bg-rose-600 text-rose-300 hover:text-white px-2.5 py-1 text-[11px] font-bold transition border border-rose-500/40"
             >
-              <X className="h-3.5 w-3.5" /> Exit
+              <X className="h-3.5 w-3.5" />
             </button>
           </div>
         </div>
 
         {/* Smartphone Container Shell */}
         <div
-          className={`transition-all duration-300 rounded-[44px] border-[12px] border-slate-900 bg-slate-950 p-3 shadow-2xl overflow-hidden flex flex-col justify-between text-slate-100 ${
-            isExpandedCanvas ? 'w-[420px] h-[780px]' : 'w-[360px] h-[710px]'
+          className={`transition-all duration-300 ${
+            phoneModel === 'iphonese'
+              ? 'rounded-[36px] border-[14px] border-slate-900 bg-slate-950 pb-5'
+              : 'rounded-[50px] border-[12px] border-slate-900 bg-slate-950'
+          } p-3 shadow-2xl overflow-hidden flex flex-col justify-between text-slate-100 ${
+            isExpandedCanvas ? 'w-[420px] h-[790px]' : 'w-[365px] h-[720px]'
           }`}
         >
-          {/* Top Speaker Notch & Battery Bar */}
-          <div className="flex items-center justify-between px-4 pt-1 pb-2 shrink-0">
-            <span className="text-[10px] font-bold text-slate-300">10:00 AM</span>
-            <div className="h-3.5 w-24 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center">
-              <div className="h-1.5 w-10 rounded-full bg-slate-700"></div>
+          {/* TOP HARDWARE NOTCH / DYNAMIC ISLAND / STATUS BAR */}
+          {phoneModel === 'iphone16pro' ? (
+            /* iPhone 16 Pro Dynamic Island */
+            <div className="flex items-center justify-between px-4 pt-1 pb-2 shrink-0">
+              <span className="text-[10px] font-bold text-slate-200">9:41</span>
+              {/* Dynamic Island Capsule */}
+              <div className="h-5 w-28 rounded-full bg-black border border-slate-800/80 flex items-center justify-between px-2 shadow-inner">
+                <div className="h-2.5 w-2.5 rounded-full bg-slate-900 border border-slate-700 flex items-center justify-center">
+                  <div className="h-1 w-1 rounded-full bg-blue-900"></div>
+                </div>
+                <div className="flex items-center gap-1">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                  <span className="text-[8px] font-mono text-emerald-400 font-bold">AuraHR</span>
+                </div>
+              </div>
+              <div className="flex items-center gap-1 text-[10px] font-semibold text-slate-300">
+                <span>5G</span>
+                <span className="text-white font-bold">100%</span>
+              </div>
             </div>
-            <div className="flex items-center gap-1 text-[10px] font-semibold text-slate-400">
-              <span>5G</span>
-              <span className="text-emerald-400 font-bold">100%</span>
+          ) : phoneModel === 'iphone15' ? (
+            /* iPhone 15 Standard Face ID Notch */
+            <div className="flex items-center justify-between px-4 pt-0.5 pb-2 shrink-0">
+              <span className="text-[10px] font-bold text-slate-200">9:41</span>
+              <div className="h-4 w-24 rounded-b-2xl bg-black border-b border-x border-slate-800/60 flex items-center justify-center">
+                <div className="h-1.5 w-8 rounded-full bg-slate-800"></div>
+              </div>
+              <div className="flex items-center gap-1 text-[10px] font-semibold text-slate-300">
+                <span>5G</span>
+                <span className="text-white font-bold">100%</span>
+              </div>
             </div>
-          </div>
+          ) : (
+            /* iPhone SE Speaker & Touch ID Bezel */
+            <div className="flex flex-col items-center shrink-0 mb-1">
+              <div className="h-1.5 w-12 rounded-full bg-slate-800 mb-1.5"></div>
+              <div className="w-full flex items-center justify-between px-3 text-[10px] text-slate-300">
+                <span>9:41 AM</span>
+                <span className="font-bold text-emerald-400">Touch ID Enclave Ready</span>
+                <span>100%</span>
+              </div>
+            </div>
+          )}
 
           {/* App Header Bar */}
           <div className="bg-gradient-to-r from-emerald-800 to-teal-800 p-3 rounded-2xl text-white shadow shrink-0 flex items-center justify-between">
@@ -853,8 +1033,25 @@ export const MobileAppSimulator: React.FC<MobileAppSimulatorProps> = ({ onClose 
             </button>
           </div>
 
-          {/* Home Touch Bar Pill */}
-          <div className="w-28 h-1 bg-slate-800 rounded-full mx-auto mt-1 shrink-0"></div>
+          {/* Bottom Home Indicator / Touch ID Button */}
+          {phoneModel === 'iphonese' ? (
+            <div className="pt-2 pb-1 flex justify-center shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  handleMobileClockIn();
+                }}
+                className="h-11 w-11 rounded-full border-2 border-slate-700 bg-slate-900 flex items-center justify-center text-slate-400 hover:text-emerald-400 hover:border-emerald-500 transition shadow-inner"
+                title="iPhone SE Touch ID Sensor Button"
+              >
+                <div className="h-9 w-9 rounded-full border border-slate-800 flex items-center justify-center text-[10px] font-black">
+                  ID
+                </div>
+              </button>
+            </div>
+          ) : (
+            <div className="w-28 h-1 bg-slate-700/80 rounded-full mx-auto mt-2 mb-0.5 shrink-0"></div>
+          )}
         </div>
       </div>
 

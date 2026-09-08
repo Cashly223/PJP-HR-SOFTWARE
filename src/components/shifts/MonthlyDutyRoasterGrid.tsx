@@ -13,94 +13,149 @@ import {
   Grid,
   Phone,
   UserCheck,
+  UserX,
   ShieldCheck,
   AlertCircle,
   XCircle,
   Check,
   MessageSquare,
+  Clock,
+  ArrowRightLeft,
+  ChevronLeft,
+  ChevronRight,
+  RefreshCw,
 } from 'lucide-react';
 import { useHrms } from '../../context/HrmsContext';
+import { StaffRosterRow } from '../../types/hrms';
+import {
+  isStaffInDepartment,
+  getDepartmentStaff,
+  transferDepartmentStaffToRosterGrid,
+  MONTH_OPTIONS,
+  MONTH_NAMES,
+  getMonthIndex,
+  getDaysInMonth,
+  getMonthCalendarDays,
+} from '../../utils/rosterTransferUtils';
 import { PrintDutyRoasterModal } from './PrintDutyRoasterModal';
 
-interface StaffRosterRow {
-  id: string;
-  name: string;
-  phone: string;
-  rank: string;
-  shifts: string[]; // 30 or 31 days
-}
-
 export const MonthlyDutyRoasterGrid: React.FC = () => {
-  const { selectedHospital, activeRole, currentUser, isHeadOfFacilityOrHr, currentUserDepartment } = useHrms();
+  const {
+    selectedHospital,
+    activeRole,
+    currentUser,
+    isHeadOfFacilityOrHr,
+    currentUserDepartment,
+    departmentLeadership,
+    monthlyUnitRosters,
+    addMonthlyUnitRoster,
+    updateMonthlyUnitRosterStatus,
+    syncMonthlyRosterToActiveShifts,
+    employees,
+    showToast,
+  } = useHrms();
 
   const isHRorAdmin = isHeadOfFacilityOrHr;
 
   const [month, setMonth] = useState<string>('APRIL');
   const [year, setYear] = useState<number>(2026);
-  
+  const [isSyncingLive, setIsSyncingLive] = useState<boolean>(false);
+  const [lastSyncReport, setLastSyncReport] = useState<{ time: string; shifts: number; staff: number } | null>(null);
+
+  // Available dynamic departments from departmentLeadership and registered employees
+  const availableDepartments = React.useMemo(() => {
+    const leadList = (departmentLeadership || []).map((d) => d.departmentName).filter(Boolean);
+    const empList = (employees || []).map((e) => e.department).filter(Boolean);
+    const combined = [...leadList, ...empList];
+    if (combined.length > 0) return Array.from(new Set(combined)).sort();
+    return [
+      'Intensive Care Unit (ICU)',
+      'Emergency & Trauma Dept',
+      'Surgical Operating Theater',
+      'Pediatrics & Neonatal Unit',
+      'Pharmacy & Dispensary',
+      'Radiology & Imaging',
+      'General Medical Wards',
+    ];
+  }, [departmentLeadership, employees]);
+
   // Format user department for duty roaster matching
   const getInitialDept = () => {
-    if (isHeadOfFacilityOrHr) return 'CARDIOLOGY & ICU';
-    const cleanDept = currentUserDepartment.toUpperCase();
-    if (cleanDept.includes('CARDIO') || cleanDept.includes('ICU')) return 'CARDIOLOGY & ICU';
-    if (cleanDept.includes('EMERGENCY') || cleanDept.includes('TRAUMA')) return 'EMERGENCY & TRAUMA';
-    if (cleanDept.includes('SURG') || cleanDept.includes('THEATER') || cleanDept.includes('OT')) return 'SURGICAL SERVICES & OT';
-    if (cleanDept.includes('PED') || cleanDept.includes('NEONATAL')) return 'PEDIATRICS & NEONATAL';
-    if (cleanDept.includes('PHARM')) return 'PHARMACY & DISPENSARY';
-    if (cleanDept.includes('RAD') || cleanDept.includes('IMAG')) return 'RADIOLOGY & IMAGING';
-    return cleanDept || 'GENERAL MEDICAL WARDS';
+    if (isHeadOfFacilityOrHr) {
+      return availableDepartments.find((d) => d.toUpperCase().includes('ICU') || d.toUpperCase().includes('CARDIO')) || availableDepartments[0] || 'Intensive Care Unit (ICU)';
+    }
+    const cleanDept = (currentUserDepartment || '').toUpperCase();
+    const found = availableDepartments.find((d) => d.toUpperCase() === cleanDept || d.toUpperCase().includes(cleanDept) || cleanDept.includes(d.toUpperCase()));
+    return found || currentUserDepartment || availableDepartments[0] || 'Intensive Care Unit (ICU)';
   };
 
   const [department, setDepartment] = useState<string>(getInitialDept());
   const [preparedBy, setPreparedBy] = useState<string>('Dr. Kwame Mensah (HOD)');
   const [savedSuccess, setSavedSuccess] = useState<boolean>(false);
 
-  // Sync department when role or user department changes
+  // Sync department when role or user department changes or when departments are modified
   useEffect(() => {
     if (!isHeadOfFacilityOrHr) {
-      const cleanDept = currentUserDepartment.toUpperCase();
-      let matched = cleanDept;
-      if (cleanDept.includes('CARDIO') || cleanDept.includes('ICU')) matched = 'CARDIOLOGY & ICU';
-      else if (cleanDept.includes('EMERGENCY') || cleanDept.includes('TRAUMA')) matched = 'EMERGENCY & TRAUMA';
-      else if (cleanDept.includes('SURG') || cleanDept.includes('THEATER') || cleanDept.includes('OT')) matched = 'SURGICAL SERVICES & OT';
-      else if (cleanDept.includes('PED') || cleanDept.includes('NEONATAL')) matched = 'PEDIATRICS & NEONATAL';
-      else if (cleanDept.includes('PHARM')) matched = 'PHARMACY & DISPENSARY';
-      else if (cleanDept.includes('RAD') || cleanDept.includes('IMAG')) matched = 'RADIOLOGY & IMAGING';
-      else matched = cleanDept || 'GENERAL MEDICAL WARDS';
-      
-      setDepartment(matched);
+      const cleanDept = (currentUserDepartment || '').toUpperCase();
+      const found = availableDepartments.find((d) => d.toUpperCase() === cleanDept || d.toUpperCase().includes(cleanDept) || cleanDept.includes(d.toUpperCase()));
+      setDepartment(found || currentUserDepartment || availableDepartments[0] || 'Intensive Care Unit (ICU)');
+    } else if (!availableDepartments.includes(department)) {
+      setDepartment(availableDepartments[0] || 'Intensive Care Unit (ICU)');
     }
-  }, [isHeadOfFacilityOrHr, currentUserDepartment, activeRole]);
+  }, [isHeadOfFacilityOrHr, currentUserDepartment, activeRole, availableDepartments]);
 
   // HR Approval Status per Department State
-  const [hrStatusByDept, setHrStatusByDept] = useState<Record<string, { status: 'Pending HR Approval' | 'Approved' | 'Returned for Revision'; approvedBy?: string; approvedAt?: string; notes?: string }>>({
-    'CARDIOLOGY & ICU': { status: 'Pending HR Approval' },
+  const [hrStatusByDept, setHrStatusByDept] = useState<Record<string, { status: 'Pending Verification' | 'Pending HR Approval' | 'Approved' | 'Returned for Revision'; approvedBy?: string; approvedAt?: string; notes?: string }>>({
+    'Intensive Care Unit (ICU)': { status: 'Pending Verification' },
+    'CARDIOLOGY & ICU': { status: 'Pending Verification' },
     'EMERGENCY & TRAUMA': { status: 'Approved', approvedBy: 'Marcus Vance (HR Director)', approvedAt: '2026-08-05 10:30 AM' },
+    'Emergency & Trauma Dept': { status: 'Approved', approvedBy: 'Marcus Vance (HR Director)', approvedAt: '2026-08-05 10:30 AM' },
     'GENERAL MEDICAL WARDS': { status: 'Approved', approvedBy: 'Marcus Vance (HR Director)', approvedAt: '2026-08-04 02:15 PM' },
+    'General Medical Wards': { status: 'Approved', approvedBy: 'Marcus Vance (HR Director)', approvedAt: '2026-08-04 02:15 PM' },
     'SURGICAL SERVICES & OT': { status: 'Returned for Revision', notes: 'Please ensure at least 2 Senior Operating Theater Nurses are on night duty on weekends.' },
-    'PEDIATRICS & NEONATAL': { status: 'Pending HR Approval' },
+    'Surgical Operating Theater': { status: 'Returned for Revision', notes: 'Please ensure at least 2 Senior Operating Theater Nurses are on night duty on weekends.' },
+    'PEDIATRICS & NEONATAL': { status: 'Pending Verification' },
+    'Pediatrics & Neonatal Unit': { status: 'Pending Verification' },
     'PHARMACY & DISPENSARY': { status: 'Approved', approvedBy: 'Marcus Vance (HR Director)', approvedAt: '2026-08-06 09:00 AM' },
-    'RADIOLOGY & IMAGING': { status: 'Pending HR Approval' },
+    'Pharmacy & Dispensary': { status: 'Approved', approvedBy: 'Marcus Vance (HR Director)', approvedAt: '2026-08-06 09:00 AM' },
+    'RADIOLOGY & IMAGING': { status: 'Pending Verification' },
+    'Radiology & Imaging': { status: 'Pending Verification' },
   });
 
-  const currentHrStatus = hrStatusByDept[department] || { status: 'Pending HR Approval' };
+  // Check if there is an existing submitted monthly roster in HrmsContext for this department
+  const existingRosterInContext = (monthlyUnitRosters || []).find(
+    (r) => r && r.department?.toLowerCase() === department.toLowerCase()
+  );
+
+  const currentHrStatus = existingRosterInContext
+    ? {
+        status: existingRosterInContext.status,
+        approvedBy: existingRosterInContext.reviewedBy,
+        approvedAt: existingRosterInContext.reviewedDate,
+        notes: existingRosterInContext.rejectionNotes,
+      }
+    : hrStatusByDept[department] || { status: 'Pending Verification' };
 
   const [isPrintModalOpen, setIsPrintModalOpen] = useState<boolean>(false);
   const [showRevisionModal, setShowRevisionModal] = useState<boolean>(false);
   const [revisionNotesInput, setRevisionNotesInput] = useState<string>('');
 
   const handleApproveRoasterByHR = () => {
-    const approverName = currentUser?.name || 'HR Director';
+    const approverName = currentUser?.name || 'Marcus Vance (HR Director)';
     const nowStr = new Date().toLocaleString('en-US', { month: 'short', day: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true });
     
     setHrStatusByDept((prev) => ({
       ...prev,
       [department]: {
         status: 'Approved',
-        approvedBy: `${approverName} (HR)`,
+        approvedBy: approverName,
         approvedAt: nowStr,
       },
     }));
+
+    if (existingRosterInContext) {
+      updateMonthlyUnitRosterStatus(existingRosterInContext.id, 'Approved');
+    }
   };
 
   const handleReturnRoasterForRevision = () => {
@@ -112,20 +167,60 @@ export const MonthlyDutyRoasterGrid: React.FC = () => {
         notes: revisionNotesInput,
       },
     }));
+
+    if (existingRosterInContext) {
+      updateMonthlyUnitRosterStatus(existingRosterInContext.id, 'Returned for Revision', revisionNotesInput);
+    }
+
     setShowRevisionModal(false);
     setRevisionNotesInput('');
   };
 
-  // Generate day headers for April (30 days)
-  const daysCount = 30;
-  const daysArray = Array.from({ length: daysCount }, (_, i) => i + 1);
+  // Month Navigation Handlers
+  const handlePrevMonth = () => {
+    const currIdx = getMonthIndex(month);
+    if (currIdx === 0) {
+      setMonth(MONTH_NAMES[11]);
+      setYear((y) => y - 1);
+    } else {
+      setMonth(MONTH_NAMES[currIdx - 1]);
+    }
+  };
 
-  // Day initials for April 2026 (April 1 is Wednesday -> W, Th, F, S, S, M, T...)
-  const dayInitials = [
-    'W', 'Th', 'F', 'S', 'S', 'M', 'T', 'W', 'Th', 'F',
-    'S', 'S', 'M', 'T', 'W', 'Th', 'F', 'S', 'S', 'M',
-    'T', 'W', 'Th', 'F', 'S', 'S', 'M', 'T', 'W', 'Th'
-  ];
+  const handleNextMonth = () => {
+    const currIdx = getMonthIndex(month);
+    if (currIdx === 11) {
+      setMonth(MONTH_NAMES[0]);
+      setYear((y) => y + 1);
+    } else {
+      setMonth(MONTH_NAMES[currIdx + 1]);
+    }
+  };
+
+  const handleSelectMonth = (newMonth: string) => {
+    setMonth(newMonth.toUpperCase());
+  };
+
+  const handleCurrentMonth = () => {
+    const now = new Date();
+    const currMonth = MONTH_NAMES[now.getMonth()];
+    setMonth(currMonth);
+    setYear(now.getFullYear());
+    showToast(
+      'info',
+      'Current Month Selected',
+      `Viewing ${currMonth} ${now.getFullYear()} (${getDaysInMonth(currMonth, now.getFullYear())} days)`
+    );
+  };
+
+  // Compute dynamic calendar days for the selected month & year (28, 29, 30, or 31 days)
+  const calendarDays = React.useMemo(() => {
+    return getMonthCalendarDays(month, year);
+  }, [month, year]);
+
+  const daysCount = calendarDays.length;
+  const daysArray = React.useMemo(() => Array.from({ length: daysCount }, (_, i) => i + 1), [daysCount]);
+  const dayInitials = React.useMemo(() => calendarDays.map((cd) => cd.initial), [calendarDays]);
 
   // Initialize 30 Vertical Staff Members with initial sample data from the user template
   const initialStaffList: StaffRosterRow[] = [
@@ -341,7 +436,92 @@ export const MonthlyDutyRoasterGrid: React.FC = () => {
     },
   ];
 
-  const [staffList, setStaffList] = useState<StaffRosterRow[]>(initialStaffList);
+  // Check registered staff for currently selected department using intelligent matcher
+  const deptEmployees = React.useMemo(() => {
+    return getDepartmentStaff(employees, department);
+  }, [employees, department]);
+
+  const hasNoStaff = deptEmployees.length === 0;
+
+  // Function to build the 30-staff duty roster matrix
+  // Automatically transfers departmental staff to roster!
+  const buildRosterForDepartment = React.useCallback(
+    (targetDept: string, targetMonth: string, targetYear: number): StaffRosterRow[] => {
+      const days = getDaysInMonth(targetMonth, targetYear);
+      const exact = (monthlyUnitRosters || []).find(
+        (r) =>
+          r &&
+          isStaffInDepartment(r.department, targetDept) &&
+          r.month?.toUpperCase() === targetMonth.toUpperCase() &&
+          Number(r.year) === Number(targetYear)
+      );
+      if (exact?.staffGrid && exact.staffGrid.length > 0) {
+        return transferDepartmentStaffToRosterGrid(targetDept, employees, exact.staffGrid, days);
+      }
+
+      const anyDeptRoster = (monthlyUnitRosters || []).find(
+        (r) => r && isStaffInDepartment(r.department, targetDept)
+      );
+      return transferDepartmentStaffToRosterGrid(targetDept, employees, anyDeptRoster?.staffGrid, days);
+    },
+    [monthlyUnitRosters, employees]
+  );
+
+  const [staffList, setStaffList] = useState<StaffRosterRow[]>(() =>
+    buildRosterForDepartment(department, month, year)
+  );
+
+  // Explicit handler to automatically transfer departmental staff to roster matrix
+  const handleAutoTransferStaff = () => {
+    const updated = transferDepartmentStaffToRosterGrid(department, employees, staffList, daysCount);
+    setStaffList(updated);
+    const count = deptEmployees.length;
+    if (count > 0) {
+      showToast(
+        'success',
+        'Department Staff Transferred',
+        `Successfully transferred ${count} departmental staff members into the ${department} duty roaster for ${month} ${year} (${daysCount} days).`
+      );
+    } else {
+      showToast(
+        'info',
+        'No Registered Staff',
+        `No staff members found in ${department}. Automatically inserted "No staff name" on the roster.`
+      );
+    }
+  };
+
+  // Explicit handler to insert "No staff name" on roster when department has no staff
+  const handleInsertNoStaffName = () => {
+    const emptyRow1: StaffRosterRow = {
+      id: '1',
+      name: 'No staff name',
+      phone: '',
+      rank: 'N/A',
+      shifts: Array(daysCount).fill('O'),
+    };
+    const remainingRows: StaffRosterRow[] = Array.from({ length: 29 }, (_, idx) => ({
+      id: String(idx + 2),
+      name: '',
+      phone: '',
+      rank: '',
+      shifts: Array(daysCount).fill('O'),
+    }));
+    setStaffList([emptyRow1, ...remainingRows]);
+    showToast('info', 'No Staff Name Inserted', 'Inserted "No staff name" on the roster row.');
+  };
+
+  // Automatically synchronize staff list and HOD name when department, month, year or staff change
+  useEffect(() => {
+    setStaffList(buildRosterForDepartment(department, month, year));
+
+    const deptLead = (departmentLeadership || []).find(
+      (d) => isStaffInDepartment(d.departmentName, department)
+    );
+    if (deptLead?.hodName) {
+      setPreparedBy(`${deptLead.hodName} (HOD)`);
+    }
+  }, [department, month, year, employees, buildRosterForDepartment, departmentLeadership]);
 
   // Cycle shift code on cell click: M -> A -> N -> O -> M
   const handleCellClick = (staffIndex: number, dayIndex: number) => {
@@ -365,7 +545,7 @@ export const MonthlyDutyRoasterGrid: React.FC = () => {
   };
 
   // Update staff details
-  const handleUpdateStaffDetail = (index: number, field: 'name' | 'phone' | 'rank', value: string) => {
+  const handleUpdateStaffDetail = (index: number, field: 'name' | 'phone' | 'rank' | 'mechanisationStatus', value: string) => {
     setStaffList((prev) => {
       const updated = [...prev];
       updated[index] = { ...updated[index], [field]: value };
@@ -386,23 +566,64 @@ export const MonthlyDutyRoasterGrid: React.FC = () => {
       prev.map((staff, idx) => {
         const pattern = ['M', 'M', 'A', 'A', 'N', 'O', 'O'];
         const offset = idx % 7;
-        const newShifts = Array.from({ length: 30 }, (_, d) => pattern[(d + offset) % 7]);
+        const newShifts = Array.from({ length: daysCount }, (_, d) => pattern[(d + offset) % 7]);
         return { ...staff, shifts: newShifts };
       })
     );
   };
 
   const handleSaveRoster = () => {
+    // Save or update in HrmsContext monthlyUnitRosters
+    addMonthlyUnitRoster({
+      department,
+      unit: `${department} Clinical Ward`,
+      month,
+      year,
+      preparedBy,
+      preparedByRole: 'Head of Department / Unit Head',
+      totalStaffCount: staffList.filter((s) => s.name.trim() && s.name.trim() !== 'No staff name').length || 0,
+      totalPlannedHours: (staffList.filter((s) => s.name.trim() && s.name.trim() !== 'No staff name').length || 0) * 160,
+      fileName: `${department.replace(/[^a-zA-Z]/g, '_')}_Duty_Roaster_${month}_${year}.xlsx`,
+      notes: `Official Monthly Duty Roaster submitted via 30 Staff Matrix for ${department}`,
+      shiftsSummary: {
+        morningShifts: daysArray.reduce((acc, _, idx) => acc + getDailyCount(idx, 'M'), 0),
+        eveningShifts: daysArray.reduce((acc, _, idx) => acc + getDailyCount(idx, 'A'), 0),
+        nightShifts: daysArray.reduce((acc, _, idx) => acc + getDailyCount(idx, 'N'), 0),
+        onCallCoverage: 30,
+      },
+      staffGrid: staffList,
+    });
+
     setSavedSuccess(true);
     setTimeout(() => setSavedSuccess(false), 4000);
+  };
+
+  const handleSyncWithoutRepublishing = () => {
+    setIsSyncingLive(true);
+    try {
+      const result = syncMonthlyRosterToActiveShifts(department, month, year, staffList, { preserveApprovalStatus: true });
+      const nowTime = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      setLastSyncReport({
+        time: nowTime,
+        shifts: result.syncedCount,
+        staff: result.affectedStaffCount,
+      });
+      setTimeout(() => {
+        setLastSyncReport((prev) => (prev?.time === nowTime ? null : prev));
+      }, 8000);
+    } catch (err) {
+      showToast('error', 'Sync Failed', 'Could not synchronize roster with active shifts.');
+    } finally {
+      setIsSyncingLive(false);
+    }
   };
 
   const handleDownloadCSV = () => {
     const headers = ['NAMES', 'RANK', ...daysArray.map((d) => `Day ${d} (${dayInitials[d - 1]})`)];
     const rows = staffList.map((s) => [
-      `"${s.name}-${s.phone}"`,
-      `"${s.rank}"`,
-      ...s.shifts.map((sh) => `"${sh}"`),
+      `"${s.name ? (s.phone ? `${s.name}-${s.phone}` : s.name) : 'No staff name'}"`,
+      `"${s.rank || (s.name === 'No staff name' ? 'N/A' : '')}"`,
+      ...daysArray.map((_, idx) => `"${s.shifts[idx] || 'O'}"`),
     ]);
 
     // Bottom summary rows
@@ -451,6 +672,23 @@ export const MonthlyDutyRoasterGrid: React.FC = () => {
 
           <div className="flex flex-wrap items-center gap-2">
             <button
+              type="button"
+              onClick={handleAutoTransferStaff}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold transition shadow border border-emerald-400/40"
+              title="Automatically transfer departmental staff to duty roaster matrix"
+            >
+              <ArrowRightLeft className="h-3.5 w-3.5 text-emerald-200" />
+              <span>Auto-Transfer Staff ({deptEmployees.length})</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleInsertNoStaffName}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition border border-slate-700"
+              title="Insert 'No staff name' if this department has no staff"
+            >
+              <UserX className="h-3.5 w-3.5 text-amber-400" /> Insert "No staff name"
+            </button>
+            <button
               onClick={handleApplyAutoPattern}
               className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition border border-slate-700"
             >
@@ -470,6 +708,16 @@ export const MonthlyDutyRoasterGrid: React.FC = () => {
               <Printer className="h-3.5 w-3.5" /> Print Roaster / Blank Template
             </button>
             <button
+              type="button"
+              onClick={handleSyncWithoutRepublishing}
+              disabled={isSyncingLive}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white text-xs font-bold transition shadow-lg shadow-cyan-950/40 border border-cyan-400/40"
+              title="Synchronize duty matrix with active live shifts and daily biometric attendance without altering approval status or requiring republishing"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${isSyncingLive ? 'animate-spin text-cyan-200' : 'text-cyan-200'}`} />
+              <span>Sync Without Republishing</span>
+            </button>
+            <button
               onClick={handleSaveRoster}
               className="flex items-center gap-1.5 px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition shadow-lg shadow-emerald-950/50"
             >
@@ -479,6 +727,34 @@ export const MonthlyDutyRoasterGrid: React.FC = () => {
         </div>
 
         {/* Access Governance Notice */}
+        {lastSyncReport && (
+          <div className="p-3.5 rounded-xl bg-cyan-950/70 border border-cyan-500/40 text-cyan-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-lg animate-in fade-in">
+            <div className="flex items-center gap-2.5">
+              <span className="flex h-2.5 w-2.5 rounded-full bg-cyan-400 animate-pulse shrink-0" />
+              <div>
+                <p className="font-bold text-white">
+                  Live Shift Synchronization Active ({lastSyncReport.time})
+                </p>
+                <p className="text-[11px] text-cyan-300/90 mt-0.5">
+                  Synchronized <strong>{lastSyncReport.shifts}</strong> shift allocations for <strong>{lastSyncReport.staff}</strong> staff members in <em>{department}</em>. Biometric attendance terminals and staff mobile portals are updated in real-time without requiring re-approval or republishing.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="text-[10px] font-black uppercase px-2.5 py-1 rounded-lg bg-cyan-900/80 border border-cyan-400/40 text-cyan-200">
+                Status: {currentHrStatus.status} (Preserved)
+              </span>
+              <button
+                type="button"
+                onClick={() => setLastSyncReport(null)}
+                className="text-cyan-400 hover:text-white p-1 rounded-md transition"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className={`p-3 rounded-xl border flex items-center justify-between gap-3 text-xs ${
           isHRorAdmin
             ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-300'
@@ -519,7 +795,7 @@ export const MonthlyDutyRoasterGrid: React.FC = () => {
               <div className="flex items-center gap-2">
                 <span className="font-bold text-slate-200">HR Roaster Audit Status for {department}:</span>
                 <span
-                  className={`px-2.5 py-0.5 rounded-full font-black text-[10px] uppercase border ${
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full font-black text-[10px] uppercase border tracking-wider shadow-sm ${
                     currentHrStatus.status === 'Approved'
                       ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
                       : currentHrStatus.status === 'Returned for Revision'
@@ -527,7 +803,15 @@ export const MonthlyDutyRoasterGrid: React.FC = () => {
                       : 'bg-amber-500/20 text-amber-300 border-amber-500/40'
                   }`}
                 >
-                  {currentHrStatus.status}
+                  {currentHrStatus.status === 'Approved' && <Check className="h-3 w-3 text-emerald-400" />}
+                  {currentHrStatus.status === 'Returned for Revision' && <AlertCircle className="h-3 w-3 text-rose-400" />}
+                  {(currentHrStatus.status === 'Pending Verification' || currentHrStatus.status === 'Pending HR Approval') && (
+                    <>
+                      <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse"></span>
+                      <Clock className="h-3 w-3 text-amber-400" />
+                    </>
+                  )}
+                  {currentHrStatus.status === 'Pending HR Approval' ? 'Pending Verification' : currentHrStatus.status}
                 </span>
               </div>
               {currentHrStatus.status === 'Approved' && (
@@ -540,9 +824,10 @@ export const MonthlyDutyRoasterGrid: React.FC = () => {
                   <strong>Revision Note:</strong> {currentHrStatus.notes}
                 </p>
               )}
-              {currentHrStatus.status === 'Pending HR Approval' && (
-                <p className="text-[11px] text-slate-400 mt-0.5">
-                  Pending HR Officer/Director verification of shift coverage and fatigue compliance.
+              {(currentHrStatus.status === 'Pending Verification' || currentHrStatus.status === 'Pending HR Approval') && (
+                <p className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-1.5">
+                  <span className="h-1.5 w-1.5 rounded-full bg-amber-400"></span>
+                  Pending HR Officer/Director verification of shift coverage, on-call allocations, and fatigue compliance.
                 </p>
               )}
             </div>
@@ -571,23 +856,106 @@ export const MonthlyDutyRoasterGrid: React.FC = () => {
           </div>
         </div>
 
+        {/* Interactive Month Selection Ribbon */}
+        <div className="bg-slate-950/70 p-3.5 rounded-2xl border border-slate-800">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-2.5">
+            <div className="flex items-center gap-2">
+              <Calendar className="h-4 w-4 text-emerald-400 shrink-0" />
+              <span className="text-xs font-bold text-slate-200 uppercase tracking-wider">
+                Roster Month:
+              </span>
+              <span className="px-2.5 py-0.5 rounded-lg bg-emerald-500/20 text-emerald-300 font-black text-xs border border-emerald-500/30">
+                {month} {year} ({daysCount} Days)
+              </span>
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={handlePrevMonth}
+                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition border border-slate-700 flex items-center gap-1 text-xs font-semibold"
+                title="Go to previous month"
+              >
+                <ChevronLeft className="h-4 w-4" />
+                <span className="hidden sm:inline">Prev</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleCurrentMonth}
+                className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-emerald-950 hover:text-emerald-300 text-slate-300 transition border border-slate-700 text-xs font-semibold"
+                title="Jump to current real-world month"
+              >
+                Current Month
+              </button>
+
+              <button
+                type="button"
+                onClick={handleNextMonth}
+                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition border border-slate-700 flex items-center gap-1 text-xs font-semibold"
+                title="Go to next month"
+              >
+                <span className="hidden sm:inline">Next</span>
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* 12 Months Quick Switcher Grid/Ribbon */}
+          <div className="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-12 gap-1.5">
+            {MONTH_OPTIONS.map((opt) => {
+              const isSelected = month.toUpperCase() === opt.value.toUpperCase();
+              const daysInThisMonth = getDaysInMonth(opt.value, year);
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => handleSelectMonth(opt.value)}
+                  className={`px-2 py-1.5 rounded-xl text-center transition flex flex-col items-center justify-center relative ${
+                    isSelected
+                      ? 'bg-gradient-to-b from-emerald-600 to-emerald-700 text-white font-black shadow-md shadow-emerald-900/30 ring-2 ring-emerald-400'
+                      : 'bg-slate-900/80 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800'
+                  }`}
+                >
+                  <span className="text-[11px] uppercase tracking-wider font-extrabold">{opt.shortName}</span>
+                  <span className={`text-[9px] ${isSelected ? 'text-emerald-100 font-bold' : 'text-slate-500'}`}>
+                    {daysInThisMonth}d
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         {/* Configuration Bar */}
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 bg-slate-800/60 p-3.5 rounded-2xl border border-slate-750 text-xs">
           <div>
-            <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Select Month</label>
-            <input
-              type="text"
-              value={month}
-              onChange={(e) => setMonth(e.target.value.toUpperCase())}
-              className="w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-white font-black text-xs uppercase focus:border-emerald-500 focus:outline-none"
-              placeholder="e.g. APRIL"
-            />
+            <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1 flex items-center justify-between">
+              <span>Select Month</span>
+              <span className="text-emerald-400 font-semibold">{daysCount} days</span>
+            </label>
+            <select
+              value={month.toUpperCase()}
+              onChange={(e) => handleSelectMonth(e.target.value)}
+              className="w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-white font-black text-xs uppercase focus:border-emerald-500 focus:outline-none cursor-pointer"
+            >
+              {MONTH_OPTIONS.map((opt) => {
+                const dCount = getDaysInMonth(opt.value, year);
+                return (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label} ({dCount} Days)
+                  </option>
+                );
+              })}
+            </select>
           </div>
 
           <div>
-            <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Year</label>
+            <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Roster Year</label>
             <input
               type="number"
+              min={2020}
+              max={2040}
               value={year}
               onChange={(e) => setYear(Number(e.target.value))}
               className="w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-white font-black text-xs focus:border-emerald-500 focus:outline-none"
@@ -609,13 +977,11 @@ export const MonthlyDutyRoasterGrid: React.FC = () => {
                 onChange={(e) => setDepartment(e.target.value)}
                 className="w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-white font-bold text-xs focus:border-emerald-500 focus:outline-none cursor-pointer"
               >
-                <option value="CARDIOLOGY & ICU">CARDIOLOGY & ICU</option>
-                <option value="EMERGENCY & TRAUMA">EMERGENCY & TRAUMA</option>
-                <option value="GENERAL MEDICAL WARDS">GENERAL MEDICAL WARDS</option>
-                <option value="SURGICAL SERVICES & OT">SURGICAL SERVICES & OT</option>
-                <option value="PEDIATRICS & NEONATAL">PEDIATRICS & NEONATAL</option>
-                <option value="PHARMACY & DISPENSARY">PHARMACY & DISPENSARY</option>
-                <option value="RADIOLOGY & IMAGING">RADIOLOGY & IMAGING</option>
+                {availableDepartments.map((dept) => (
+                  <option key={dept} value={dept}>
+                    {dept}
+                  </option>
+                ))}
               </select>
             ) : (
               <div className="w-full rounded-xl bg-slate-900/90 border border-amber-500/40 px-3 py-2 text-white font-bold text-xs flex items-center justify-between shadow-inner">
@@ -635,6 +1001,54 @@ export const MonthlyDutyRoasterGrid: React.FC = () => {
             />
           </div>
         </div>
+
+        {/* Department Staff Status Notice */}
+        {hasNoStaff ? (
+          <div className="p-3.5 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-200 text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-inner">
+            <div className="flex items-center gap-2.5">
+              <AlertCircle className="h-5 w-5 text-amber-400 shrink-0" />
+              <div>
+                <p className="font-bold text-amber-300">
+                  Department Has No Staff: <span className="text-white font-mono">{department}</span>
+                </p>
+                <p className="text-[11px] text-amber-200/80 mt-0.5">
+                  No staff members are registered under this department in the HR system. <strong>"No staff name"</strong> has been inserted on the roster row.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleInsertNoStaffName}
+              className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs transition shrink-0 flex items-center gap-1.5 shadow"
+            >
+              <UserX className="h-3.5 w-3.5" /> Re-Insert "No staff name"
+            </button>
+          </div>
+        ) : (
+          <div className="p-3.5 rounded-2xl bg-emerald-950/40 border border-emerald-500/30 text-emerald-200 text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-inner">
+            <div className="flex items-center gap-2.5">
+              <Users className="h-5 w-5 text-emerald-400 shrink-0" />
+              <div>
+                <p className="font-bold text-emerald-300 flex items-center gap-2">
+                  <span>Department Personnel Auto-Transferred:</span>
+                  <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 font-extrabold border border-emerald-500/30">
+                    {deptEmployees.length} Staff Members
+                  </span>
+                </p>
+                <p className="text-[11px] text-emerald-200/80 mt-0.5">
+                  All employees registered or transferred to <strong className="text-white">{department}</strong> are automatically transferred into the duty roaster matrix with their contact and rank info.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleAutoTransferStaff}
+              className="px-3 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs transition shrink-0 flex items-center gap-1.5 shadow border border-emerald-500/40"
+            >
+              <RotateCcw className="h-3.5 w-3.5" /> Re-Transfer Staff
+            </button>
+          </div>
+        )}
 
         {/* Legend */}
         <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-400 pt-1">
@@ -679,37 +1093,56 @@ export const MonthlyDutyRoasterGrid: React.FC = () => {
         <div className="overflow-x-auto">
           <table className="w-full text-center text-xs border-collapse font-mono select-none">
             <thead>
-              {/* Row 1: DATE Header & Day Numbers 1..30 */}
+              {/* Row 1: DATE Header & Day Numbers + Formatted Month Dates */}
               <tr className="bg-slate-800 text-slate-200 border-b border-slate-700 font-bold">
                 <th className="px-3 py-2 text-left w-56 border-r border-slate-700 text-[11px] font-black uppercase tracking-wider text-white bg-slate-800">
-                  DATE
+                  <div className="flex items-center justify-between">
+                    <span>DATE: {month.toUpperCase()} {year}</span>
+                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-mono">
+                      {daysCount} Days
+                    </span>
+                  </div>
                 </th>
                 <th className="px-2 py-2 w-20 border-r border-slate-700 text-[10px] font-bold text-slate-300 uppercase bg-slate-800">
                   RANK
                 </th>
-                {daysArray.map((d) => (
-                  <th key={d} className="px-1 py-1.5 min-w-[28px] border-r border-slate-700 text-[11px] font-bold text-emerald-400 bg-slate-800">
-                    {d}
+                <th className="px-1.5 py-2 w-16 border-r border-slate-700 text-[9px] font-bold text-amber-300 uppercase bg-slate-800" title="Payroll Disbursal: Ghana Govt (GoG) vs Hospital (IGF)">
+                  GROUP
+                </th>
+                {calendarDays.map((cd) => (
+                  <th
+                    key={cd.dayNumber}
+                    className={`px-1 py-1 min-w-[32px] border-r border-slate-700 text-center ${
+                      cd.isWeekend ? 'text-amber-300 bg-slate-800/90 font-black' : 'text-emerald-400 bg-slate-800'
+                    }`}
+                    title={cd.fullFormattedDate || `Day ${cd.dayNumber}: ${cd.dayName}`}
+                  >
+                    <div className="text-[11px] font-black leading-none">{String(cd.dayNumber).padStart(2, '0')}</div>
+                    <div className="text-[8px] font-mono opacity-80 mt-0.5 tracking-tight">{cd.displayDate || `${cd.dayNumber} ${month.slice(0, 3)}`}</div>
                   </th>
                 ))}
               </tr>
 
-              {/* Row 2: NAMES Header & Day Initials W, Th, F, S... */}
+              {/* Row 2: NAMES Header & Day Initials (Su, M, Tu, W, Th, F, Sa) */}
               <tr className="bg-slate-800/80 text-slate-300 border-b-2 border-slate-600 font-bold text-[10px]">
                 <th className="px-3 py-2 text-left border-r border-slate-700 font-extrabold text-white uppercase tracking-wider bg-slate-800/80">
-                  NAMES
+                  NAMES & CONTACT
                 </th>
                 <th className="px-2 py-2 border-r border-slate-700 font-bold text-slate-300 bg-slate-800/80">
                   RANK
                 </th>
-                {dayInitials.map((dayInit, idx) => (
+                <th className="px-1.5 py-2 border-r border-slate-700 text-[9px] font-bold text-slate-400 bg-slate-800/80" title="Salary: Ghana Govt Subvention or Hospital IGF">
+                  PAYROLL
+                </th>
+                {calendarDays.map((cd, idx) => (
                   <th
                     key={idx}
-                    className={`px-1 py-1 min-w-[28px] border-r border-slate-700 ${
-                      dayInit === 'S' ? 'text-amber-300 font-black bg-amber-950/40' : 'text-slate-300 bg-slate-800/80'
+                    className={`px-1 py-1 min-w-[32px] border-r border-slate-700 text-center ${
+                      cd.isWeekend ? 'text-amber-300 font-black bg-amber-950/50' : 'text-slate-300 bg-slate-800/80'
                     }`}
+                    title={cd.fullFormattedDate || `Day ${cd.dayNumber}: ${cd.dayName}`}
                   >
-                    {dayInit}
+                    {cd.initial}
                   </th>
                 ))}
               </tr>
@@ -727,14 +1160,21 @@ export const MonthlyDutyRoasterGrid: React.FC = () => {
                       </span>
                       <input
                         type="text"
-                        value={`${staff.name}-${staff.phone}`}
+                        placeholder="No staff name"
+                        value={staff.name ? (staff.phone ? `${staff.name}-${staff.phone}` : staff.name) : ''}
                         onChange={(e) => {
                           const val = e.target.value;
                           const parts = val.split('-');
                           handleUpdateStaffDetail(staffIdx, 'name', parts[0] || val);
-                          if (parts[1]) handleUpdateStaffDetail(staffIdx, 'phone', parts[1]);
+                          if (parts[1] !== undefined) handleUpdateStaffDetail(staffIdx, 'phone', parts[1]);
                         }}
-                        className="w-full bg-transparent font-bold text-white text-[11px] focus:bg-slate-800 focus:outline-none focus:ring-1 focus:ring-emerald-500 px-1 py-0.5 rounded uppercase"
+                        className={`w-full bg-transparent font-bold text-[11px] focus:bg-slate-800 focus:outline-none focus:ring-1 focus:ring-emerald-500 px-1 py-0.5 rounded uppercase ${
+                          staff.name === 'No staff name'
+                            ? 'text-amber-400 italic font-semibold'
+                            : !staff.name
+                            ? 'text-slate-500 placeholder-slate-600 italic'
+                            : 'text-white'
+                        }`}
                       />
                     </div>
                   </td>
@@ -743,14 +1183,38 @@ export const MonthlyDutyRoasterGrid: React.FC = () => {
                   <td className="px-1.5 py-1.5 border-r border-slate-700 text-[10px] font-bold text-slate-300 bg-slate-900/90 group-hover:bg-slate-800/80">
                     <input
                       type="text"
+                      placeholder={staff.name === 'No staff name' ? 'N/A' : '-'}
                       value={staff.rank}
                       onChange={(e) => handleUpdateStaffDetail(staffIdx, 'rank', e.target.value.toUpperCase())}
-                      className="w-full bg-transparent font-bold text-slate-200 text-center text-[10px] focus:bg-slate-800 focus:outline-none px-1 py-0.5 rounded uppercase"
+                      className="w-full bg-transparent font-bold text-slate-200 text-center text-[10px] focus:bg-slate-800 focus:outline-none px-1 py-0.5 rounded uppercase placeholder-slate-600"
                     />
                   </td>
 
-                  {/* 30 Shift Code Cells for this staff */}
-                  {staff.shifts.map((shiftCode, dayIdx) => {
+                  {/* Staff Group Cell: Mechanised (GoG) vs Non-Mechanised (Hospital IGF) */}
+                  <td className="px-1 py-1 border-r border-slate-700 text-center bg-slate-900/90 group-hover:bg-slate-800/80">
+                    {staff.name && staff.name !== 'No staff name' ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const nextStatus = (staff.mechanisationStatus || 'Mechanised') === 'Mechanised' ? 'Non-Mechanised' : 'Mechanised';
+                          handleUpdateStaffDetail(staffIdx, 'mechanisationStatus', nextStatus);
+                        }}
+                        className={`px-1.5 py-0.5 rounded text-[9px] font-bold border transition ${
+                          (staff.mechanisationStatus || 'Mechanised') === 'Mechanised'
+                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/30'
+                            : 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30'
+                        }`}
+                        title={`Salary Paid by ${(staff.mechanisationStatus || 'Mechanised') === 'Mechanised' ? 'Ghana Government (GoG Subvention)' : 'Hospital (Internally Generated Funds)'}. Click to switch.`}
+                      >
+                        {(staff.mechanisationStatus || 'Mechanised') === 'Mechanised' ? '🇬🇭 GoG' : '🏥 IGF'}
+                      </button>
+                    ) : (
+                      <span className="text-[9px] text-slate-600">-</span>
+                    )}
+                  </td>
+
+                  {/* Shift Code Cells for this staff (Dynamic Month Days) */}
+                  {Array.from({ length: daysCount }, (_, dayIdx) => staff.shifts[dayIdx] || 'O').map((shiftCode, dayIdx) => {
                     let styleClass = 'text-slate-400 hover:bg-slate-800/90 bg-slate-900/60';
                     if (shiftCode === 'M') styleClass = 'text-emerald-300 bg-emerald-950/60 font-black border-emerald-500/30';
                     else if (shiftCode === 'A') styleClass = 'text-amber-300 bg-amber-950/60 font-black border-amber-500/30';
@@ -762,7 +1226,7 @@ export const MonthlyDutyRoasterGrid: React.FC = () => {
                         key={dayIdx}
                         onClick={() => handleCellClick(staffIdx, dayIdx)}
                         className={`px-1 py-1 border-r border-slate-700 text-[11px] font-bold cursor-pointer transition select-none ${styleClass}`}
-                        title={`Click to change shift for Day ${dayIdx + 1}`}
+                        title={`Day ${dayIdx + 1} (${calendarDays[dayIdx]?.fullFormattedDate || calendarDays[dayIdx]?.dayName || ''}): Click to toggle shift`}
                       >
                         {shiftCode}
                       </td>
@@ -772,7 +1236,7 @@ export const MonthlyDutyRoasterGrid: React.FC = () => {
               ))}
             </tbody>
 
-            {/* Bottom Summary Rows (Matching template: MORNING, AFTERNOON, NIGHT sums) */}
+            {/* Bottom Summary Rows (Matching template: MORNING, AFTERNOON, NIGHT sums + Group totals) */}
             <tfoot className="bg-slate-800 text-white font-extrabold border-t-2 border-slate-600">
               {/* MORNING COUNT ROW */}
               <tr className="border-b border-slate-700 text-emerald-400">
@@ -781,6 +1245,9 @@ export const MonthlyDutyRoasterGrid: React.FC = () => {
                 </td>
                 <td className="px-2 py-2 border-r border-slate-700 text-[10px] text-slate-300 bg-slate-800">
                   TOTAL
+                </td>
+                <td className="px-1 py-1 border-r border-slate-700 text-[9px] text-slate-400 bg-slate-800">
+                  -
                 </td>
                 {daysArray.map((_, dayIdx) => (
                   <td key={dayIdx} className="px-1 py-1.5 border-r border-slate-700 text-[11px] font-black bg-emerald-950/50">
@@ -797,6 +1264,9 @@ export const MonthlyDutyRoasterGrid: React.FC = () => {
                 <td className="px-2 py-2 border-r border-slate-700 text-[10px] text-slate-300 bg-slate-800">
                   TOTAL
                 </td>
+                <td className="px-1 py-1 border-r border-slate-700 text-[9px] text-slate-400 bg-slate-800">
+                  -
+                </td>
                 {daysArray.map((_, dayIdx) => (
                   <td key={dayIdx} className="px-1 py-1.5 border-r border-slate-700 text-[11px] font-black bg-amber-950/50">
                     {getDailyCount(dayIdx, 'A')}
@@ -805,16 +1275,40 @@ export const MonthlyDutyRoasterGrid: React.FC = () => {
               </tr>
 
               {/* NIGHT COUNT ROW */}
-              <tr className="text-sky-300">
+              <tr className="border-b border-slate-700 text-sky-300">
                 <td className="px-3 py-2 text-left border-r border-slate-700 text-[11px] font-black uppercase bg-slate-800">
                   NIGHT
                 </td>
                 <td className="px-2 py-2 border-r border-slate-700 text-[10px] text-slate-300 bg-slate-800">
                   TOTAL
                 </td>
+                <td className="px-1 py-1 border-r border-slate-700 text-[9px] text-slate-400 bg-slate-800">
+                  -
+                </td>
                 {daysArray.map((_, dayIdx) => (
                   <td key={dayIdx} className="px-1 py-1.5 border-r border-slate-700 text-[11px] font-black bg-sky-950/50">
                     {getDailyCount(dayIdx, 'N')}
+                  </td>
+                ))}
+              </tr>
+
+              {/* STAFF GROUPING COVERAGE ROW */}
+              <tr className="text-slate-300 bg-slate-850 text-[10px]">
+                <td className="px-3 py-1.5 text-left border-r border-slate-700 text-[10px] font-bold uppercase bg-slate-800 text-slate-200">
+                  PAYROLL GROUPS
+                </td>
+                <td colSpan={2} className="px-2 py-1.5 border-r border-slate-700 text-[10px] text-slate-300 bg-slate-800 font-semibold text-center">
+                  <span className="text-emerald-400 font-bold">
+                    {staffList.filter(s => s.name && s.name !== 'No staff name' && (s.mechanisationStatus || 'Mechanised') === 'Mechanised').length} GoG
+                  </span>
+                  {' • '}
+                  <span className="text-amber-400 font-bold">
+                    {staffList.filter(s => s.name && s.name !== 'No staff name' && s.mechanisationStatus === 'Non-Mechanised').length} IGF
+                  </span>
+                </td>
+                {daysArray.map((_, dayIdx) => (
+                  <td key={dayIdx} className="px-1 py-1 border-r border-slate-700 text-[9px] text-slate-400 bg-slate-800/60 text-center font-mono" title={`Total coverage for ${calendarDays[dayIdx]?.displayDate || dayIdx + 1}`}>
+                    {getDailyCount(dayIdx, 'M') + getDailyCount(dayIdx, 'A') + getDailyCount(dayIdx, 'N')}
                   </td>
                 ))}
               </tr>
